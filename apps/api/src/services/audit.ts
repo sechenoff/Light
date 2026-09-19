@@ -42,6 +42,8 @@ export async function writeAuditEntry(args: {
   entityId: string;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
+  /** Полные снимки состава брони требуют большего лимита, чем плоские события. */
+  maxSnapshotBytes?: number;
 }): Promise<void> {
   const client = args.tx ?? prisma;
   await client.auditEntry.create({
@@ -50,8 +52,8 @@ export async function writeAuditEntry(args: {
       action: args.action,
       entityType: args.entityType,
       entityId: args.entityId,
-      before: args.before ? JSON.stringify(diffFields(args.before)) : null,
-      after: args.after ? JSON.stringify(diffFields(args.after)) : null,
+      before: args.before ? JSON.stringify(diffFields(args.before, args.maxSnapshotBytes)) : null,
+      after: args.after ? JSON.stringify(diffFields(args.after, args.maxSnapshotBytes)) : null,
     },
   });
 }

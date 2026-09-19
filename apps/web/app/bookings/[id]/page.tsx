@@ -988,7 +988,7 @@ export default function BookingDetailPage() {
               onDownloadEstimateFallback={downloadEstimatePdfWithFallback}
             />
             <AddonEstimateSection booking={booking} userRole={user?.role} onMerged={reloadBooking} />
-            <BookingJournalSection financeEvents={booking.financeEvents} />
+            <BookingJournalSection bookingId={booking.id} canViewAudit={user?.role === "SUPER_ADMIN"} financeEvents={booking.financeEvents} />
           </div>
           </div>
 

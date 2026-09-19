@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { BookingJournalSection } from "../BookingJournalSection";
+import { auditTimestamp } from "../../../lib/auditFormat";
 import { apiFetch } from "../../../lib/api";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { bookingStatusLabel } from "../../../lib/bookingConstants";
@@ -602,13 +604,11 @@ export function ProjectBookingDetail({ bookingId }: { bookingId: string }) {
       )}
       {tab === "history" && (
         <section className="max-w-4xl space-y-3">
-          {p.events.map((e) => (
+          {isAdmin ? <BookingJournalSection key={p.revision} bookingId={bookingId} canViewAudit financeEvents={null} /> : p.events.map((e) => (
             <article key={e.id} className="border-b border-border pb-3">
               <p className="text-sm text-ink">{e.text}</p>
               <p className="mt-1 text-xs text-ink-3">
-                {new Date(e.createdAt).toLocaleString("ru-RU", {
-                  timeZone: "Europe/Moscow",
-                })}
+                {e.createdByName ?? "Автор не сохранён"} · {auditTimestamp(e.createdAt)}
               </p>
             </article>
           ))}

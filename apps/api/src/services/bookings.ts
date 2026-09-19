@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import { recordBookingCreated } from "./bookingAudit";
 import { computeSurcharge, resolveSurchargePercent, type PaymentForm } from "./paymentForm";
 import { getSettings } from "./organizationService";
 import type { Booking, Equipment, BookingItem, Prisma } from "@prisma/client";
@@ -274,21 +275,44 @@ export type BookingTransportSnapshot = {
  */
 const DOC_NUMBER_RETRIES = 5;
 
+// SQLite допускает одного писателя. Одновременный BEGIN интерактивных
+// транзакций на Linux давал P1008 ещё до записи, вместо коллизии номера.
+// Последовательно выполняем только короткое создание + аудит; расчёты остаются
+// снаружи. Уникальный индекс и retry ниже защищают от других процессов.
+let bookingCreationQueue = Promise.resolve();
+async function serializeBookingCreation<T>(create: () => Promise<T>): Promise<T> {
+  const previous = bookingCreationQueue;
+  let release!: () => void;
+  bookingCreationQueue = new Promise<void>(resolve => { release = resolve; });
+  await previous;
+  try {
+    return await create();
+  } finally {
+    release();
+  }
+}
+
 async function createWithRetriedDocNumber<T>(
   build: (docNumber: string) => Prisma.BookingCreateArgs,
 ): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    const docNumber = await generateEstimateDocNumber(new Date().getFullYear());
-    try {
-      return (await prisma.booking.create(build(docNumber))) as T;
-    } catch (err: unknown) {
-      const e = err as { code?: string; meta?: { target?: unknown } };
-      const target = Array.isArray(e.meta?.target) ? e.meta?.target.join(",") : String(e.meta?.target ?? "");
-      const isDocNumberCollision = e.code === "P2002" && target.includes("docNumber");
-      if (isDocNumberCollision && attempt < DOC_NUMBER_RETRIES - 1) continue;
-      throw err;
+  return serializeBookingCreation(async () => {
+    for (let attempt = 0; ; attempt++) {
+      const docNumber = await generateEstimateDocNumber(new Date().getFullYear());
+      try {
+        return await prisma.$transaction(async (tx) => {
+          const created = await tx.booking.create(build(docNumber));
+          await recordBookingCreated(tx, created.id);
+          return created as T;
+        });
+      } catch (err: unknown) {
+        const e = err as { code?: string; meta?: { target?: unknown } };
+        const target = Array.isArray(e.meta?.target) ? e.meta?.target.join(",") : String(e.meta?.target ?? "");
+        const isDocNumberCollision = e.code === "P2002" && target.includes("docNumber");
+        if (isDocNumberCollision && attempt < DOC_NUMBER_RETRIES - 1) continue;
+        throw err;
+      }
     }
-  }
+  });
 }
 
 /** Проект по умолчанию для быстрой брони — поле необязательно в форме. */
@@ -335,24 +359,28 @@ export async function createQuickBooking(args: {
   const resolvedPaymentDate =
     args.expectedPaymentDate ?? (await computeDefaultPaymentDate(args.endDate));
 
-  return prisma.booking.create({
-    data: {
-      clientId: args.clientId,
-      projectName: args.projectName?.trim() || QUICK_BOOKING_DEFAULT_PROJECT,
-      startDate: args.startDate,
-      endDate: args.endDate,
-      status: "CONFIRMED",
-      confirmedAt: new Date(),
-      legacyFinance: false,
-      comment: args.comment?.trim() || null,
-      expectedPaymentDate: resolvedPaymentDate,
-      totalEstimateAmount: amount.toString(),
-      discountAmount: "0",
-      finalAmount: amount.toString(),
-      manualFinalAmount: amount.toString(),
-    },
-    include: { client: true, items: true },
-  });
+  return serializeBookingCreation(() => prisma.$transaction(async (tx) => {
+    const created = await tx.booking.create({
+      data: {
+        clientId: args.clientId,
+        projectName: args.projectName?.trim() || QUICK_BOOKING_DEFAULT_PROJECT,
+        startDate: args.startDate,
+        endDate: args.endDate,
+        status: "CONFIRMED",
+        confirmedAt: new Date(),
+        legacyFinance: false,
+        comment: args.comment?.trim() || null,
+        expectedPaymentDate: resolvedPaymentDate,
+        totalEstimateAmount: amount.toString(),
+        discountAmount: "0",
+        finalAmount: amount.toString(),
+        manualFinalAmount: amount.toString(),
+      },
+      include: { client: true, items: true },
+    });
+    await recordBookingCreated(tx, created.id, "BOOKING_QUICK_CREATE");
+    return created;
+  }));
 }
 
 /**
@@ -1173,4 +1201,3 @@ export async function releaseBookingUnits(
     freedUnitIds,
   };
 }
-

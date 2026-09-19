@@ -287,8 +287,13 @@ export async function projectDetail(id: string) {
         orderBy: { createdAt: "desc" },
         take: 100,
       });
+      const actors = await tx.adminUser.findMany({
+        where: { id: { in: [...new Set(p.events.map(e => e.createdBy))] } },
+        select: { id: true, username: true },
+      });
       return {
         ...p,
+        events: p.events.map(e => ({ ...e, createdByName: actors.find(a => a.id === e.createdBy)?.username ?? null })),
         lots: p.lots.map((l) => ({
           ...l,
           trackingMode:

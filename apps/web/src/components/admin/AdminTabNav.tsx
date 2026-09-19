@@ -117,7 +117,7 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
     { href: "/admin/slang", label: "Словарь сленга", icon: ICONS.messageCircle, count: counts?.slang },
     { href: "/admin/imports", label: "Импорт прайсов", icon: ICONS.fileText, count: counts?.imports },
     { href: "/admin/vehicles", label: "Транспорт", icon: ICONS.truck },
-    { href: "/admin/audit", label: "Аудит", icon: ICONS.clipboardList },
+    { href: "/admin/audit", label: "Журнал", icon: ICONS.clipboardList },
     { href: "/admin/roles", label: "Права", icon: ICONS.shield },
     { href: "/settings/organization", label: "Настройки", icon: ICONS.settings },
     { href: "/admin/more", label: "Кладовщики", icon: ICONS.key },
