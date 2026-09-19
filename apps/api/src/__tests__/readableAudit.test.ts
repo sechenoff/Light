@@ -189,6 +189,75 @@ describe("человекочитаемый аудит", () => {
       spy.mockRestore();
     }
   });
+  it("очередь создания сохраняет аккаунт каждого запроса и освобождается после отката", async () => {
+    const audit = await import("../services/audit");
+    const { auditContext } = await import("../services/auditContext");
+    const { createBookingDraft, createQuickBooking } = await import(
+      "../services/bookings"
+    );
+    const client = await prisma.client.create({
+      data: { name: "Клиент конкурентного аудита" },
+    });
+    const startDate = new Date(Date.now() + 86400000);
+    const endDate = new Date(Date.now() + 172800000);
+    const create = (index: number) =>
+      new Promise<{ id: string }>((resolve, reject) => {
+        const userId = index % 2 ? targetId : actorId;
+        auditContext(
+          {
+            adminUser: {
+              userId,
+              username: `actor-${index % 2}`,
+              role: "SUPER_ADMIN",
+            },
+          } as never,
+          {} as never,
+          () => {
+            const common = {
+              clientId: client.id,
+              startDate,
+              endDate,
+              projectName: `Параллельная запись ${index}`,
+            };
+            const operation =
+              index % 2
+                ? createQuickBooking({ ...common, amount: 100 })
+                : createBookingDraft({
+                    ...common,
+                    items: [
+                      {
+                        customName: "Панель",
+                        customUnitPrice: 100,
+                        quantity: 1,
+                      },
+                    ],
+                  });
+            operation.then(resolve, reject);
+          },
+        );
+      });
+    const spy = vi
+      .spyOn(audit, "writeAuditEntry")
+      .mockRejectedValueOnce(new Error("creation audit failure"));
+    try {
+      await expect(create(0)).rejects.toThrow("creation audit failure");
+      expect(
+        await prisma.booking.count({ where: { clientId: client.id } }),
+      ).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, i) => create(i)),
+    );
+    for (const [index, booking] of results.entries()) {
+      const entries = await prisma.auditEntry.findMany({
+        where: { entityId: booking.id },
+      });
+      expect(entries).toHaveLength(1);
+      expect(entries[0].userId).toBe(index % 2 ? targetId : actorId);
+    }
+  });
   it("смена пароля оставляет факт изменения без пароля и хеша", async () => {
     const res = await request(app)
       .patch(`/api/admin-users/${targetId}`)
@@ -288,9 +357,19 @@ describe("человекочитаемый аудит", () => {
       .get(`/api/audit?userId=${targetId}`)
       .set(auth());
     expect(res.status).toBe(200);
-    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items.length).toBeGreaterThan(0);
+    expect(
+      res.body.items.every(
+        (entry: { userId: string }) => entry.userId === targetId,
+      ),
+    ).toBe(true);
     expect(JSON.stringify(res.body)).not.toMatch(/legacy-hash|legacy-token/);
-    expect(res.body.items[0].after).toContain("DONE");
+    expect(
+      res.body.items.find(
+        (entry: { entityId: string }) =>
+          entry.entityId === "audit-secret-fixture",
+      ).after,
+    ).toContain("DONE");
   });
   it("параллельные запросы не смешивают аккаунты, фоновые события отмечены системой", async () => {
     const { auditContext } = await import("../services/auditContext");
