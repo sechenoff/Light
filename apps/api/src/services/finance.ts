@@ -283,7 +283,7 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
       data: {
         bookingId,
         eventType: "PAYMENT_STATUS_CHANGED",
-        payloadJson: JSON.stringify(financeAuditPayload()),
+        payloadJson: JSON.stringify(financeAuditPayload({ automaticCalculation: true })),
         statusFrom: previousStatus,
         statusTo: status,
         amountDelta: amountPaid.toDecimalPlaces(2).toString(),

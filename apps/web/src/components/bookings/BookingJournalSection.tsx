@@ -87,12 +87,14 @@ export function BookingJournalSection({
               {auditActionLabel(ev.eventType)}
             </p>
             <p className="text-xs text-ink-2 break-words">
-              {actor?.username ??
-                (payload.auditSource === "system"
-                  ? "Система"
-                  : payload.auditSource === "unknown"
-                    ? "Аккаунт автора не определён"
-                    : "Автор не сохранён в старой записи")}
+              {actor?.username && payload.automaticCalculation
+                ? `Система · при действии аккаунта ${actor.username}`
+                : (actor?.username ??
+                  (payload.auditSource === "system"
+                    ? "Система"
+                    : payload.auditSource === "unknown"
+                      ? "Аккаунт автора не определён"
+                      : "Автор не сохранён в старой записи"))}
             </p>
             <time className="block text-xs text-ink-3" dateTime={ev.createdAt}>
               {auditTimestamp(ev.createdAt)}

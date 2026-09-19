@@ -30,6 +30,29 @@ describe("журнал на карточке брони", () => {
     expect(screen.getByText(/Оплачено: 0/)).toBeInTheDocument();
     expect(api).not.toHaveBeenCalled();
   });
+  it("автоматический пересчёт отличает систему от инициировавшего его аккаунта", () => {
+    render(
+      <BookingJournalSection
+        financeEvents={[
+          {
+            id: "automatic",
+            eventType: "PAYMENT_STATUS_CHANGED",
+            statusFrom: "NOT_PAID",
+            statusTo: "PAID",
+            createdAt: new Date().toISOString(),
+            payloadJson: JSON.stringify({
+              auditSource: "account",
+              auditActor: { id: "worker", username: "warehouse_account" },
+              automaticCalculation: true,
+            }),
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText("Система · при действии аккаунта warehouse_account"),
+    ).toBeInTheDocument();
+  });
   it("руководитель получает постраничную историю конкретной брони", async () => {
     api
       .mockResolvedValueOnce({ items: [], nextCursor: "cursor-1" })

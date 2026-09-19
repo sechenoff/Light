@@ -105,7 +105,7 @@ router.post("/", async (req, res, next) => {
         entityType: "AdminUser",
         entityId: created.id,
         before: null,
-        after: diffFields({ username: created.username, role: created.role } as Record<string, unknown>),
+        after: diffFields({ username: created.username, role: created.role, isActive: created.isActive } as Record<string, unknown>),
       });
       return created;
     });
@@ -153,14 +153,14 @@ router.patch("/:id", async (req, res, next) => {
       }
     }
 
-    const before = diffFields({ username: existing.username, role: existing.role, isActive: existing.isActive } as Record<string, unknown>);
-
     const data: { passwordHash?: string; role?: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" | "COLLECTOR"; isActive?: boolean } = {};
     if (body.password) data.passwordHash = await hashPassword(body.password);
     if (body.role) data.role = body.role;
     if (body.isActive !== undefined) data.isActive = body.isActive;
 
     const user = await prisma.$transaction(async (tx) => {
+      const current = await tx.adminUser.findUniqueOrThrow({ where: { id }, select: { username: true, role: true, isActive: true } });
+      const before = diffFields(current);
       const updated = await tx.adminUser.update({
         where: { id },
         data,
