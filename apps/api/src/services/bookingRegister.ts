@@ -38,7 +38,7 @@ const amount = z.preprocess(
 );
 export const registerQuerySchema = z
   .object({
-    scope: z.enum(REGISTER_SCOPES).default("active"),
+    scope: z.enum(REGISTER_SCOPES).default("all"),
     q: z.string().trim().max(200).default(""),
     clientId: z.string().max(100).default(""),
     projectId: z.string().max(100).default(""),

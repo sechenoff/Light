@@ -286,12 +286,6 @@ export function BookingRegister() {
           {money(r)}
           <DueDate row={r} />
         </div>
-        {expanded && (
-          <p className="mb-3 text-xs text-ink-3">
-            Начислено {formatRub(r.finalAmount)} · Получено{" "}
-            {formatRub(r.amountPaid)}
-          </p>
-        )}
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
           {rowActions(r)}
           <Link className="py-2 text-xs text-accent" href={`/bookings/${r.id}`}>
@@ -338,8 +332,20 @@ export function BookingRegister() {
         <p className="mb-2 text-[11px] text-ink-3">
           По всем неархивным бронированиям · независимо от фильтров
         </p>
-        <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 2xl:grid-cols-6">
           {[
+            {
+              scope: "all",
+              label: "Сумма проектов",
+              value: data ? formatRub(data.summary.total) : undefined,
+              hint: "длинные проекты — по закрытым периодам",
+            },
+            {
+              scope: "all",
+              label: "Получено",
+              value: data ? formatRub(data.summary.paid) : undefined,
+              hint: "поступившие деньги по всем броням",
+            },
             {
               scope: "active",
               label: "В работе",
@@ -366,18 +372,18 @@ export function BookingRegister() {
             },
           ].map((s) => (
             <button
-              key={s.scope}
+              key={s.label}
               onClick={() => {
                 setSearchInput("");
                 router.replace(`/bookings?scope=${s.scope}&view=${view}`, {
                   scroll: false,
                 });
               }}
-              className={`min-w-0 rounded-lg border bg-surface p-3 text-center transition hover:border-accent xl:p-4 ${s.scope === "overdue" ? "border-rose-border" : "border-border"}`}
+              className={`min-w-0 rounded-lg border bg-surface p-3 text-center transition hover:border-accent xl:p-4 ${s.scope === "overdue" && Number(data?.summary.overdue) > 0 ? "border-rose-border" : "border-border"}`}
             >
               <span className="text-xs text-ink-2">{s.label}</span>
               <strong
-                className={`mt-1 block break-words text-lg font-semibold tabular-nums sm:text-xl ${s.scope === "overdue" ? "text-rose" : "text-ink"}`}
+                className={`mt-1 block break-words text-lg font-semibold tabular-nums sm:text-xl ${s.scope === "overdue" && Number(data?.summary.overdue) > 0 ? "text-rose" : s.label === "Получено" ? "text-emerald" : "text-ink"}`}
               >
                 {s.value ?? "—"}
               </strong>
@@ -658,7 +664,7 @@ export function BookingRegister() {
             aria-label="Состояние бронирований"
             className="flex gap-1 overflow-x-auto border-b border-border pb-1"
           >
-            {REGISTER_SCOPES.map((s) => (
+            {(["all", ...REGISTER_SCOPES.filter((s) => s !== "all")] as const).map((s) => (
               <button
                 key={s}
                 aria-pressed={scope === s}
@@ -794,8 +800,8 @@ export function BookingRegister() {
                           <th className="px-3 py-3">Получено</th>
                         </>
                       )}
-                      <th className="px-3 py-3">Остаток / оплата</th>
-                      <th className="px-3 py-3">Срок / долг</th>
+                      <th className="min-w-[280px] px-3 py-3">Сумма / оплата</th>
+                      <th className="px-3 py-3">Срок оплаты</th>
                       <th className="px-3 py-3">Действия</th>
                     </tr>
                   </thead>
@@ -839,7 +845,7 @@ export function BookingRegister() {
                             </td>
                           </>
                         )}
-                        <td className="px-3 py-4 align-middle">{money(r)}</td>
+                        <td className="min-w-[280px] px-3 py-4 align-middle">{money(r)}</td>
                         <td className="min-w-[130px] px-3 py-4 align-middle">
                           <DueDate row={r} />
                         </td>
@@ -988,14 +994,22 @@ export function BookingRegister() {
             </span>
             <div className="flex flex-wrap gap-x-5 gap-y-2">
               <span className="text-ink-2">
-                Остаток{" "}
+                Сумма проектов{" "}
+                <strong className="font-mono text-ink">{formatRub(data.totals.total)}</strong>
+              </span>
+              <span className="text-ink-2">
+                Получено{" "}
+                <strong className="font-mono text-emerald">{formatRub(data.totals.paid)}</strong>
+              </span>
+              <span className="text-ink-2">
+                Осталось получить{" "}
                 <strong className="font-mono text-ink">
                   {formatRub(data.totals.outstanding)}
                 </strong>
               </span>
               <span className="text-ink-2">
                 Просрочено{" "}
-                <strong className="font-mono text-rose">
+                <strong className={`font-mono ${Number(data.totals.overdue) > 0 ? "text-rose" : "text-ink"}`}>
                   {formatRub(data.totals.overdue)}
                 </strong>
               </span>
@@ -1029,8 +1043,7 @@ export function BookingRegister() {
       )}
       <footer className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-ink-3">
         <p>
-          ✓ Оплачено · ◐ Частичная оплата · ○ Есть остаток. Красный текст —
-          только нарушенный срок.
+          Нажмите на сумму или наведите курсор, чтобы увидеть подробности оплаты.
         </p>
         {data && (
           <p>

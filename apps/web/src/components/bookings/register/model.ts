@@ -92,11 +92,7 @@ export function registerParams(input: { toString(): string }) {
       if (fallback) p.set(key, fallback);
     }
   };
-  oneOf(
-    "scope",
-    REGISTER_SCOPES,
-    raw.has("paid") || raw.has("status") ? "all" : "active",
-  );
+  oneOf("scope", REGISTER_SCOPES, "all");
   oneOf("sort", REGISTER_SORTS, "startDate");
   oneOf("direction", ["asc", "desc"], "desc");
   oneOf("view", ["registry", "day", "board"], "registry");

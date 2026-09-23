@@ -1,10 +1,9 @@
 "use client";
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import {
-  REGISTER_FINANCE_LABELS,
-  type BookingRegisterRow as Row,
-} from "@light-rental/shared";
+import { type BookingRegisterRow as Row } from "@light-rental/shared";
+import { PaymentBreakdown } from "./RegisterPayment";
+export { PaymentState } from "./RegisterPayment";
 import { formatRub } from "../../../lib/format";
 import {
   bookingStatusLabel,
@@ -61,62 +60,6 @@ export function RentalDates({ row: r }: { row: Row }) {
           Периодов закрыто: {r.projectSummary.periodCount}
         </p>
       )}
-    </div>
-  );
-}
-export function PaymentState({
-  row: r,
-  pay,
-  centered = false,
-}: {
-  row: Row;
-  pay?: () => void;
-  centered?: boolean;
-}) {
-  const green = r.financeState === "PAID",
-    credit = r.financeState === "CREDIT",
-    positive = Number(r.amountOutstanding) > 0;
-  const mark = green
-    ? "✓"
-    : r.financeState === "PARTIAL"
-      ? "◐"
-      : credit
-        ? "+"
-        : positive
-          ? "○"
-          : "—";
-  const content = (
-    <>
-      <span
-        aria-hidden="true"
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-base ${green ? "border-emerald-border bg-emerald-soft text-emerald" : "border-border text-ink-3"}`}
-      >
-        {mark}
-      </span>
-      <span className={`min-w-0 ${centered ? "text-center" : "text-left"}`}>
-        <span
-          className={`block whitespace-nowrap font-mono text-sm font-semibold ${green ? "text-emerald" : "text-ink"}`}
-        >
-          {formatRub(credit ? r.creditAmount : r.amountOutstanding)}
-        </span>
-        <span className="block text-[11px] text-ink-3">
-          {REGISTER_FINANCE_LABELS[r.financeState]}
-        </span>
-      </span>
-    </>
-  );
-  return pay && positive ? (
-    <button
-      className={`flex min-h-11 items-center gap-2 rounded p-1 hover:bg-accent-soft focus-visible:outline focus-visible:outline-accent ${centered ? "mx-auto justify-center text-center" : "text-left"}`}
-      onClick={pay}
-      aria-label={`Записать платёж: ${r.projectName}`}
-      title="Открыть запись платежа"
-    >
-      {content}
-    </button>
-  ) : (
-    <div className={`flex min-h-11 items-center gap-2 p-1 ${centered ? "justify-center" : ""}`}>
-      {content}
     </div>
   );
 }
@@ -214,26 +157,8 @@ export function RegisterDetail({
           </section>
           <section className="pt-4">
             <p className="eyebrow mb-2">Расчёты</p>
-            <PaymentState row={r} pay={pay} />
-            <dl className="my-3 grid grid-cols-2 gap-2 text-sm">
-              <dt className="text-ink-3">Начислено</dt>
-              <dd className="text-right font-mono">
-                {formatRub(r.finalAmount)}
-              </dd>
-              <dt className="text-ink-3">Получено</dt>
-              <dd className="text-right font-mono">
-                {formatRub(r.amountPaid)}
-              </dd>
-              {Number(r.writeOffAmount) > 0 && (
-                <>
-                  <dt className="text-ink-3">Списано</dt>
-                  <dd className="text-right font-mono">
-                    {formatRub(r.writeOffAmount)}
-                  </dd>
-                </>
-              )}
-            </dl>
-            <DueDate row={r} />
+            <PaymentBreakdown row={r} pay={pay} />
+            <div className="mt-3"><DueDate row={r} /></div>
           </section>
           {r.projectSummary && (
             <section className="pt-4 text-sm">
