@@ -6,6 +6,13 @@ import {
   registerDate,
 } from "../model";
 describe("Register navigation", () => {
+  it("opens all bookings by default while preserving explicitly selected scopes", () => {
+    expect(registerParams(new URLSearchParams()).get("scope")).toBe("all");
+    expect(registerParams(new URLSearchParams("scope=invalid")).get("scope")).toBe("all");
+    for (const scope of ["active", "paid", "unpaid", "completed"]) {
+      expect(registerParams(new URLSearchParams(`scope=${scope}`)).get("scope")).toBe(scope);
+    }
+  });
   it("retains supported equipment issue filters in URLs and saved views", () => {
     for (const issue of ["open", "missing", "damage", "waiting", "overdue", "history"]) {
       const p = registerParams(new URLSearchParams(`scope=all&issue=${issue}`));

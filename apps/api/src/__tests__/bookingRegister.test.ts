@@ -207,6 +207,14 @@ afterAll(async () => {
 const list = (q: Record<string, unknown> = {}) =>
   service.listBookingRegister({ scope: "all", clientId, ...q }, now);
 describe("Booking control read model", () => {
+  it("includes fully paid completed bookings when the request omits scope", async () => {
+    const response = await request(app).get("/api/bookings/register").set(H()).query({ clientId });
+    expect(response.status).toBe(200);
+    const rows = response.body.bookings;
+    expect(rows.some((r: { id: string }) => r.id === ids.paid)).toBe(true);
+    expect(rows.some((r: { id: string }) => r.id === ids["partial-overdue"])).toBe(true);
+    expect(rows.some((r: { id: string }) => r.id === ids.archived)).toBe(false);
+  });
   it("keeps operational and financial obligations separate; hides only completed in active", async () => {
     const d = await list(),
       by = Object.fromEntries(d.bookings.map((r) => [r.projectName, r]));
