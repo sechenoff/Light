@@ -131,23 +131,24 @@ export function BookingFinancePanel({
       </div>
 
       <div className="p-4 space-y-4">
-        {/* KPI mini-strip */}
-        <div className="grid grid-cols-3 gap-2 p-3 bg-surface-muted rounded-lg">
-          <div>
-            <div className="eyebrow text-ink-3 mb-1">Сумма брони</div>
-            <div className="text-lg font-semibold mono-num text-ink">{formatMoneyRub(booking.finalAmount ?? "0")}</div>
+        {/* Сводка строками «подпись — число» (мокап booking-finance-block):
+            три колонки не вмещали шестизначные суммы даже в широкой колонке. */}
+        <dl className="rounded-lg bg-surface-muted p-3 text-sm space-y-1.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-ink-2">Сумма брони</dt>
+            <dd className="mono-num font-semibold text-ink whitespace-nowrap">{formatMoneyRub(booking.finalAmount ?? "0")}</dd>
           </div>
-          <div>
-            <div className="eyebrow text-ink-3 mb-1">Получено</div>
-            <div className="text-lg font-semibold mono-num text-emerald">{formatMoneyRub(booking.amountPaid ?? "0")}</div>
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-ink-2">Получено</dt>
+            <dd className="mono-num font-semibold text-emerald whitespace-nowrap">{formatMoneyRub(booking.amountPaid ?? "0")}</dd>
           </div>
-          <div>
-            <div className="eyebrow text-ink-3 mb-1">К получению</div>
-            <div className={`text-lg font-semibold mono-num ${Number(booking.amountOutstanding ?? "0") > 0 ? "text-rose" : "text-ink"}`}>
+          <div className="flex items-baseline justify-between gap-3 border-t border-border pt-1.5">
+            <dt className="font-semibold text-ink">К получению</dt>
+            <dd className={`mono-num text-base font-semibold whitespace-nowrap ${Number(booking.amountOutstanding ?? "0") > 0 ? "text-rose" : "text-ink"}`}>
               {formatMoneyRub(booking.amountOutstanding ?? "0")}
-            </div>
+            </dd>
           </div>
-        </div>
+        </dl>
 
         {/* Разбивка «Сумма брони» — единственный источник истины для оператора.
             finalAmount = аренда-после-скидки (снапшот сметы) + транспорт.
@@ -180,36 +181,36 @@ export function BookingFinancePanel({
           return (
             <div className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm space-y-1.5">
               <div className="eyebrow text-ink-3 mb-1">Из чего складывается сумма</div>
-              <div className="flex justify-between">
-                <span className="text-ink-2">Аренда оборудования</span>
-                <span className="mono-num text-ink-2">{formatMoneyRub(rentBeforeDiscount)}</span>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="min-w-0 text-ink-2">Аренда оборудования</span>
+                <span className="shrink-0 whitespace-nowrap mono-num text-ink-2">{formatMoneyRub(rentBeforeDiscount)}</span>
               </div>
               {discount > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-ink-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-ink-2">
                     Скидка{booking.estimate?.discountPercent ? ` ${booking.estimate.discountPercent}%` : ""}
                   </span>
-                  <span className="mono-num text-rose">−{formatMoneyRub(discount)}</span>
+                  <span className="shrink-0 whitespace-nowrap mono-num text-rose">−{formatMoneyRub(discount)}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-ink-2">Аренда после скидки</span>
-                <span className="mono-num text-ink-2">{formatMoneyRub(equipAfterDiscount)}</span>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="min-w-0 text-ink-2">Аренда после скидки</span>
+                <span className="shrink-0 whitespace-nowrap mono-num text-ink-2">{formatMoneyRub(equipAfterDiscount)}</span>
               </div>
               {addonAfterDiscount > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-ink-2">Добор (доп-смета)</span>
-                  <span className="mono-num text-ink-2">+{formatMoneyRub(addonAfterDiscount)}</span>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-ink-2">Добор (доп-смета)</span>
+                  <span className="shrink-0 whitespace-nowrap mono-num text-ink-2">+{formatMoneyRub(addonAfterDiscount)}</span>
                 </div>
               )}
               {hasTransport && hasMultiVehicles && (
                 <>
                   {transportVehicles.map((v) => (
-                    <div key={v.id} className="flex justify-between">
-                      <span className="text-ink-2">
+                    <div key={v.id} className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0 text-ink-2">
                         Транспорт{v.vehicle?.name ? ` (${v.vehicle.name})` : ""}
                       </span>
-                      <span className="mono-num text-ink-2">
+                      <span className="shrink-0 whitespace-nowrap mono-num text-ink-2">
                         +{formatMoneyRub(v.subtotalRub ?? "0")}
                       </span>
                     </div>
@@ -217,24 +218,24 @@ export function BookingFinancePanel({
                 </>
               )}
               {hasTransport && !hasMultiVehicles && (
-                <div className="flex justify-between">
-                  <span className="text-ink-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-ink-2">
                     Доставка / транспорт{booking.vehicle?.name ? ` (${booking.vehicle.name})` : ""}
                   </span>
-                  <span className="mono-num text-ink-2">+{formatMoneyRub(transport)}</span>
+                  <span className="shrink-0 whitespace-nowrap mono-num text-ink-2">+{formatMoneyRub(transport)}</span>
                 </div>
               )}
               {surcharge > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-ink-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-ink-2">
                     Безналичный расчёт{surchargePct != null ? ` (+${surchargePct} %)` : ""}
                   </span>
-                  <span className="mono-num text-ink-2">+{formatMoneyRub(surcharge)}</span>
+                  <span className="shrink-0 whitespace-nowrap mono-num text-ink-2">+{formatMoneyRub(surcharge)}</span>
                 </div>
               )}
-              <div className="flex justify-between border-t border-border pt-1.5 font-semibold">
-                <span className="text-ink">Сумма брони</span>
-                <span className="mono-num text-ink">{formatMoneyRub(booking.finalAmount ?? "0")}</span>
+              <div className="flex items-baseline justify-between gap-3 border-t border-border pt-1.5 font-semibold">
+                <span className="min-w-0 text-ink">Сумма брони</span>
+                <span className="shrink-0 whitespace-nowrap mono-num text-ink">{formatMoneyRub(booking.finalAmount ?? "0")}</span>
               </div>
               {drifted && (
                 <div className="mt-1 rounded bg-amber-soft border border-amber-border px-2 py-1 text-xs text-amber">
@@ -329,7 +330,7 @@ export function BookingFinancePanel({
               <p className="eyebrow">Счета</p>
               <button
                 onClick={() => dispatch({ type: "openCreateInvoice" })}
-                className="text-[11px] px-2 py-1 bg-accent-bright text-surface rounded hover:opacity-90"
+                className="inline-flex items-center min-h-10 sm:min-h-8 rounded border border-border px-2.5 py-1 text-xs font-medium text-accent-bright hover:bg-surface-subtle transition-colors"
               >
                 + Создать счёт
               </button>
@@ -409,7 +410,7 @@ export function BookingFinancePanel({
             )}
             <button
               onClick={() => dispatch({ type: "openCreditNote" })}
-              className="mt-2 text-[11px] text-accent hover:underline"
+              className="mt-2 inline-flex items-center min-h-10 sm:min-h-0 text-xs text-accent-bright hover:underline"
             >
               Кредит-ноты клиента →
             </button>
@@ -430,17 +431,23 @@ export function BookingFinancePanel({
                 return (
                   <div
                     key={p.id}
-                    className={`flex items-center justify-between gap-2 py-2.5 text-sm ${isVoided ? "opacity-60" : ""}`}
+                    className={`flex items-start justify-between gap-3 py-2.5 text-sm ${isVoided ? "opacity-60" : ""}`}
                   >
-                    <div className="min-w-0">
-                      <span className={isVoided ? "line-through" : ""}>
+                    <div className="min-w-0 flex-1">
+                      <div className={`flex min-w-0 flex-wrap items-baseline gap-x-1.5 ${isVoided ? "line-through" : ""}`}>
                         <span className={`font-semibold mono-num ${isVoided ? "text-ink-3" : "text-emerald"}`}>
                           +{formatMoneyRub(p.amount)}
                         </span>
-                        <span className="text-ink-3 mx-1.5">·</span>
+                        <span className="text-ink-3">·</span>
                         <span className={isVoided ? "text-ink-3" : "text-ink-2"}>{paymentMethodLabel(p.method)}</span>
-                        {p.note && <span className="text-xs text-ink-3 ml-1.5 truncate">{p.note}</span>}
-                      </span>
+                      </div>
+                      {/* Примечание — своей строкой: truncate на inline-span не обрезал,
+                          а только запрещал перенос, и текст уезжал под «Аннулировать». */}
+                      {p.note && (
+                        <div className="truncate text-xs text-ink-3" title={p.note}>
+                          {p.note}
+                        </div>
+                      )}
                       <div className="text-xs text-ink-3 mt-0.5">
                         {p.receivedAt ? new Date(p.receivedAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" }) : "—"}
                       </div>
@@ -451,9 +458,9 @@ export function BookingFinancePanel({
                       )}
                     </div>
                     {!isVoided && userRole === "SUPER_ADMIN" && (
-                      <div className="flex gap-1.5 shrink-0">
+                      <div className="flex shrink-0 gap-1.5 self-start">
                         <button
-                          className="text-xs text-rose border border-rose-border rounded px-2 py-0.5 hover:bg-rose-soft transition-colors"
+                          className="inline-flex items-center min-h-8 text-xs text-rose border border-rose-border rounded px-2.5 py-1 hover:bg-rose-soft transition-colors"
                           onClick={() => dispatch({ type: "openVoidPayment", paymentId: p.id })}
                         >
                           ⊘ Аннулировать
@@ -467,30 +474,14 @@ export function BookingFinancePanel({
           </div>
         )}
 
-        {/* Хронология денег (SA only, collapsible) */}
+        {/* Хронология денег и связанные расходы (SA only). Оба блока сами
+            сворачиваются и грузят данные при раскрытии — внешняя обёртка
+            <details> давала второй уровень раскрытия с тем же заголовком. */}
         {userRole === "SUPER_ADMIN" && (
-          <details className="group">
-            <summary className="cursor-pointer flex items-center justify-between px-3 py-2.5 bg-surface-muted rounded-lg text-sm font-medium text-ink list-none hover:bg-surface-subtle transition-colors">
-              <span>📊 Хронология денег</span>
-              <span className="text-ink-3 group-open:rotate-180 transition-transform text-xs">▾</span>
-            </summary>
-            <div className="pt-3 px-1">
-              <FinanceTimeline bookingId={booking.id} />
-            </div>
-          </details>
-        )}
-
-        {/* Связанные расходы (SA only, collapsible) */}
-        {userRole === "SUPER_ADMIN" && (
-          <details className="group">
-            <summary className="cursor-pointer flex items-center justify-between px-3 py-2.5 bg-surface-muted rounded-lg text-sm font-medium text-ink list-none hover:bg-surface-subtle transition-colors">
-              <span>🛒 Связанные расходы</span>
-              <span className="text-ink-3 group-open:rotate-180 transition-transform text-xs">▾</span>
-            </summary>
-            <div className="pt-3 px-1">
-              <RelatedExpenses bookingId={booking.id} />
-            </div>
-          </details>
+          <>
+            <FinanceTimeline bookingId={booking.id} />
+            <RelatedExpenses bookingId={booking.id} />
+          </>
         )}
 
         {/* WAREHOUSE finance note */}

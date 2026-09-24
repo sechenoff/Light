@@ -23,7 +23,7 @@ export function TaskFilterPills({ value, onChange }: TaskFilterPillsProps) {
             key={pill.key}
             onClick={() => onChange(pill.key)}
             aria-pressed={active}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+            className={`inline-flex h-8 items-center px-3 rounded-full text-xs font-medium border transition-colors ${
               active
                 ? "bg-accent-soft text-accent border-accent-border"
                 : "bg-surface text-ink-2 border-border hover:bg-surface-muted"

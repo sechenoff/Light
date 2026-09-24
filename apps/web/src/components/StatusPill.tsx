@@ -36,7 +36,7 @@ export function StatusPill({
 }) {
   return (
     <span
-      className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-semibold ${VARIANT_CLASSES[variant]} ${className}`}
+      className={`inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-semibold ${VARIANT_CLASSES[variant]} ${className}`}
     >
       {label}
     </span>

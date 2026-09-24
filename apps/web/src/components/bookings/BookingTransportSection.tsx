@@ -53,13 +53,13 @@ export function BookingTransportSection({
 
   return (
     <div className="rounded-lg border border-accent-border bg-surface shadow-xs overflow-hidden">
-      <div className="p-3 border-b border-accent-border bg-accent-soft flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-accent-border bg-accent-soft flex items-center justify-between gap-2">
         <p className="eyebrow text-accent-bright">🚐 Транспорт и водители</p>
-        <span className="text-xs text-ink-3">
+        <span className="shrink-0 whitespace-nowrap text-xs text-ink-3">
           {list.length} {list.length === 1 ? "машина" : list.length < 5 ? "машины" : "машин"}
         </span>
       </div>
-      <div className="p-3 space-y-2">
+      <div className="px-4 py-3 space-y-2">
         {retroEditMode ? (
           (retroVehicles ?? []).map((rv) => {
             const original = list.find((v) => v.id === rv.bookingVehicleId);
@@ -133,7 +133,7 @@ export function BookingTransportSection({
           ))
         )}
         {(userRole === "SUPER_ADMIN" || userRole === "WAREHOUSE") && (
-          <p className="text-xs text-ink-3 px-1 pt-1">
+          <p className="text-xs text-ink-3 pt-1">
             Заполняется при погрузке — ведём учёт, кто ездил за рулём.
           </p>
         )}

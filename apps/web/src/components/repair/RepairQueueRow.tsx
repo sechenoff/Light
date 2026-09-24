@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 
 import { pluralize } from "../../lib/format";
 import { toMoscowDateString } from "../../lib/moscowDate";
+import { BTN_MINI, BTN_PRIMARY, CHIP, CHIP_OFF, CHIP_ON, META_ITEM } from "./cardChrome";
 import {
   RepairIcon,
   RepairRiskBadge,
@@ -35,15 +36,14 @@ import {
 } from "./types";
 
 const BTN_BASE =
-  "inline-flex items-center justify-center gap-1 whitespace-nowrap rounded border px-1.5 py-1 text-[11px] font-semibold leading-[1.55] transition-colors disabled:opacity-50 lg:py-0.5";
+  "inline-flex items-center justify-center gap-1 whitespace-nowrap rounded border px-2 py-2 text-xs font-semibold leading-[1.55] transition-colors disabled:opacity-50 xl:px-1.5 xl:py-0.5 xl:text-[11px]";
 const BTN_QUIET =
   "border-border bg-surface text-ink-2 hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright";
 const BTN_QUIET_ROSE =
   "border-border bg-surface text-ink-2 hover:border-rose-border hover:bg-rose-soft hover:text-rose";
 /** Первое действие строки на телефоне — заливкой: кнопки там во всю ширину, целиться некогда. */
 const BTN_PRIMARY_MOBILE =
-  "border-accent-bright bg-accent-bright text-surface hover:border-accent hover:bg-accent lg:border-border lg:bg-surface lg:text-ink-2 lg:hover:border-accent-border lg:hover:bg-accent-soft lg:hover:text-accent-bright";
-const MINI_BTN = `${BTN_BASE} ${BTN_QUIET}`;
+  "border-accent-bright bg-accent-bright text-surface hover:border-accent hover:bg-accent xl:border-border xl:bg-surface xl:text-ink-2 xl:hover:border-accent-border xl:hover:bg-accent-soft xl:hover:text-accent-bright";
 
 /** Цветная полоса слева. Hover перекрашивает рамку целиком — левый край держим явно. */
 const TONE_BORDER: Record<RepairGroup, string> = {
@@ -61,16 +61,17 @@ function ageText(repair: RepairListItem): string {
   return `взят ${d} ${pluralize(d, "день", "дня", "дней")} назад`;
 }
 
-function activityText(repair: RepairListItem): { text: string; quiet: boolean } {
+/** `short` — для узкой колонки хвоста очереди, где «последняя» не помещается. */
+function activityText(repair: RepairListItem): { text: string; short: string; quiet: boolean } {
   if (repair.workLogCount === 0) {
     // Молчание с самого начала — такое же молчание, поэтому всегда янтарное.
-    return { text: "записей ещё нет", quiet: true };
+    return { text: "записей ещё нет", short: "записей ещё нет", quiet: true };
   }
   const d = daysAgo(lastActivityAt(repair));
   const quiet = d >= QUIET_DAYS;
-  if (d <= 0) return { text: "последняя запись сегодня", quiet };
-  if (d === 1) return { text: "последняя запись вчера", quiet };
-  return { text: `последняя запись ${d} ${pluralize(d, "день", "дня", "дней")} назад`, quiet };
+  const when =
+    d <= 0 ? "сегодня" : d === 1 ? "вчера" : `${d} ${pluralize(d, "день", "дня", "дней")} назад`;
+  return { text: `последняя запись ${when}`, short: `запись ${when}`, quiet };
 }
 
 /** Колонка срока: три состояния — ждём запчасть, вернётся, срока нет. */
@@ -230,7 +231,7 @@ function SetEtaDialog({
                   key={c.label}
                   type="button"
                   onClick={() => shiftDays(c.days)}
-                  className="rounded-xl border border-border bg-surface px-2.5 py-px text-[11px] font-semibold leading-[1.6] text-ink-2 hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright"
+                  className={`${CHIP} ${CHIP_OFF}`}
                 >
                   {c.label}
                 </button>
@@ -238,11 +239,7 @@ function SetEtaDialog({
               <button
                 type="button"
                 onClick={() => setDate("")}
-                className={`rounded-xl border px-2.5 py-px text-[11px] font-semibold leading-[1.6] ${
-                  date === ""
-                    ? "border-accent bg-accent text-surface"
-                    : "border-border bg-surface text-ink-2 hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright"
-                }`}
+                className={`${CHIP} ${date === "" ? CHIP_ON : CHIP_OFF}`}
               >
                 не знаю
               </button>
@@ -280,14 +277,14 @@ function SetEtaDialog({
 
         <div className="flex items-center gap-2 border-t border-border bg-surface-muted px-4 py-2.5">
           <span className="ml-auto" />
-          <button type="button" onClick={onClose} disabled={saving} className={MINI_BTN}>
+          <button type="button" onClick={onClose} disabled={saving} className={BTN_MINI}>
             Отмена
           </button>
           <button
             type="button"
             onClick={() => void handleSubmit()}
             disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded border border-accent-bright bg-accent-bright px-3 py-1 text-xs font-semibold text-surface hover:border-accent hover:bg-accent disabled:opacity-60"
+            className={BTN_PRIMARY}
           >
             {saving ? "Сохраняем…" : "Сохранить срок"}
           </button>
@@ -396,37 +393,35 @@ export function RepairQueueRow({
 
   const meta = (
     <>
-      <span>{ageText(repair)}</span>
-      <span className="text-border-strong">·</span>
-      <span className={activity.quiet ? "font-semibold text-amber" : ""}>{activity.text}</span>
+      <span className={META_ITEM}>{ageText(repair)}</span>
+      <span className={META_ITEM}>
+        <span className={activity.quiet ? "font-semibold text-amber" : ""}>{activity.text}</span>
+      </span>
       {repair.workLogCount > 0 && (
-        <>
-          <span className="text-border-strong">·</span>
-          <span>
-            {repair.workLogCount} {pluralize(repair.workLogCount, "запись", "записи", "записей")}
+        <span className={META_ITEM}>
+          {repair.workLogCount} {pluralize(repair.workLogCount, "запись", "записи", "записей")}
+        </span>
+      )}
+      <span className={META_ITEM}>
+        {repair.assignedToName ? (
+          <span className="inline-flex items-center gap-1 font-semibold text-ink">
+            <RepairIcon name="user" />
+            {repair.assignedToName}
           </span>
-        </>
-      )}
-      <span className="text-border-strong">·</span>
-      {repair.assignedToName ? (
-        <span className="inline-flex items-center gap-1 font-semibold text-ink">
-          <RepairIcon name="user" />
-          {repair.assignedToName}
-        </span>
-      ) : (
-        <span className="inline-flex items-center gap-1 font-medium text-ink-3">
-          <RepairIcon name="user" />
-          исполнитель не назначен
-        </span>
-      )}
+        ) : (
+          <span className="inline-flex items-center gap-1 font-medium text-ink-3">
+            <RepairIcon name="user" />
+            исполнитель не назначен
+          </span>
+        )}
+      </span>
       {repair.photoCount > 0 && (
-        <>
-          <span className="text-border-strong">·</span>
+        <span className={META_ITEM}>
           <span className="inline-flex items-center gap-1 rounded border border-border px-1.5 font-semibold leading-[1.6] text-ink-2">
             <RepairIcon name="cam" />
             {repair.photoCount}
           </span>
-        </>
+        </span>
       )}
     </>
   );
@@ -446,7 +441,7 @@ export function RepairQueueRow({
   return (
     <>
       <article
-        className={`grid overflow-hidden rounded-lg border border-l-[3px] border-border bg-surface shadow-xs transition-colors hover:border-border-strong lg:grid-cols-[minmax(0,1fr)_214px_128px] ${TONE_BORDER[tone]}`}
+        className={`grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-lg border border-l-[3px] border-border bg-surface shadow-xs transition-colors hover:border-border-strong xl:grid-cols-[minmax(0,1fr)_214px_128px] ${TONE_BORDER[tone]}`}
       >
         <div className="min-w-0 px-3.5 py-2.5">
           {titleRow}
@@ -454,13 +449,13 @@ export function RepairQueueRow({
           <div className="mt-1.5">
             <RepairRiskBadge repair={repair} />
           </div>
-          <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11.5px] text-ink-2">
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-0.5 overflow-hidden text-[11.5px] text-ink-2">
             {meta}
           </p>
         </div>
 
         <div
-          className={`flex min-w-0 flex-col justify-center gap-0.5 border-t border-dashed border-border px-3.5 py-2.5 lg:border-l lg:border-solid lg:border-t-0 ${
+          className={`flex min-w-0 flex-col justify-center gap-0.5 border-t border-dashed border-border px-3.5 py-2.5 xl:border-l xl:border-solid xl:border-t-0 ${
             eta.tone === "late" ? "text-rose" : eta.tone === "none" ? "text-ink-3" : "text-ink"
           }`}
         >
@@ -481,13 +476,13 @@ export function RepairQueueRow({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 border-t border-dashed border-border px-3 py-2.5 lg:flex-col lg:items-stretch lg:justify-center lg:gap-1.5 lg:border-l lg:border-solid lg:border-t-0">
-          <div className="flex min-w-0 flex-1 gap-1.5 [&>*]:flex-1 lg:w-full lg:flex-none lg:flex-col lg:[&>*]:flex-none">
+        <div className="flex flex-wrap items-center gap-2 border-t border-dashed border-border px-3 py-2.5 xl:flex-col xl:items-stretch xl:justify-center xl:gap-1.5 xl:border-l xl:border-solid xl:border-t-0">
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5 [&>*]:flex-1 xl:w-full xl:flex-none xl:flex-col xl:[&>*]:flex-none">
             {buttons}
           </div>
           <Link
             href={`/repair/${repair.id}`}
-            className="shrink-0 whitespace-nowrap text-[11.5px] font-semibold text-accent-bright hover:text-accent hover:underline lg:text-right"
+            className="shrink-0 whitespace-nowrap text-[11.5px] font-semibold text-accent-bright hover:text-accent hover:underline xl:text-right"
           >
             Открыть →
           </Link>
@@ -512,7 +507,7 @@ export function RepairTailRow({ repair }: { repair: RepairListItem }) {
   return (
     <Link
       href={`/repair/${repair.id}`}
-      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 border-b border-border px-3.5 py-1.5 text-[12.5px] last:border-b-0 hover:bg-surface-muted md:grid-cols-[minmax(0,1fr)_128px_168px_118px_74px]"
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 border-b border-border px-3.5 py-1.5 text-[12.5px] last:border-b-0 hover:bg-surface-muted md:grid-cols-[minmax(0,1fr)_128px_168px_118px_74px] xl:grid-cols-[minmax(0,1fr)_128px_220px_118px_74px]"
     >
       <span className="min-w-0 truncate font-semibold">
         {repair.title}
@@ -527,8 +522,13 @@ export function RepairTailRow({ repair }: { repair: RepairListItem }) {
       <span className="hidden md:inline">
         <RepairStatusPill status={repair.status} />
       </span>
-      <span className="hidden min-w-0 truncate text-[11.5px] text-ink-2 md:inline">
-        {repair.assignedToName ?? "исполнитель не назначен"} · {activity.text}
+      {/* Многоточие съедает имя, а не срок: «когда писали» и есть смысл колонки. */}
+      <span
+        className="hidden min-w-0 items-baseline gap-1 text-[11.5px] text-ink-2 md:flex"
+        title={`${repair.assignedToName ?? "исполнитель не назначен"} · ${activity.text}`}
+      >
+        <span className="min-w-0 truncate">{repair.assignedToName ?? "исполнитель не назначен"}</span>
+        <span className="shrink-0 whitespace-nowrap">· {activity.short}</span>
       </span>
       <span
         className={`mono-num whitespace-nowrap text-[11.5px] ${

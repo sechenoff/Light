@@ -31,26 +31,31 @@ function people(sc: StockCountSummary): string {
   return parts.join(" · ");
 }
 
+/** Итоги переносятся только между сегментами: «сошлось 0» не рвётся по строкам,
+ * а разделитель «·» уходит на новую строку вместе со своим сегментом. */
 function Totals({ sc }: { sc: StockCountSummary }) {
   const t = sc.totals;
   return (
     <span className="mono-num text-xs text-ink-2">
-      {t.counted} из {t.lines}
-      <span className="text-ink-3"> · </span>
-      <span className="text-emerald">сошлось {t.matched}</span>
+      <span className="whitespace-nowrap">
+        {t.counted} из {t.lines}
+      </span>{" "}
+      <span className="whitespace-nowrap text-emerald">
+        <span className="text-ink-3">· </span>сошлось {t.matched}
+      </span>
       {t.shortagePositions > 0 && (
         <>
-          <span className="text-ink-3"> · </span>
-          <span className="text-rose">
-            −{t.shortageQty} шт ({t.shortagePositions} поз)
+          {" "}
+          <span className="whitespace-nowrap text-rose">
+            <span className="text-ink-3">· </span>−{t.shortageQty} шт ({t.shortagePositions} поз)
           </span>
         </>
       )}
       {t.surplusPositions > 0 && (
         <>
-          <span className="text-ink-3"> · </span>
-          <span className="text-emerald">
-            +{t.surplusQty} шт ({t.surplusPositions} поз)
+          {" "}
+          <span className="whitespace-nowrap text-emerald">
+            <span className="text-ink-3">· </span>+{t.surplusQty} шт ({t.surplusPositions} поз)
           </span>
         </>
       )}
@@ -60,7 +65,7 @@ function Totals({ sc }: { sc: StockCountSummary }) {
 
 function ActLinks({ sc }: { sc: StockCountSummary }) {
   return (
-    <span className="flex flex-wrap gap-3">
+    <span className="flex gap-3 whitespace-nowrap">
       <a href={actPdfUrl(sc.id)} target="_blank" rel="noopener noreferrer" className={LINK}>
         Акт (PDF)
       </a>
@@ -96,7 +101,7 @@ export function InventoryHistoryPage() {
   const open = items?.find((i) => i.status === "OPEN");
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] p-4 pb-14 lg:p-6 lg:pb-14">
+    <div className="mx-auto w-full max-w-[1240px] p-4 pb-24 lg:p-6 lg:pb-24">
       <PageHead title="История инвентаризаций" sub="все пересчёты склада — с итогами и актами" />
       <div className="mt-3">
         <WarehouseSubnav active="history" badges={open ? { inventory: `№ ${open.number} · идёт` } : undefined} />
@@ -136,7 +141,7 @@ export function InventoryHistoryPage() {
                 <thead className="border-b border-border bg-surface-muted">
                   <tr>
                     {["№", "Начата", "Завершена", "Статус", "Охват и люди", "Итоги", "Акт"].map((h) => (
-                      <th key={h} scope="col" className="eyebrow px-3 py-2 font-semibold">
+                      <th key={h} scope="col" className="eyebrow whitespace-nowrap px-3 py-2 font-semibold">
                         {h}
                       </th>
                     ))}

@@ -95,7 +95,7 @@ function BillsPage() {
   const paidSum = Number(data?.sums?.PAID ?? 0);
 
   return (
-    <div className="min-h-screen bg-surface-subtle">
+    <div className="min-h-screen">
       <FinanceTabNav />
 
       <div className="p-4 lg:p-6">
@@ -109,14 +109,15 @@ function BillsPage() {
           </div>
           <Link
             href="/finance/bills/new"
-            className="rounded-lg bg-accent-bright px-3.5 py-2 text-[12px] font-semibold text-surface hover:opacity-90"
+            className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded bg-accent-bright px-3.5 text-[12px] font-semibold text-surface hover:opacity-90 sm:h-9"
           >
             + Выставить счёт
           </Link>
         </div>
 
         {/* Статусы */}
-        <div className="mb-4 flex gap-0.5 overflow-x-auto border-b border-border">
+        {/* На телефоне лента выходит к краю экрана — обрез читается как прокрутка */}
+        <div className="-mx-4 mb-4 flex gap-0.5 overflow-x-auto border-b border-border px-4 sm:mx-0 sm:px-0">
           {STATUS_TABS.map((tab) => {
             const count = counts[tab.key] ?? 0;
             const active = statusTab === tab.key;
@@ -128,7 +129,7 @@ function BillsPage() {
                   setStatusTab(tab.key);
                   syncUrl({ status: tab.key });
                 }}
-                className={`-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3.5 py-3 text-[13px] transition-colors ${
+                className={`-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-[13px] transition-colors sm:px-3.5 ${
                   active ? "border-accent-bright font-semibold text-accent-bright" : "border-transparent text-ink-2 hover:text-ink"
                 }`}
               >
@@ -154,7 +155,7 @@ function BillsPage() {
           <input
             type="search"
             placeholder="🔍 контрагент, ИНН или № счёта"
-            className="min-w-[240px] rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink"
+            className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink sm:flex-none sm:min-w-[240px]"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -163,7 +164,7 @@ function BillsPage() {
           />
           <select
             aria-label="Год"
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink"
+            className="shrink-0 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink"
             value={year}
             onChange={(e) => {
               setYear(e.target.value);
@@ -189,17 +190,18 @@ function BillsPage() {
         ) : (
           <>
             {/* Desktop */}
-            <div className="hidden overflow-hidden rounded-lg border border-border bg-surface shadow-xs md:block">
+            {/* overflow-x-auto: таблица не обрезается, «Содержание» появляется с xl */}
+            <div className="hidden overflow-x-auto rounded-lg border border-border bg-surface shadow-xs md:block">
               <table className="w-full text-[12.5px]">
                 <thead className="border-b border-border bg-surface-subtle">
                   <tr>
-                    <th className="eyebrow px-3 py-3 text-left">№</th>
-                    <th className="eyebrow px-3 py-3 text-left">Дата</th>
-                    <th className="eyebrow px-3 py-3 text-left">Контрагент</th>
-                    <th className="eyebrow px-3 py-3 text-left">Содержание</th>
-                    <th className="eyebrow px-3 py-3 text-right">Сумма</th>
-                    <th className="eyebrow px-3 py-3 text-left">Оплатить до</th>
-                    <th className="eyebrow px-3 py-3 text-left">Статус</th>
+                    <th className="eyebrow whitespace-nowrap px-3 py-3 text-left">№</th>
+                    <th className="eyebrow whitespace-nowrap px-3 py-3 text-left">Дата</th>
+                    <th className="eyebrow whitespace-nowrap px-3 py-3 text-left">Контрагент</th>
+                    <th className="eyebrow hidden whitespace-nowrap px-3 py-3 text-left xl:table-cell">Содержание</th>
+                    <th className="eyebrow whitespace-nowrap px-3 py-3 text-right">Сумма</th>
+                    <th className="eyebrow whitespace-nowrap px-3 py-3 text-left">Оплатить до</th>
+                    <th className="eyebrow whitespace-nowrap px-3 py-3 text-left">Статус</th>
                     <th className="w-28 px-3 py-3" />
                   </tr>
                 </thead>
@@ -216,17 +218,20 @@ function BillsPage() {
                             <span className="text-ink-3">/{b.year}</span>
                           </Link>
                         </td>
-                        <td className="mono-num px-3 py-2.5 text-ink-2">{fmtDate(b.date)}</td>
-                        <td className="px-3 py-2.5">
-                          <div className="font-medium text-ink">{b.payer.legalName ?? b.clientName}</div>
+                        <td className="mono-num whitespace-nowrap px-3 py-2.5 text-ink-2">{fmtDate(b.date)}</td>
+                        <td className="min-w-[160px] px-3 py-2.5">
+                          <div className="line-clamp-2 font-medium text-ink" title={b.payer.legalName ?? b.clientName}>{b.payer.legalName ?? b.clientName}</div>
                           {b.payer.inn && <div className="font-mono text-[11px] text-ink-3">ИНН {b.payer.inn}</div>}
                         </td>
-                        <td className="max-w-[320px] truncate px-3 py-2.5 text-ink-2" title={b.lines.map((l) => l.name).join("; ")}>
-                          {first}
-                          {more > 0 && <span className="text-ink-3"> +{more}</span>}
+                        {/* truncate — на внутреннем div: на самой ячейке он не ограничивал ширину колонки */}
+                        <td className="hidden px-3 py-2.5 text-ink-2 xl:table-cell" title={b.lines.map((l) => l.name).join("; ")}>
+                          <div className="max-w-[320px] truncate">
+                            {first}
+                            {more > 0 && <span className="text-ink-3"> +{more}</span>}
+                          </div>
                         </td>
-                        <td className="mono-num px-3 py-2.5 text-right font-medium text-ink">{formatMoneyRub(b.total)}</td>
-                        <td className={`mono-num px-3 py-2.5 ${overdue ? "text-rose" : "text-ink-2"}`}>{fmtDate(b.dueDate)}</td>
+                        <td className="mono-num whitespace-nowrap px-3 py-2.5 text-right font-medium text-ink">{formatMoneyRub(b.total)}</td>
+                        <td className={`mono-num whitespace-nowrap px-3 py-2.5 ${overdue ? "text-rose" : "text-ink-2"}`}>{fmtDate(b.dueDate)}</td>
                         <td className="px-3 py-2.5">
                           <StatusPill variant={billStatusVariant(b.status)} label={BILL_STATUS_LABELS[b.status]} />
                         </td>

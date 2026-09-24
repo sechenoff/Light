@@ -29,6 +29,13 @@ interface EditablePriceProps {
   /** Крупное начертание для итога сметы. */
   size?: "sm" | "lg";
   disabled?: boolean;
+  /**
+   * Классы обёртки. Нужен для отрицательного отступа со стороны поля: у бокса
+   * прозрачные padding и рамка, и без компенсации цифры стоят на 7–9 px
+   * правее/левее соседних. Сторону задаёт место вставки — слева или справа
+   * от цены бывают ↺ и бейджи, на которые плашка не должна наезжать.
+   */
+  className?: string;
 }
 
 export function EditablePrice({
@@ -39,6 +46,7 @@ export function EditablePrice({
   ariaLabel,
   size = "sm",
   disabled = false,
+  className,
 }: EditablePriceProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -88,9 +96,11 @@ export function EditablePrice({
      * Ширина поля меряется невидимым двойником с тем же текстом и теми же
      * стилями, а не считается в ch. Расчёт в ch врал дважды: ширина в
      * border-box включает горизонтальные отступы, так что цифрам оставалось
-     * на два знака меньше — «1 800» показывалось как «1 80».
+     * на два знака меньше — «1 800» показывалось как «1 80». Поле — w-0
+     * min-w-full: собственная ширина input (даже с size=1) не должна
+     * раздувать трек шире двойника — у «0» появлялся хвост перед «₽».
      */
-    <span className="inline-grid items-center">
+    <span className={`inline-grid items-center ${className ?? ""}`}>
       <span aria-hidden className={`invisible col-start-1 row-start-1 whitespace-pre ${box}`}>
         {shown || "0"}
       </span>
@@ -125,7 +135,7 @@ export function EditablePrice({
             (e.target as HTMLInputElement).blur();
           }
         }}
-        className={`col-start-1 row-start-1 w-full cursor-text rounded ${tone} ${box} focus:border-accent-bright focus:bg-surface focus:outline-none focus:ring-2 focus:ring-accent-soft disabled:cursor-not-allowed disabled:opacity-50`}
+        className={`col-start-1 row-start-1 w-0 min-w-full cursor-text rounded ${tone} ${box} focus:border-accent-bright focus:bg-surface focus:outline-none focus:ring-2 focus:ring-accent-soft disabled:cursor-not-allowed disabled:opacity-50`}
       />
     </span>
   );

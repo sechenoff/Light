@@ -72,7 +72,7 @@ export default function LkDashboardPage() {
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Link
           href="/lk/debt"
-          className="bg-surface-muted border border-border rounded-lg p-4 hover:border-strong"
+          className="bg-surface-muted border border-border rounded-lg p-4 hover:border-border-strong transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright"
         >
           <p className="eyebrow">Долг</p>
           <p className="mono-num text-2xl mt-1">{debtTotal !== null ? formatRub(Number(debtTotal)) : "—"}</p>
@@ -80,14 +80,14 @@ export default function LkDashboardPage() {
         </Link>
         <Link
           href="/lk/bookings?status=ISSUED"
-          className="bg-surface-muted border border-border rounded-lg p-4 hover:border-strong"
+          className="bg-surface-muted border border-border rounded-lg p-4 hover:border-border-strong transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright"
         >
           <p className="eyebrow">Активные брони</p>
           <p className="mono-num text-2xl mt-1">{activeCount}</p>
         </Link>
         <Link
           href="/lk/stats"
-          className="bg-surface-muted border border-border rounded-lg p-4 hover:border-strong"
+          className="bg-surface-muted border border-border rounded-lg p-4 hover:border-border-strong transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright"
         >
           <p className="eyebrow">Статистика</p>
           <p className="text-sm text-ink-2 mt-1">Топ оборудования + твой типовой набор</p>
@@ -104,10 +104,10 @@ export default function LkDashboardPage() {
           <ul className="divide-y divide-border bg-surface-muted border border-border rounded-lg">
             {recent.map((b) => (
               <li key={b.id}>
-                <Link href={`/lk/bookings/${b.id}`} className="block p-3 hover:bg-surface">
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-medium">{b.projectName || b.bookingNo}</span>
-                    <span className="mono-num text-sm">{formatRub(Number(b.finalAmount))}</span>
+                <Link href={`/lk/bookings/${b.id}`} className="block p-4 hover:bg-surface transition-colors">
+                  <div className="flex justify-between items-baseline gap-3">
+                    <span className="font-medium min-w-0 truncate">{b.projectName || b.bookingNo}</span>
+                    <span className="mono-num text-sm shrink-0 whitespace-nowrap">{formatRub(Number(b.finalAmount))}</span>
                   </div>
                   <p className="text-xs text-ink-2 mt-1">
                     {new Date(b.startDate).toLocaleDateString("ru-RU")} · {LK_STATUS_LABEL[b.status]} · {b.itemCount} поз.

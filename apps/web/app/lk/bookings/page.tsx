@@ -108,22 +108,27 @@ function BookingsView() {
         <div className="bg-surface-muted border border-border rounded-lg divide-y divide-border">
           {items.map((b) => (
             <Link key={b.id} href={`/lk/bookings/${b.id}`} className="block p-4 hover:bg-surface transition-colors">
-              <div className="flex justify-between items-start flex-wrap gap-2">
-                <div className="min-w-0">
+              {/* Без flex-wrap: длинная строка дат переносится внутри левой колонки,
+                  а сумма всегда остаётся справа. */}
+              <div className="flex justify-between items-start gap-3">
+                <div className="min-w-0 flex-1">
                   <p className="font-medium truncate">{b.projectName || b.bookingNo}</p>
                   <p className="text-xs text-ink-2 mt-1">
-                    {b.bookingNo} · {new Date(b.startDate).toLocaleDateString("ru-RU")}
-                    {" — "}
-                    {new Date(b.endDate).toLocaleDateString("ru-RU")}
+                    {b.bookingNo} ·{" "}
+                    <span className="whitespace-nowrap">
+                      {new Date(b.startDate).toLocaleDateString("ru-RU")}
+                      {" — "}
+                      {new Date(b.endDate).toLocaleDateString("ru-RU")}
+                    </span>
                   </p>
                   <p className="text-xs text-ink-2">
                     {STATUS_LABEL[b.status]} · {b.itemCount} поз.
                   </p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="mono-num font-medium">{formatRub(Number(b.finalAmount))}</p>
+                  <p className="mono-num font-medium whitespace-nowrap">{formatRub(Number(b.finalAmount))}</p>
                   {Number(b.amountOutstanding) > 0 && (
-                    <p className="text-xs text-rose mt-1">долг {formatRub(Number(b.amountOutstanding))}</p>
+                    <p className="text-xs text-rose mt-1 whitespace-nowrap">долг {formatRub(Number(b.amountOutstanding))}</p>
                   )}
                 </div>
               </div>

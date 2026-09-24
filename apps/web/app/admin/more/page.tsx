@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { StatusPill } from "@/components/StatusPill";
+import { SectionHeader } from "@/components/SectionHeader";
 
 // ── Workers tab ───────────────────────────────────────────────────────────────
 
@@ -148,19 +149,18 @@ function WorkersTab() {
   }
 
   return (
+    <>
     <div className="space-y-6">
-      <h3 className="text-sm font-semibold text-ink">Кладовщики</h3>
-
       {/* Add worker form */}
-      <form onSubmit={handleAdd} className="border border-border rounded-xl p-4 space-y-3 bg-surface">
-        <p className="text-xs font-semibold text-ink-2 uppercase tracking-wider">Добавить кладовщика</p>
+      <form onSubmit={handleAdd} className="border border-border rounded-lg p-4 space-y-3 bg-surface shadow-xs">
+        <p className="eyebrow">Добавить кладовщика</p>
         <div className="flex gap-3 flex-wrap">
           <input
             type="text"
             placeholder="Имя"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="rounded border border-border px-3 py-2 text-sm bg-surface flex-1 min-w-[140px]"
+            className="min-h-10 rounded border border-border px-3 py-2 text-sm bg-surface text-ink flex-1 min-w-[140px] focus:outline-none focus:border-accent-bright"
           />
           <input
             type="password"
@@ -170,12 +170,12 @@ function WorkersTab() {
             value={newPin}
             maxLength={4}
             onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
-            className="rounded border border-border px-3 py-2 text-sm bg-surface w-[120px]"
+            className="min-h-10 rounded border border-border px-3 py-2 text-sm bg-surface text-ink w-[120px] focus:outline-none focus:border-accent-bright"
           />
           <button
             type="submit"
             disabled={addLoading}
-            className="rounded bg-accent text-surface px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-50"
+            className="min-h-10 rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent disabled:opacity-50"
           >
             {addLoading ? "..." : "Добавить"}
           </button>
@@ -189,22 +189,30 @@ function WorkersTab() {
 
       {/* Desktop table */}
       {!loading && workers.length > 0 && (
-        <div className="hidden md:block border border-border rounded-xl overflow-hidden">
+        <div className="hidden md:block bg-surface border border-border rounded-lg overflow-x-auto shadow-xs">
           <table className="w-full text-sm">
-            <thead className="bg-surface text-ink-2 text-xs">
+            <thead className="bg-surface-muted">
               <tr>
-                <th className="text-left px-4 py-3">Имя</th>
-                <th className="text-left px-3 py-3">Статус</th>
-                <th className="text-left px-3 py-3">Последний вход</th>
-                <th className="text-left px-3 py-3">Попытки</th>
-                <th className="text-left px-3 py-3">Блокировка</th>
-                <th className="px-3 py-3 text-right">Действия</th>
+                <th className="px-4 py-2.5 text-left eyebrow whitespace-nowrap">Имя</th>
+                <th className="px-3 py-2.5 text-left eyebrow whitespace-nowrap">Статус</th>
+                <th className="px-3 py-2.5 text-left eyebrow whitespace-nowrap">Последний вход</th>
+                <th className="hidden xl:table-cell px-3 py-2.5 text-left eyebrow whitespace-nowrap">Попытки</th>
+                <th className="px-3 py-2.5 text-left eyebrow whitespace-nowrap">Блокировка</th>
+                <th className="px-3 py-2.5 text-right eyebrow whitespace-nowrap">Действия</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {workers.map((w) => (
-                <tr key={w.id} className="hover:bg-surface">
-                  <td className="px-4 py-3 font-medium text-ink">{w.name}</td>
+                <tr key={w.id} className="hover:bg-surface-muted">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-ink">{w.name}</div>
+                    {/* До xl колонки «Попытки» нет (иначе таблица шире экрана) — счётчик под именем */}
+                    {w.failedAttempts > 0 && (
+                      <div className="xl:hidden text-[11px] text-ink-3 whitespace-nowrap">
+                        неудачных попыток: {w.failedAttempts}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-3">
                     {w.isActive ? (
                       <StatusPill variant="ok" label="Активен" />
@@ -212,11 +220,11 @@ function WorkersTab() {
                       <StatusPill variant="none" label="Отключён" />
                     )}
                   </td>
-                  <td className="px-3 py-3 text-ink-2 text-xs">
+                  <td className="px-3 py-3 text-ink-2 text-xs whitespace-nowrap">
                     {w.lastLoginAt ? new Date(w.lastLoginAt).toLocaleString("ru-RU") : "—"}
                   </td>
-                  <td className="px-3 py-3 text-ink-2">{w.failedAttempts}</td>
-                  <td className="px-3 py-3 text-xs">
+                  <td className="hidden xl:table-cell px-3 py-3 text-ink-2">{w.failedAttempts}</td>
+                  <td className="px-3 py-3 text-xs whitespace-nowrap">
                     {w.lockedUntil ? (
                       <span className="text-rose">{new Date(w.lockedUntil).toLocaleString("ru-RU")}</span>
                     ) : (
@@ -229,21 +237,21 @@ function WorkersTab() {
                         type="button"
                         onClick={() => handleToggleActive(w)}
                         disabled={togglingId !== null}
-                        className="text-xs rounded border border-border px-2 py-2 -my-1 text-ink-2 hover:bg-surface disabled:opacity-50"
+                        className="whitespace-nowrap text-xs rounded border border-border px-2 py-2 -my-1 text-ink-2 hover:bg-surface-muted disabled:opacity-50"
                       >
                         {w.isActive ? "Отключить" : "Включить"}
                       </button>
                       <button
                         type="button"
                         onClick={() => { setResetPinId(w.id); setResetPinValue(""); setResetPinError(null); }}
-                        className="text-xs rounded border border-border px-2 py-2 -my-1 text-ink-2 hover:bg-surface"
+                        className="whitespace-nowrap text-xs rounded border border-border px-2 py-2 -my-1 text-ink-2 hover:bg-surface-muted"
                       >
                         Сменить PIN
                       </button>
                       <button
                         type="button"
                         onClick={() => { setDeleteId(w.id); setDeleteError(null); }}
-                        className="text-xs rounded border border-rose-border px-2 py-2 -my-1 text-rose hover:bg-rose-soft"
+                        className="whitespace-nowrap text-xs rounded border border-rose-border px-2 py-2 -my-1 text-rose hover:bg-rose-soft"
                       >
                         Удалить
                       </button>
@@ -260,7 +268,7 @@ function WorkersTab() {
       {!loading && workers.length > 0 && (
         <div className="md:hidden space-y-3">
           {workers.map((w) => (
-            <div key={w.id} className="rounded-xl border border-border bg-surface p-4">
+            <div key={w.id} className="rounded-lg border border-border bg-surface p-4 shadow-xs">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-medium text-ink">{w.name}</span>
                 {w.isActive ? (
@@ -281,21 +289,21 @@ function WorkersTab() {
                   type="button"
                   onClick={() => handleToggleActive(w)}
                   disabled={togglingId !== null}
-                  className="text-xs rounded border border-border px-2 py-2 text-ink-2 hover:bg-surface disabled:opacity-50"
+                  className="min-h-10 text-xs rounded border border-border px-3 py-2 text-ink-2 hover:bg-surface-muted disabled:opacity-50"
                 >
                   {w.isActive ? "Отключить" : "Включить"}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setResetPinId(w.id); setResetPinValue(""); setResetPinError(null); }}
-                  className="text-xs rounded border border-border px-2 py-1.5 text-ink-2 hover:bg-surface"
+                  className="min-h-10 text-xs rounded border border-border px-3 py-2 text-ink-2 hover:bg-surface-muted"
                 >
                   Сменить PIN
                 </button>
                 <button
                   type="button"
                   onClick={() => { setDeleteId(w.id); setDeleteError(null); }}
-                  className="text-xs rounded border border-rose-border px-2 py-1.5 text-rose hover:bg-rose-soft"
+                  className="min-h-10 text-xs rounded border border-rose-border px-3 py-2 text-rose hover:bg-rose-soft"
                 >
                   Удалить
                 </button>
@@ -306,19 +314,22 @@ function WorkersTab() {
       )}
 
       {!loading && workers.length === 0 && !error && (
-        <p className="text-sm text-ink-3 py-6 text-center border border-border rounded-xl">
+        <p className="text-sm text-ink-3 py-6 text-center border border-border rounded-lg bg-surface">
           Кладовщики не добавлены
         </p>
       )}
+    </div>
 
+      {/* Модалки — вне space-y-6: иначе fixed-подложка получает margin-top и сверху
+          остаётся незатемнённая полоса. */}
       {/* Reset PIN modal */}
       {resetPinId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Сменить PIN"
-            className="w-full max-w-xs bg-surface rounded-2xl border border-border shadow-lg p-6"
+            className="w-full max-w-sm bg-surface rounded-lg border border-border shadow-lg p-6"
           >
             <h2 className="text-base font-semibold text-ink mb-4">Сменить PIN</h2>
             <input
@@ -330,14 +341,14 @@ function WorkersTab() {
               value={resetPinValue}
               maxLength={4}
               onChange={(e) => setResetPinValue(e.target.value.replace(/\D/g, ""))}
-              className="w-full rounded border border-border px-3 py-2 text-sm mb-3"
+              className="w-full h-10 rounded border border-border bg-surface px-3 py-2 text-sm text-ink mb-3 focus:outline-none focus:border-accent-bright"
             />
             {resetPinError && <p className="text-xs text-rose mb-3">{resetPinError}</p>}
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
                 onClick={() => setResetPinId(null)}
-                className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface"
+                className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-muted"
               >
                 Отмена
               </button>
@@ -345,7 +356,7 @@ function WorkersTab() {
                 type="button"
                 onClick={() => handleResetPin(resetPinId)}
                 disabled={resetPinLoading}
-                className="rounded bg-accent text-surface px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-50"
+                className="rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent disabled:opacity-50"
               >
                 {resetPinLoading ? "..." : "Сохранить"}
               </button>
@@ -356,12 +367,12 @@ function WorkersTab() {
 
       {/* Delete confirm */}
       {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Удалить кладовщика"
-            className="w-full max-w-xs bg-surface rounded-2xl border border-border shadow-lg p-6"
+            className="w-full max-w-sm bg-surface rounded-lg border border-border shadow-lg p-6"
           >
             <h2 className="text-base font-semibold text-ink mb-2">Удалить кладовщика?</h2>
             <p className="text-sm text-ink-2 mb-4">
@@ -373,7 +384,7 @@ function WorkersTab() {
                 type="button"
                 autoFocus
                 onClick={() => setDeleteId(null)}
-                className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface"
+                className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-muted"
               >
                 Отмена
               </button>
@@ -389,7 +400,7 @@ function WorkersTab() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -403,18 +414,14 @@ export default function AdminMorePage() {
 
   return (
     <AdminShell>
-      <div>
       <div className="mb-5">
-        <h1 className="text-xl font-semibold tracking-tight text-ink">Кладовщики</h1>
+        <SectionHeader eyebrow="Администрирование" title="Кладовщики" />
         <p className="text-sm text-ink-2 mt-1">
           PIN-доступ к киоску выдачи и возврата на складе.
         </p>
       </div>
 
-      <div className="bg-surface rounded-lg border border-border p-6 shadow-xs">
-        <WorkersTab />
-      </div>
-      </div>
+      <WorkersTab />
     </AdminShell>
   );
 }

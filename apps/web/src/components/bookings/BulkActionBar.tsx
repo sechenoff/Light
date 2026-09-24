@@ -47,8 +47,8 @@ export function BulkActionBar({
   const overLimit = selectedCount > maxBatch;
 
   return (
-    // z-30, НЕ z-40: на z-40 живёт затемнение мобильного меню (AppShell), и
-    // панель — как более поздний элемент в DOM — торчала бы поверх скрима,
+    // z-30: ниже кнопки «Сообщить» (z-40) и затемнения мобильного меню
+    // (AppShell, z-50) — иначе панель как более поздний элемент в DOM торчала бы поверх скрима,
     // оставляя деструктивные кнопки кликабельными при открытом меню. От
     // плавающей кнопки «Сообщить» панель разведена отступом, а не слоем.
     <div
@@ -61,7 +61,10 @@ export function BulkActionBar({
           отступа последняя кнопка панели уезжает под неё.
           На мобильном — две компактные строки (счётчик, затем лента кнопок
           с горизонтальным скроллом): перенос кнопок в столбик съедал пол-
-          экрана и прятал сам список. */}
+          экрана и прятал сам список. У ленты место под «Сообщить» держит
+          ВНЕШНИЙ отступ (mr-14 / sm:mr-32): padding у scroll-контейнера —
+          это хвост прокручиваемого содержимого, видимая область ленты при
+          нём всё равно доходит до края экрана и уходит под кнопку. */}
       <div className="flex flex-col gap-2 py-3 pl-4 pr-4 lg:flex-row lg:flex-wrap lg:items-center lg:pl-6 lg:pr-40">
         <span className="flex items-center gap-3 pr-32 lg:pr-0">
           <span className="text-sm font-semibold text-ink whitespace-nowrap">
@@ -73,7 +76,7 @@ export function BulkActionBar({
             type="button"
             onClick={onClear}
             disabled={busyAction !== null}
-            className="whitespace-nowrap text-xs text-ink-2 underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-40"
+            className="inline-flex min-h-10 items-center whitespace-nowrap text-xs text-ink-2 underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-40 lg:min-h-0"
           >
             Снять выделение
           </button>
@@ -85,7 +88,7 @@ export function BulkActionBar({
           )}
         </span>
 
-        <span className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 pr-32 lg:mx-0 lg:ml-auto lg:flex-wrap lg:overflow-visible lg:px-0 lg:pr-0">
+        <span className="-ml-4 mr-14 flex items-center gap-2 overflow-x-auto pb-0.5 pl-4 pr-4 sm:mr-32 lg:mx-0 lg:ml-auto lg:flex-wrap lg:overflow-visible lg:px-0">
           {actions.map((action) => {
             const meta = bulkActionMeta(action, ctx);
             const n = eligibleCounts[action] ?? 0;
@@ -110,7 +113,7 @@ export function BulkActionBar({
                         ? `Подходит ${n} из ${selectedCount} выбранных`
                         : undefined
                 }
-                className={`shrink-0 whitespace-nowrap rounded border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                className={`min-h-10 shrink-0 whitespace-nowrap rounded border px-3 py-2 text-xs font-medium lg:min-h-0 lg:py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   n === 0
                     ? // Подходящих броней нет — кнопка приглушена, но кликабельна:
                       // в ответ приходит тост с объяснением, а не тишина.

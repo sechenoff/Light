@@ -128,7 +128,7 @@ export function InventoryPage({ id }: { id: string }) {
   const uncounted = detail.totals.lines - detail.totals.counted;
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] p-4 pb-14 lg:p-6 lg:pb-14">
+    <div className="mx-auto w-full max-w-[1240px] p-4 pb-24 lg:p-6 lg:pb-24">
       <InventoryHeader
         detail={detail}
         onCancelled={handleFinished}

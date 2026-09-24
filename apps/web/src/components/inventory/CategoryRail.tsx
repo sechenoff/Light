@@ -53,6 +53,7 @@ export function CategoryRail({
   const [expanded, setExpanded] = useState(false);
   const cats = detail.categoryProgress;
   const discrepancies = discrepancyCount(detail.totals);
+  const hasCounters = detail.counters.length > 0;
 
   const collapsed = !expanded && cats.length > RAIL_LIMIT;
   const head = collapsed ? cats.slice(0, RAIL_LIMIT - 1) : cats;
@@ -65,11 +66,21 @@ export function CategoryRail({
 
   return (
     <aside className={CARD} aria-label="Прогресс по категориям">
-      <div className="border-b border-border px-3.5 py-2.5">
-        <h3 className={CARD_TITLE}>Инвентаризация № {detail.number}</h3>
-        <p className="mt-px text-[11.5px] text-ink-2">
-          {scopeLabel(detail.categories)} · начата {fmtDayTime(detail.startedAt)}
-          {detail.counters.length > 0 ? ` · ${detail.counters.join(", ")}` : ""}
+      {/* До xl рейл стоит сразу под шапкой страницы, где номер, охват и время уже
+          написаны, — здесь остаются только считающие (их шапка не показывает). */}
+      <div className={`border-b border-border px-3.5 py-2.5 ${hasCounters ? "" : "hidden xl:block"}`}>
+        <h3 className={`${CARD_TITLE} hidden xl:block`}>Инвентаризация № {detail.number}</h3>
+        <p className="text-[11.5px] text-ink-2 xl:mt-px">
+          <span className="hidden xl:inline">
+            {scopeLabel(detail.categories)} · начата {fmtDayTime(detail.startedAt)}
+            {hasCounters ? " · " : ""}
+          </span>
+          {hasCounters && (
+            <>
+              <span className="xl:hidden">считают </span>
+              {detail.counters.join(", ")}
+            </>
+          )}
         </p>
       </div>
 

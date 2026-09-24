@@ -11,7 +11,7 @@ import {
 } from "../../../lib/bookingConstants";
 import { StatusPill } from "../../StatusPill";
 import { registerDate } from "./model";
-import { button } from "./RegisterFilters";
+import { button, primaryButton } from "./RegisterFilters";
 export function RentalState({ row: r, onIssues }: { row: Row; onIssues?: () => void }) {
   return (
     <div className="space-y-1">
@@ -46,35 +46,39 @@ export function RentalState({ row: r, onIssues }: { row: Row; onIssues?: () => v
 }
 export function RentalDates({ row: r }: { row: Row }) {
   return (
-    <div className="space-y-1 whitespace-nowrap text-xs text-ink-2">
-      <p>
-        <span className="mr-1 text-ink-3">с</span>{" "}
-        {registerDate(r.startDate, r.mode !== "PROJECT")}
-      </p>
-      <p>
-        <span className="mr-1 text-ink-3">по</span>{" "}
-        {registerDate(r.endDate, r.mode !== "PROJECT")}
-      </p>
+    // Сетка «префикс | дата»: префиксы «с» и «по» разной ширины больше не сдвигают даты.
+    <div className="inline-grid grid-cols-[auto_auto] items-baseline gap-x-1.5 gap-y-1 whitespace-nowrap text-left text-xs text-ink-2">
+      <span className="text-right text-ink-3">с</span>
+      <span>{registerDate(r.startDate, r.mode !== "PROJECT")}</span>
+      <span className="text-right text-ink-3">по</span>
+      <span>{registerDate(r.endDate, r.mode !== "PROJECT")}</span>
       {r.projectSummary && (
-        <p className="text-indigo">
+        <p className="col-span-2 text-indigo">
           Периодов закрыто: {r.projectSummary.periodCount}
         </p>
       )}
     </div>
   );
 }
-export function DueDate({ row: r }: { row: Row }) {
+/** Срок оплаты хранится московской полночью — время «00:00» ничего не говорит,
+ *  поэтому только дата. `label` — подпись для мест без шапки колонки (карточка, шторка). */
+export function DueDate({ row: r, label = false }: { row: Row; label?: boolean }) {
   const overdue = Number(r.overdueAmount) > 0;
   return (
     <div className="space-y-1 text-xs">
-      <p className="text-ink-2">
-        {Number(r.amountOutstanding) > 0
-          ? registerDate(r.expectedPaymentDate, true)
-          : "Долга нет"}
+      <p className="whitespace-nowrap text-ink-2">
+        {Number(r.amountOutstanding) > 0 ? (
+          <>
+            {label && <span className="text-ink-3">Срок оплаты · </span>}
+            {registerDate(r.expectedPaymentDate)}
+          </>
+        ) : (
+          "Долга нет"
+        )}
       </p>
       {overdue && (
         <>
-          <p className="font-medium text-rose">
+          <p className="whitespace-nowrap font-medium text-rose">
             {r.overdueDays > 0
               ? `Просрочено ${r.overdueDays} дн.`
               : "Срок истёк сегодня"}
@@ -158,7 +162,7 @@ export function RegisterDetail({
           <section className="pt-4">
             <p className="eyebrow mb-2">Расчёты</p>
             <PaymentBreakdown row={r} pay={pay} />
-            <div className="mt-3"><DueDate row={r} /></div>
+            <div className="mt-3"><DueDate row={r} label /></div>
           </section>
           {r.projectSummary && (
             <section className="pt-4 text-sm">
@@ -181,10 +185,7 @@ export function RegisterDetail({
         </div>
         <div className="mt-auto grid gap-2">
           <button className={button} onClick={onIssues}>Проблемы и ремонты →</button>
-          <button
-            className={`${button} !bg-accent !text-white`}
-            onClick={primary}
-          >
+          <button className={primaryButton} onClick={primary}>
             {primaryLabel}
           </button>
           <Link href={`/bookings/${r.id}`} className={button}>

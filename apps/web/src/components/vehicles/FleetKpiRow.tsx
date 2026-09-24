@@ -28,8 +28,14 @@ export function FleetKpiRow({
     <div
       // На телефоне 2 в ряд: пять карточек в столбик отодвигали бы первую машину
       // почти на экран вниз, а на складе страницу открывают именно с телефона.
+      // Нечётная последняя плитка («Итог») в сетке на 2 — во всю ширину, а не
+      // половинкой с пустотой справа. Пять в ряд — только с xl: на 1024 плитка
+      // ~140 px, и «+188 398,95 ₽» выходила за край. Классы — литералами (JIT).
       className={
-        "grid gap-3 grid-cols-2 " + (canSeeMoney ? "lg:grid-cols-5" : "lg:grid-cols-3")
+        "grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2 " +
+        (canSeeMoney
+          ? "xl:grid-cols-5 xl:[&>*:last-child:nth-child(odd)]:col-span-1"
+          : "sm:grid-cols-3 sm:[&>*:last-child:nth-child(odd)]:col-span-1")
       }
     >
       <DayKpiCard
@@ -69,7 +75,7 @@ export function FleetKpiRow({
         value={
           <span className="mono-num">
             {totals.mileageDelta != null
-              ? `${totals.mileageDelta.toLocaleString("ru-RU")} км`
+              ? `${totals.mileageDelta.toLocaleString("ru-RU")}\u00a0км`
               : "—"}
           </span>
         }
@@ -81,7 +87,7 @@ export function FleetKpiRow({
           <DayKpiCard
             eyebrow="Заработал парк"
             value={<span className="mono-num">{formatRub(totals.revenue)}</span>}
-            sub={`${periodLabel} · загрузка ${totals.utilizationPct} %`}
+            sub={`${periodLabel} · загрузка ${totals.utilizationPct}\u00a0%`}
           />
           <DayKpiCard
             eyebrow="Итог"

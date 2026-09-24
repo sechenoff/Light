@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useCurrentUser, type UserRole } from "../lib/auth";
 import { menuByRole, type MenuSection } from "../lib/roleMatrix";
+import { useDialog } from "../hooks/useDialog";
 import { RoleBadge } from "./RoleBadge";
 import { ThemeToggle } from "./ThemeToggle";
+import { isFeedbackWidgetHidden } from "./feedback/FeedbackWidget";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -242,13 +244,25 @@ function iconFor(name: string | undefined): React.ReactNode {
     case "invoice":  return <IconInvoice />;
     case "receipt":  return <IconPayment />;
     case "people":   return <IconUsers />;
+    case "truck":    return <IconTruck />;
     default:         return <IconGrid />;
   }
 }
 
+function IconTruck() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="3" width="15" height="13" />
+      <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+      <circle cx="5.5" cy="18.5" r="2.5" />
+      <circle cx="18.5" cy="18.5" r="2.5" />
+    </svg>
+  );
+}
+
 function IconFeedback() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
@@ -256,7 +270,7 @@ function IconFeedback() {
 
 function IconInvoice() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
       <line x1="8" y1="13" x2="16" y2="13" />
@@ -284,6 +298,9 @@ function LoadingSkeleton() {
 
 // ── Sidebar content ───────────────────────────────────────────────────────────
 
+/** Высота затухания у нижнего края меню (2rem в mask-image у nav). */
+const NAV_FADE_PX = 32;
+
 function SidebarContent({
   pathname,
   onClose,
@@ -297,6 +314,24 @@ function SidebarContent({
   loading: boolean;
   onLogout: () => void;
 }) {
+  const navRef = useRef<HTMLElement>(null);
+
+  // Меню руководителя длиннее экрана: активный пункт, оказавшийся ниже
+  // видимой части (или под затуханием у нижнего края), прокручиваем в центр.
+  // Именно scrollTop у nav, а не scrollIntoView: тот прокрутил бы и окно —
+  // из-за спрятанного за край (translate-x) мобильного aside.
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !active) return;
+    const top = active.offsetTop;
+    const bottom = top + active.offsetHeight;
+    const visibleBottom = nav.scrollTop + nav.clientHeight - NAV_FADE_PX;
+    if (top < nav.scrollTop || bottom > visibleBottom) {
+      nav.scrollTop = top - (nav.clientHeight - active.offsetHeight) / 2;
+    }
+  }, [pathname, user?.role]);
+
   if (loading && !user) {
     return <LoadingSkeleton />;
   }
@@ -336,15 +371,20 @@ function SidebarContent({
           <button
             onClick={onClose}
             aria-label="Закрыть меню"
-            className="text-slate-400 hover:text-white transition-colors lg:hidden"
+            className="-mr-2 -my-2 inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/5 transition-colors lg:hidden"
           >
             <IconClose />
           </button>
         )}
       </div>
 
-      {/* Nav items */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-4">
+      {/* Nav items. Нижний край затухает (маска по альфе, цвет в градиенте не
+          виден) — признак, что меню прокручивается дальше; pb-8 = высоте
+          затухания, чтобы в конце прокрутки последний пункт был виден целиком. */}
+      <nav
+        ref={navRef}
+        className="relative flex-1 overflow-y-auto overscroll-contain pt-4 pb-8 px-3 space-y-4 [mask-image:linear-gradient(to_bottom,black_calc(100%_-_2rem),transparent)]"
+      >
         {sections.map((section) => (
           <div key={section.title}>
             <p className="px-3 mb-1 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
@@ -358,13 +398,18 @@ function SidebarContent({
                     <Link
                       href={item.href}
                       onClick={onClose}
+                      aria-current={active ? "page" : undefined}
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                         active
                           ? "bg-white/10 text-white font-medium"
                           : "text-slate-400 hover:text-white hover:bg-white/5"
                       }`}
                     >
-                      <span className={active ? "text-white" : "text-slate-500"}>
+                      <span
+                        className={`inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center ${
+                          active ? "text-white" : "text-slate-500"
+                        }`}
+                      >
                         {iconFor(item.icon)}
                       </span>
                       {item.label}
@@ -379,12 +424,12 @@ function SidebarContent({
 
       {/* User panel */}
       {user && (
-        <div className="px-3 pb-4 border-t border-slate-700 pt-3">
-          <div className="px-3 py-1.5 space-y-1.5">
+        <div className="px-3 pb-3 border-t border-slate-700 pt-2">
+          <div className="px-3 py-1 space-y-1">
             <div className="truncate font-medium text-sm text-white">{user.username}</div>
             <RoleBadge role={user.role} />
           </div>
-          <div className="px-3 pt-2 pb-1">
+          <div className="px-3 pt-1.5">
             <ThemeToggle />
           </div>
           <button
@@ -392,7 +437,7 @@ function SidebarContent({
               onClose?.();
               onLogout();
             }}
-            className="w-full mt-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+            className="w-full mt-0.5 flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
           >
             <span className="text-slate-500">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -411,26 +456,48 @@ function SidebarContent({
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
+// Публичные маршруты без оболочки: логин, калькулятор осветителей и клиентский
+// портал /lk (у него своя оболочка LkShell и своя сессия — служебный сайдбар там
+// пустой, а /api/auth/me отвечал бы 401 на каждой странице).
+// /warehouse/scan раньше тоже был standalone-киоском — по решению владельца
+// (2026-08-02) раздел встроен в общий шелл: глобальный сайдбар + внутренние
+// табы раздела в WorkstationShell (паттерн AdminTabNav).
+function isStandalonePath(pathname: string): boolean {
+  return (
+    pathname === "/login" ||
+    pathname === "/crew-calculator" ||
+    pathname === "/lk" ||
+    pathname.startsWith("/lk/")
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // До этой развилки — только usePathname: хуки служебной оболочки живут в
+  // StaffShell, поэтому порядок хуков не зависит от маршрута.
+  if (isStandalonePath(pathname)) {
+    return <>{children}</>;
+  }
+  return <StaffShell pathname={pathname}>{children}</StaffShell>;
+}
+
+function StaffShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, loading, logout } = useCurrentUser();
+  // Открытое мобильное меню — модальное: блокирует прокрутку страницы под
+  // затемнением, закрывается по Esc, держит фокус внутри.
+  const mobileAsideRef = useDialog<HTMLElement>(mobileOpen, () => setMobileOpen(false));
 
   // Close mobile sidebar on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Публичные маршруты без оболочки: логин, калькулятор осветителей,
-  // /warehouse/scan раньше тоже был standalone-киоском — по решению владельца
-  // (2026-08-02) раздел встроен в общий шелл: глобальный сайдбар + внутренние
-  // табы раздела в WorkstationShell (паттерн AdminTabNav).
-  const isStandalone =
-    pathname === "/login" ||
-    pathname === "/crew-calculator";
-  if (isStandalone) {
-    return <>{children}</>;
-  }
+  // Запас под плавающую кнопку «Сообщить» (fixed, её верх — на 60 px от низа
+  // экрана, на lg — на 68 px): без него в конце прокрутки она закрывает
+  // последние строки, суммы и кнопки. Где кнопки нет (/warehouse/scan,
+  // полноэкранный /admin/scanner и т.п.), нет и запаса: там он дал бы пустую прокрутку.
+  const fabClearance = !isFeedbackWidgetHidden(pathname);
 
   return (
     <div className="flex min-h-screen">
@@ -439,16 +506,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <SidebarContent pathname={pathname} user={user} loading={loading} onLogout={logout} />
       </aside>
 
-      {/* Mobile overlay */}
+      {/* Mobile overlay. z-50, а не z-40: на z-40 живёт кнопка «Сообщить», и
+          она оставалась яркой и кликабельной поверх затемнения. Мобильный aside
+          (тоже z-50) идёт в DOM позже и остаётся над скримом. */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-50 bg-scrim/50 lg:hidden"
           onClick={() => setMobileOpen(false)}
         />
       )}
 
       {/* Mobile sidebar */}
       <aside
+        ref={mobileAsideRef}
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 flex flex-col transition-transform duration-200 lg:hidden ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -464,11 +534,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 lg:pl-56">
-        {/* Mobile top bar */}
-        <div className="lg:hidden flex items-center gap-3 px-4 py-3 bg-slate-900 sticky top-0 z-20">
+        {/* Mobile top bar. Ровно h-12 = 48 px: под неё встают липкие полосы
+            страниц с `sticky top-12` (тулбар каталога, корзина формы брони). */}
+        <div className="lg:hidden flex h-12 items-center gap-1 px-4 bg-slate-900 sticky top-0 z-20">
           <button
             onClick={() => setMobileOpen(true)}
-            className="text-slate-300 hover:text-white transition-colors"
+            className="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-300 hover:text-white hover:bg-white/5 transition-colors"
             aria-label="Открыть меню"
           >
             <IconMenu />
@@ -478,8 +549,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
 
-        {/* Page content */}
-        <main className="flex-1">
+        {/* Page content. Фон страниц — фон body (surface-muted), поэтому полоса
+            запаса под кнопку «Сообщить» не отличается от страницы по цвету. */}
+        <main className={`flex-1 ${fabClearance ? "pb-20 lg:pb-24" : ""}`}>
           {children}
         </main>
       </div>

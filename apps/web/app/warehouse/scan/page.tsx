@@ -118,6 +118,16 @@ function WarehouseScanInner({
   const [listVersion, setListVersion] = useState(0);
   const [inWorkVersion, setInWorkVersion] = useState(0);
 
+  // Сколько броней в левом списке каждого двухпанельного таба. Пока список не
+  // загружен или пуст, подсказку «Выберите бронь слева» справа не показываем.
+  const [listCounts, setListCounts] = useState<Partial<Record<WorkstationTab, number>>>({});
+  const noteListCount = useCallback(
+    (count: number) =>
+      setListCounts((prev) => (prev[tab] === count ? prev : { ...prev, [tab]: count })),
+    [tab],
+  );
+  const hasListItems = (listCounts[tab] ?? 0) > 0;
+
   // ── /shift: питает экран «Смена» и бейджи навигации ────────────────────────
   const [shift, setShift] = useState<ShiftSummaryData | null>(null);
   const [shiftError, setShiftError] = useState<string | null>(null);
@@ -401,6 +411,7 @@ function WarehouseScanInner({
         activeBookingId={checklistOpen ? (activeSession?.booking?.id ?? null) : null}
         onUnauth={goToLogin}
         onSelect={handleBookingSelect}
+        onCountChange={noteListCount}
       />
     );
 
@@ -452,9 +463,11 @@ function WarehouseScanInner({
         title="Выберите бронь"
         list={bookingListSlot}
         detail={
-          <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
-            Выберите бронь слева, чтобы начать {opAccusative}.
-          </div>
+          hasListItems ? (
+            <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
+              Выберите бронь слева, чтобы начать {opAccusative}.
+            </div>
+          ) : null
         }
       />
     );
@@ -468,6 +481,7 @@ function WarehouseScanInner({
         onAcceptBack={(bid) => void handleInWorkAcceptBack(bid)}
         version={inWorkVersion}
         initialFilter={inWorkOverdueFocus ? "overdue" : undefined}
+        onCountChange={noteListCount}
         key={inWorkOverdueFocus ? "overdue" : "default"}
       />
     );
@@ -484,7 +498,6 @@ function WarehouseScanInner({
             <InWorkDetails
               bookingId={inWorkSelectedBookingId}
               onAcceptBack={(bid) => void handleInWorkAcceptBack(bid)}
-              onBack={() => setInWorkSelectedBookingId(null)}
             />
           }
         />
@@ -497,9 +510,11 @@ function WarehouseScanInner({
         title={`У клиентов сейчас${shift ? ` · ${shift.counters.inWork}` : ""}`}
         list={inWorkListSlot}
         detail={
-          <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
-            Выберите бронь слева, чтобы посмотреть выдачу.
-          </div>
+          hasListItems ? (
+            <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
+              Выберите бронь слева, чтобы посмотреть выдачу.
+            </div>
+          ) : null
         }
       />
     );
@@ -521,9 +536,10 @@ function WarehouseScanInner({
   return (
     <WorkstationShell
       {...shellCommon}
-      eyebrow="Склад · Журнал"
+      eyebrow="Склад · Поломки"
       title="Поломки и потеряшки"
       onBack={() => goTab("journal")}
+      backMobileOnly
       detail={<ProblemsScreen hasMainSession={hasMainSession} />}
     />
   );

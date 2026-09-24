@@ -30,10 +30,10 @@ export function BookingScanSection({
 
   return (
     <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden no-print">
-      <div className="p-3 border-b border-border bg-surface-subtle">
+      <div className="px-4 py-3 border-b border-border bg-surface-subtle">
         <p className="eyebrow">Сканирование</p>
       </div>
-      <div className="p-3 text-sm text-ink space-y-3">
+      <div className="px-4 py-3 text-sm text-ink space-y-3">
         {(scanSessions ?? []).length > 0 ? (
           <div className="space-y-2">
             {(scanSessions ?? []).map((ss) => (

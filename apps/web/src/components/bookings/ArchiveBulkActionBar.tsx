@@ -15,7 +15,7 @@ export type ArchiveBulkAction = "restore" | "purge";
  * основной список чужие действия и наоборот.
  *
  * Позиционирование и слои — как у BulkActionBar: fixed внизу, z-30 (ниже
- * скрима мобильного меню на z-40), отступ под сайдбар lg:left-56 и правый
+ * скрима мобильного меню на z-50), отступ под сайдбар lg:left-56 и правый
  * отступ под плавающую кнопку «Сообщить».
  */
 export function ArchiveBulkActionBar({
@@ -60,7 +60,7 @@ export function ArchiveBulkActionBar({
             type="button"
             onClick={onClear}
             disabled={busyAction !== null || externallyDisabled}
-            className="whitespace-nowrap text-xs text-ink-2 underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-40"
+            className="inline-flex min-h-10 items-center whitespace-nowrap text-xs text-ink-2 underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-40 lg:min-h-0"
           >
             Снять выделение
           </button>
@@ -72,12 +72,12 @@ export function ArchiveBulkActionBar({
           )}
         </span>
 
-        <span className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 pr-32 lg:mx-0 lg:ml-auto lg:flex-wrap lg:overflow-visible lg:px-0 lg:pr-0">
+        <span className="-ml-4 mr-14 flex items-center gap-2 overflow-x-auto pb-0.5 pl-4 pr-4 sm:mr-32 lg:mx-0 lg:ml-auto lg:flex-wrap lg:overflow-visible lg:px-0">
           <button
             type="button"
             disabled={disabled}
             onClick={() => onRun("restore")}
-            className="shrink-0 whitespace-nowrap rounded border border-emerald-border px-3 py-1.5 text-xs font-medium text-emerald transition-colors hover:bg-emerald-soft disabled:opacity-50 disabled:cursor-not-allowed"
+            className="min-h-10 shrink-0 whitespace-nowrap rounded border border-emerald-border px-3 py-2 text-xs font-medium text-emerald transition-colors hover:bg-emerald-soft disabled:opacity-50 disabled:cursor-not-allowed lg:min-h-0 lg:py-1.5"
           >
             {busyAction === "restore" ? "Восстанавливаю…" : "↺ Восстановить"}
             <span className="ml-1.5 mono-num opacity-70">{selectedCount}</span>
@@ -86,7 +86,7 @@ export function ArchiveBulkActionBar({
             type="button"
             disabled={disabled}
             onClick={() => onRun("purge")}
-            className="shrink-0 whitespace-nowrap rounded border border-rose-border px-3 py-1.5 text-xs font-medium text-rose transition-colors hover:bg-rose-soft disabled:opacity-50 disabled:cursor-not-allowed"
+            className="min-h-10 shrink-0 whitespace-nowrap rounded border border-rose-border px-3 py-2 text-xs font-medium text-rose transition-colors hover:bg-rose-soft disabled:opacity-50 disabled:cursor-not-allowed lg:min-h-0 lg:py-1.5"
           >
             {busyAction === "purge" ? "Удаляю…" : "Удалить навсегда"}
             <span className="ml-1.5 mono-num opacity-70">{selectedCount}</span>

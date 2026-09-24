@@ -138,11 +138,11 @@ function Stepper({
         type="button"
         aria-label={`Уменьшить количество: ${name}`}
         onClick={onDec}
-        className={`flex h-7 w-7 items-center justify-center text-ink-2 ${hover}`}
+        className={`flex h-9 w-9 items-center justify-center text-ink-2 md:h-7 md:w-7 ${hover}`}
       >
         −
       </button>
-      <span className={`flex h-7 w-8 items-center justify-center border-x ${border} font-mono text-[12px] font-semibold ${text}`}>
+      <span className={`flex h-9 w-8 items-center justify-center border-x md:h-7 ${border} font-mono text-[12px] font-semibold ${text}`}>
         {qty}
       </span>
       {/* Упёршийся «+» НЕ disabled. Браузеры не показывают title на
@@ -157,7 +157,7 @@ function Stepper({
         disabled={atMax && !blocked}
         title={blocked ? (maxReason as string) : undefined}
         onClick={() => (blocked ? toast.info(maxReason as string) : onInc())}
-        className={`flex h-7 w-7 items-center justify-center text-ink-2 ${hover} disabled:cursor-not-allowed disabled:opacity-40 ${blocked ? "cursor-help opacity-40" : ""}`}
+        className={`flex h-9 w-9 items-center justify-center text-ink-2 md:h-7 md:w-7 ${hover} disabled:cursor-not-allowed disabled:opacity-40 ${blocked ? "cursor-help opacity-40" : ""}`}
       >
         +
       </button>
@@ -172,7 +172,7 @@ function RemoveButton({ name, onClick }: { name: string; onClick: () => void }) 
       aria-label={`Убрать ${name}`}
       title="Убрать из состава"
       onClick={onClick}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-rose-soft hover:text-rose"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-rose-soft hover:text-rose md:h-7 md:w-7"
     >
       ×
     </button>
@@ -289,14 +289,14 @@ export function EquipmentCartZone({
     row.quantity <= 1 ? setPendingRemoval(row) : row.onDec();
 
   const header = (
-    <div className="flex items-center justify-between px-5 pb-1 pt-2.5">
+    <div className="flex items-center justify-between px-5 pb-2.5 pt-2.5">
       <span className="font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-3">
         Состав заявки{rows.length > 0 && <span className="ml-1 font-mono text-emerald">· {rows.length}</span>}
       </span>
       <button
         type="button"
         onClick={onOpenCustomModal}
-        className="rounded border border-border bg-surface px-2.5 py-1 text-[12px] text-ink-2 hover:bg-surface-muted hover:text-ink"
+        className="rounded border border-border bg-surface px-2.5 py-2 text-[12px] text-ink-2 hover:bg-surface-muted hover:text-ink md:py-1"
       >
         + Своя позиция
       </button>
@@ -331,12 +331,14 @@ export function EquipmentCartZone({
         <table className="w-full min-w-[540px] text-sm">
           <thead>
             <tr className="border-y border-border bg-surface-subtle">
-              <th scope="col" className="eyebrow px-3 py-2 text-left">Позиция</th>
-              <th scope="col" className="eyebrow px-3 py-2 text-right">Кол-во</th>
-              <th scope="col" className="eyebrow px-3 py-2 text-right">Цена/смена</th>
-              <th scope="col" className="eyebrow px-3 py-2 text-right">Смен</th>
-              <th scope="col" className="eyebrow px-3 py-2 text-right">Сумма</th>
-              <th scope="col" className="w-11 px-3 py-2">
+              {/* Крайние колонки — pl-5 / pr-5: левый край совпадает с
+                  «Составом заявки» и строками каталога. */}
+              <th scope="col" className="eyebrow whitespace-nowrap py-2 pl-5 pr-3 text-left">Позиция</th>
+              <th scope="col" className="eyebrow whitespace-nowrap px-3 py-2 text-right">Кол-во</th>
+              <th scope="col" className="eyebrow whitespace-nowrap px-3 py-2 text-right">Цена/смена</th>
+              <th scope="col" className="eyebrow whitespace-nowrap px-3 py-2 text-right">Смен</th>
+              <th scope="col" className="eyebrow whitespace-nowrap px-3 py-2 text-right">Сумма</th>
+              <th scope="col" className="w-11 whitespace-nowrap py-2 pl-3 pr-5">
                 <span className="sr-only">Убрать позицию</span>
               </th>
             </tr>
@@ -349,7 +351,7 @@ export function EquipmentCartZone({
                   key={row.key}
                   className={`border-b border-border ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
                 >
-                  <td className="px-3 py-2">
+                  <td className="py-2 pl-5 pr-3">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="font-medium text-ink">{row.name}</span>
                       {row.badge && <Badge badge={row.badge} />}
@@ -392,6 +394,7 @@ export function EquipmentCartZone({
                           isNegotiated={row.listRate != null}
                           onChange={row.onPriceChange}
                           ariaLabel={`Цена за смену: ${row.name}`}
+                          className="-mr-[7px]"
                         />
                       ) : (
                         <span className="mono-num font-semibold text-ink">
@@ -408,7 +411,7 @@ export function EquipmentCartZone({
                   <td className="mono-num whitespace-nowrap px-3 py-2 text-right font-semibold text-ink">
                     {row.sum == null ? <span className="text-ink-3">—</span> : formatMoneyRubWhole(row.sum)}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="py-2 pl-3 pr-5">
                     <RemoveButton name={row.name} onClick={row.onRemove} />
                   </td>
                 </tr>
@@ -417,7 +420,7 @@ export function EquipmentCartZone({
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-ink">
-              <th scope="row" colSpan={4} className="px-3 py-2.5 text-left font-semibold text-ink">
+              <th scope="row" colSpan={4} className="py-2.5 pl-5 pr-3 text-left font-semibold text-ink">
                 Сумма позиций
               </th>
               <td className="mono-num whitespace-nowrap px-3 py-2.5 text-right text-[15px] font-bold text-ink">
@@ -440,7 +443,7 @@ export function EquipmentCartZone({
           return (
             <div
               key={row.key}
-              className={`grid grid-cols-[6px_1fr_auto_auto_auto] items-center gap-x-2.5 gap-y-1 rounded-md px-2 py-1.5 ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
+              className={`grid grid-cols-[6px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 gap-y-1 rounded-md px-2 py-1.5 ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
             >
               <span
                 aria-hidden="true"
@@ -448,19 +451,15 @@ export function EquipmentCartZone({
               />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                  <span className="truncate text-[13px] font-medium text-ink">{row.name}</span>
+                  {/* Две строки вместо truncate: многоточие съедало модель, и похожие
+                      позиции («52XT (Bl…» / «52XT (Bl…») было не различить. */}
+                  <span title={row.name} className="line-clamp-2 min-w-0 hyphens-auto break-words text-[13px] font-medium leading-snug text-ink">
+                    {row.name}
+                  </span>
                   {row.badge && <Badge badge={row.badge} />}
                 </div>
                 <AdjustmentNote adjustment={row.adjustment} />
               </div>
-              {row.onPriceChange && row.listRate != null ? (
-                <RevertPriceButton
-                  onClick={() => row.onPriceChange?.(null)}
-                  label={`Вернуть прайсовую цену: ${row.name}`}
-                />
-              ) : (
-                <span />
-              )}
               {isHardUnavail ? (
                 <span />
               ) : (
@@ -484,6 +483,7 @@ export function EquipmentCartZone({
                       isNegotiated={row.listRate != null}
                       onChange={row.onPriceChange}
                       ariaLabel={`Цена за смену: ${row.name}`}
+                      className="-ml-[7px]"
                     />
                   ) : (
                     <span className="font-semibold text-ink">{formatMoneyRubWhole(row.rate)}</span>
@@ -496,6 +496,14 @@ export function EquipmentCartZone({
                     {formatMoneyRubWhole(row.sum ?? 0)} ₽
                   </span>
                   {row.listRate != null && <ListPriceBadge value={row.listRate} />}
+                  {/* ↺ — в конце полосы: слева от цены место занимает
+                      отрицательный отступ поля. */}
+                  {row.onPriceChange && row.listRate != null && (
+                    <RevertPriceButton
+                      onClick={() => row.onPriceChange?.(null)}
+                      label={`Вернуть прайсовую цену: ${row.name}`}
+                    />
+                  )}
                 </span>
               )}
             </div>

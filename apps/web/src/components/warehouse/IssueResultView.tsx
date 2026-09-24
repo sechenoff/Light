@@ -25,6 +25,7 @@
  */
 
 import type { CompleteResult } from "./types";
+import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
 import { formatRub, formatExpenseRub, pluralize } from "../../lib/format";
 
 export function IssueResultView({
@@ -284,7 +285,7 @@ export function IssueResultView({
         </div>
       </div>
 
-      <div className="sticky bottom-0 border-t border-border bg-surface px-3 py-3 lg:px-5">
+      <div className={`${STICKY_ABOVE_TAB_BAR} border-t border-border bg-surface px-3 py-3 lg:px-5`}>
         <button
           type="button"
           onClick={onDone}

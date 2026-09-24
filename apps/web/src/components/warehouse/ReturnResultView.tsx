@@ -32,6 +32,7 @@
  */
 
 import type { CompleteResult } from "./types";
+import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
 import { pluralize } from "../../lib/format";
 
 export function ReturnResultView({
@@ -229,7 +230,7 @@ export function ReturnResultView({
         </div>
       </div>
 
-      <div className="sticky bottom-0 border-t border-border bg-surface px-3 py-3 lg:px-5">
+      <div className={`${STICKY_ABOVE_TAB_BAR} border-t border-border bg-surface px-3 py-3 lg:px-5`}>
         <button
           type="button"
           onClick={onDone}

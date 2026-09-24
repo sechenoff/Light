@@ -193,7 +193,7 @@ export function VehicleDriverRow({ bookingId, vehicle, canEdit, onUpdated }: Pro
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="text-xs text-accent-bright hover:underline"
+            className="inline-flex items-center min-h-10 sm:min-h-0 text-xs text-accent-bright hover:underline"
           >
             {vehicle.driverName ? "Изменить водителя" : "+ Добавить водителя"}
           </button>

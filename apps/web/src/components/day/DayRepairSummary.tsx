@@ -64,7 +64,7 @@ export function DayRepairSummary({
     <div className="bg-surface border border-border rounded-lg p-3">
       <div className="flex justify-between items-baseline mb-2">
         <p className="text-sm font-semibold text-ink">🔧 Мастерская</p>
-        <Link href="/repair" className="text-xs text-accent hover:underline">
+        <Link href="/repair" className="inline-flex items-center min-h-8 -my-2 text-xs text-accent hover:underline">
           Открыть →
         </Link>
       </div>

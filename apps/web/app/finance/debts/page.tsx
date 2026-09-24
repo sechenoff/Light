@@ -4,6 +4,18 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import {
+  useFloating,
+  autoUpdate,
+  offset,
+  flip,
+  shift,
+  useClick,
+  useDismiss,
+  useRole,
+  useInteractions,
+  FloatingPortal,
+} from "@floating-ui/react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../../src/lib/api";
@@ -183,6 +195,8 @@ interface ActionMenuProps {
   onRemind: () => void;
   onPaymentsList: () => void;
   onWriteOff: () => void;
+  /** Размер кнопки «⋯»: в строке таблицы 30×30, в мобильной карточке — на всю ячейку. */
+  triggerClassName?: string;
 }
 
 // Удаление брони из реестра долгов убрано (аудит 2026-07): деструктивное
@@ -191,70 +205,97 @@ interface ActionMenuProps {
 //
 // «Простить долг» (2026-08-06) — неразрушающая альтернатива: закрывает хвост от
 // округлённой сметы, но сохраняет смету и платежи. См. WriteOffDebtModal.
-function ActionMenu({ row, onRemind, onPaymentsList, onWriteOff }: ActionMenuProps) {
+function ActionMenu({ row, onRemind, onPaymentsList, onWriteOff, triggerClassName = "h-[30px] w-[30px]" }: ActionMenuProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, [open]);
+  // Меню в портале (как BookingRowMenu): overflow таблицы его не режет.
+  // flip с нижним запасом 80 px разворачивает меню вверх над липкой панелью выбора.
+  // Пункты — block: в фиксированном меню ширина считается по max-content, и
+  // inline-block кнопки встали бы в одну строку, растянув меню на 600+ px.
+  const { refs, floatingStyles, context } = useFloating({
+    open,
+    onOpenChange: setOpen,
+    placement: "bottom-end",
+    strategy: "fixed",
+    middleware: [offset(4), flip({ padding: { top: 8, bottom: 80 } }), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
+  const { getReferenceProps, getFloatingProps } = useInteractions([
+    useClick(context),
+    useDismiss(context),
+    useRole(context, { role: "menu" }),
+  ]);
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
-        onClick={() => setOpen((v) => !v)}
+        type="button"
+        ref={refs.setReference}
+        {...getReferenceProps()}
         aria-label="Дополнительные действия"
-        className="h-[30px] w-[30px] flex items-center justify-center border border-border bg-surface rounded text-ink-2 hover:bg-surface-subtle text-sm"
+        className={`${triggerClassName} flex items-center justify-center border border-border bg-surface rounded text-ink-2 hover:bg-surface-subtle text-sm`}
       >
         ⋯
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-30 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[190px]">
-          <button
-            onClick={() => { setOpen(false); onPaymentsList(); }}
-            className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+        <FloatingPortal>
+          <div
+            ref={refs.setFloating}
+            style={floatingStyles}
+            {...getFloatingProps()}
+            className="z-50 min-w-[190px] rounded-lg border border-border bg-surface py-1 shadow-lg"
           >
-            📋 Список платежей{row.paymentCount > 0 ? ` (${row.paymentCount})` : ""}
-          </button>
-          <button
-            onClick={() => {
-              setOpen(false);
-              window.location.href = `/api/bookings/${row.bookingId}/invoice.pdf`;
-            }}
-            className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
-          >
-            📄 Скачать счёт PDF
-          </button>
-          <button
-            onClick={() => {
-              setOpen(false);
-              window.location.href = `/api/finance/debts/${row.clientId}/report.pdf`;
-            }}
-            className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
-          >
-            📋 Отчёт по клиенту PDF
-          </button>
-          <button
-            onClick={() => { setOpen(false); onRemind(); }}
-            className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
-          >
-            🤖 Напомнить клиенту
-          </button>
-          <div className="my-1 border-t border-border" />
-          <button
-            onClick={() => { setOpen(false); onWriteOff(); }}
-            className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
-          >
-            ✅ Простить долг
-          </button>
-        </div>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onPaymentsList(); }}
+              className="block w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+            >
+              📋 Список платежей{row.paymentCount > 0 ? ` (${row.paymentCount})` : ""}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                window.location.href = `/api/bookings/${row.bookingId}/invoice.pdf`;
+              }}
+              className="block w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+            >
+              📄 Скачать счёт PDF
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                window.location.href = `/api/finance/debts/${row.clientId}/report.pdf`;
+              }}
+              className="block w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+            >
+              📋 Отчёт по клиенту PDF
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onRemind(); }}
+              className="block w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+            >
+              🤖 Напомнить клиенту
+            </button>
+            <div className="my-1 border-t border-border" />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onWriteOff(); }}
+              className="block w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+            >
+              ✅ Простить долг
+            </button>
+          </div>
+        </FloatingPortal>
       )}
-    </div>
+    </>
   );
 }
 
@@ -505,29 +546,30 @@ function DebtsPageInner() {
   return (
     // Нижний отступ растёт под липкую панель выбора — иначе она накрывает
     // последние строки реестра ровно тогда, когда по ним и работают.
-    <div className={`bg-surface-subtle min-h-screen ${selectedRows.length > 0 ? "pb-28" : "pb-10"}`}>
-      <FinanceTabNav debtCount={totalClients} />
+    <div className={`min-h-screen ${selectedRows.length > 0 ? "pb-28" : "pb-10"}`}>
+      {/* До загрузки счётчика не передаём: иначе кэш вкладок запомнил бы 0 */}
+      <FinanceTabNav debtCount={data ? totalClients : undefined} />
 
       <div className="p-4 lg:p-6">
 
         {/* Header */}
-        <div className="flex items-end justify-between gap-3 mb-5">
+        <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="eyebrow text-ink-3 mb-1">ФИНАНСЫ</p>
-            <h1 className="text-[24px] font-semibold text-ink tracking-tight mb-1">Долги</h1>
-            <p className="text-[13px] text-ink-2">
+            <p className="eyebrow text-ink-3">ФИНАНСЫ</p>
+            <h1 className="text-[22px] font-semibold text-ink tracking-tight mt-1">Долги</h1>
+            <p className="text-[13px] text-ink-2 mt-1">
               {totalClients} {pluralize(totalClients, "клиент", "клиента", "клиентов")}
               {" · "}{allRows.length} открытых {pluralize(allRows.length, "долг", "долга", "долгов")}
               {" · к получению "}
-              <strong className="mono-num text-ink">{formatRub(totalOutstanding)}</strong>
+              <strong className="mono-num text-ink whitespace-nowrap">{formatRub(totalOutstanding)}</strong>
             </p>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-shrink-0">
             {legacyMode && currentUser?.user?.role === "SUPER_ADMIN" && (
               <button
                 type="button"
                 onClick={() => setImportOpen(true)}
-                className="px-3.5 py-2 text-[12px] font-medium rounded-lg border border-accent-border bg-accent-soft text-accent-bright hover:bg-accent-border"
+                className="col-span-2 inline-flex h-10 items-center justify-center whitespace-nowrap px-3 text-[12px] font-medium rounded border border-accent-border bg-accent-soft text-accent-bright hover:bg-accent-border sm:h-9 sm:px-3.5"
               >
                 + Импортировать смету
               </button>
@@ -538,7 +580,7 @@ function DebtsPageInner() {
                 window.location.href = `/api/finance/debts.xlsx${q}`;
               }}
               title="Выгрузить весь реестр без выбора строк"
-              className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface rounded-lg hover:bg-surface-subtle"
+              className="inline-flex h-10 items-center justify-center whitespace-nowrap px-3 text-[12px] font-medium border border-border bg-surface text-ink rounded hover:bg-surface-subtle sm:h-9 sm:px-3.5"
             >
               Весь реестр в XLSX
             </button>
@@ -553,10 +595,10 @@ function DebtsPageInner() {
                 }
                 setReportOpen(true);
               }}
-              className={`px-3.5 py-2 text-[12px] font-semibold rounded-lg ${
+              className={`inline-flex h-10 items-center justify-center whitespace-nowrap px-3 text-[12px] font-semibold rounded border sm:h-9 sm:px-3.5 ${
                 selectedRows.length > 0
-                  ? "bg-accent-bright text-surface hover:opacity-90"
-                  : "border border-border bg-surface text-ink-2 hover:bg-surface-subtle"
+                  ? "border-accent-bright bg-accent-bright text-surface hover:opacity-90"
+                  : "border-border bg-surface text-ink-2 hover:bg-surface-subtle"
               }`}
             >
               Сформировать отчёт
@@ -567,33 +609,33 @@ function DebtsPageInner() {
 
         {/* KPI strip — 4 cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          <div className="bg-surface border border-border rounded-lg px-4 py-3">
-            <p className="eyebrow text-ink-3 mb-0.5">Всего к получению</p>
-            <p className={`mono-num text-[17px] font-semibold ${Number(totalOutstanding) > 0 ? "text-rose" : "text-ink"}`}>
+          <div className="bg-surface border border-border rounded-lg px-3 py-3 sm:px-4">
+            <p className="eyebrow text-ink-3 mb-0.5 min-h-8 sm:min-h-0">Всего к получению</p>
+            <p className={`mono-num text-[16px] lg:text-[17px] font-semibold ${Number(totalOutstanding) > 0 ? "text-rose" : "text-ink"}`}>
               {formatRub(totalOutstanding)}
             </p>
           </div>
-          <div className="bg-surface border border-border rounded-lg px-4 py-3">
-            <p className="eyebrow text-ink-3 mb-0.5">Просрочено</p>
-            <p className={`mono-num text-[17px] font-semibold ${Number(totalOverdue) > 0 ? "text-rose" : "text-ink"}`}>
+          <div className="bg-surface border border-border rounded-lg px-3 py-3 sm:px-4">
+            <p className="eyebrow text-ink-3 mb-0.5 min-h-8 sm:min-h-0">Просрочено</p>
+            <p className={`mono-num text-[16px] lg:text-[17px] font-semibold ${Number(totalOverdue) > 0 ? "text-rose" : "text-ink"}`}>
               {formatRub(totalOverdue)}
             </p>
             {overdueCount > 0 && (
               <p className="text-[11px] text-rose mt-0.5">{overdueCount} {pluralize(overdueCount, "долг", "долга", "долгов")}</p>
             )}
           </div>
-          <div className="bg-surface border border-border rounded-lg px-4 py-3">
-            <p className="eyebrow text-ink-3 mb-0.5">Частично оплачено</p>
-            <p className="mono-num text-[17px] font-semibold text-ink">{partialCount}</p>
+          <div className="bg-surface border border-border rounded-lg px-3 py-3 sm:px-4">
+            <p className="eyebrow text-ink-3 mb-0.5 min-h-8 sm:min-h-0">Частично оплачено</p>
+            <p className="mono-num text-[16px] lg:text-[17px] font-semibold text-ink">{partialCount}</p>
             {partialCount > 0 && (
               <p className="text-[11px] text-ink-2 mt-0.5">
                 {formatRub(allRows.filter((r) => r.paymentStatus === "PARTIALLY_PAID").reduce((s, r) => s + Number(r.amountOutstanding), 0))}
               </p>
             )}
           </div>
-          <div className="bg-surface border border-border rounded-lg px-4 py-3">
-            <p className="eyebrow text-ink-3 mb-0.5">Висит 60+ дней</p>
-            <p className={`mono-num text-[17px] font-semibold ${over60Sum > 0 ? "text-rose" : "text-ink"}`}>
+          <div className="bg-surface border border-border rounded-lg px-3 py-3 sm:px-4">
+            <p className="eyebrow text-ink-3 mb-0.5 min-h-8 sm:min-h-0">Висит 60+ дней</p>
+            <p className={`mono-num text-[16px] lg:text-[17px] font-semibold ${over60Sum > 0 ? "text-rose" : "text-ink"}`}>
               {formatRub(over60Sum)}
             </p>
             {over60Count > 0 && (
@@ -616,13 +658,13 @@ function DebtsPageInner() {
                     : "bg-surface border-border hover:bg-surface-subtle"
                 }`}
               >
-                <span className={`text-[12px] font-semibold ${clientFilter === "" ? "text-white" : "text-ink"}`}>
+                <span className={`text-[12px] font-semibold ${clientFilter === "" ? "text-surface" : "text-ink"}`}>
                   Все клиенты
                 </span>
-                <span className={`font-mono text-[13px] font-semibold ${clientFilter === "" ? "text-white" : "text-rose"}`}>
+                <span className={`font-mono text-[13px] font-semibold ${clientFilter === "" ? "text-surface" : "text-rose"}`}>
                   {formatRub(totalOutstanding)}
                 </span>
-                <span className={`text-[10px] uppercase tracking-wide ${clientFilter === "" ? "text-white/70" : "text-ink-3"}`}>
+                <span className={`text-[10px] uppercase tracking-wide ${clientFilter === "" ? "text-surface/70" : "text-ink-3"}`}>
                   {allRows.length} {pluralize(allRows.length, "бронь", "брони", "броней")}
                 </span>
               </button>
@@ -637,13 +679,13 @@ function DebtsPageInner() {
                       : "bg-surface border-border hover:bg-surface-subtle"
                   }`}
                 >
-                  <span className={`text-[12px] font-semibold truncate max-w-[140px] ${clientFilter === c.clientId ? "text-white" : "text-ink"}`}>
+                  <span className={`text-[12px] font-semibold truncate max-w-[140px] ${clientFilter === c.clientId ? "text-surface" : "text-ink"}`}>
                     {c.clientName}
                   </span>
-                  <span className={`font-mono text-[13px] font-semibold ${clientFilter === c.clientId ? "text-white" : "text-rose"}`}>
+                  <span className={`font-mono text-[13px] font-semibold ${clientFilter === c.clientId ? "text-surface" : "text-rose"}`}>
                     {formatRub(c.totalOutstanding)}
                   </span>
-                  <span className={`text-[10px] uppercase tracking-wide ${clientFilter === c.clientId ? "text-white/70" : "text-ink-3"}`}>
+                  <span className={`text-[10px] uppercase tracking-wide ${clientFilter === c.clientId ? "text-surface/70" : "text-ink-3"}`}>
                     {c.maxDaysOverdue > 0
                       ? `⚠ просрочка ${c.maxDaysOverdue} дн`
                       : `${c.bookingsCount} ${pluralize(c.bookingsCount, "бронь", "брони", "броней")}`}
@@ -679,7 +721,9 @@ function DebtsPageInner() {
         )}
 
         {/* Filter pills + search */}
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:flex-wrap sm:items-center">
+          {/* На телефоне пилюли — сетка 2×2: все четыре видны сразу, без ленты */}
+          <div className="grid grid-cols-2 gap-2 sm:flex">
           {(
             [
               { key: "all", label: "Все", count: allRows.length },
@@ -691,22 +735,23 @@ function DebtsPageInner() {
             <button
               key={f.key}
               onClick={() => setStatusFilter(f.key)}
-              className={`h-[30px] px-3 text-[12px] font-medium border rounded transition-colors ${
+              className={`h-10 sm:h-[30px] px-3 whitespace-nowrap text-[12px] font-medium border rounded transition-colors ${
                 statusFilter === f.key
                   ? "bg-accent text-surface border-accent"
                   : "bg-surface border-border text-ink-2 hover:bg-surface-subtle"
               }`}
             >
               {f.label}
-              <span className={`ml-1.5 ${statusFilter === f.key ? "text-white/70" : "text-ink-3"}`}>{f.count}</span>
+              <span className={`ml-1.5 ${statusFilter === f.key ? "text-surface/70" : "text-ink-3"}`}>{f.count}</span>
             </button>
           ))}
+          </div>
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="🔍 Найти клиента или проект…"
-            className="ml-auto border border-border rounded px-3 py-1.5 text-[12px] bg-surface text-ink-2 w-[240px]"
+            className="w-full h-10 sm:h-[30px] sm:w-[240px] sm:ml-auto border border-border rounded px-3 py-0 text-[12px] bg-surface text-ink-2"
           />
         </div>
 
@@ -723,7 +768,7 @@ function DebtsPageInner() {
               params.set("order", o);
               router.replace(`?${params.toString()}`, { scroll: false });
             }}
-            className="w-full border border-border rounded px-3 py-2 text-[13px] bg-surface text-ink-2"
+            className="w-full h-10 border border-border rounded px-3 text-[13px] bg-surface text-ink-2"
             aria-label="Сортировка"
           >
             <option value="startDate:desc">По дате (свежие)</option>
@@ -752,8 +797,9 @@ function DebtsPageInner() {
         ) : (
           <>
             {/* Desktop table (hidden on mobile) */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full border-collapse bg-surface border border-border rounded-lg overflow-hidden text-[13.5px]">
+            {/* Рамка и скругление — на обёртке: у <table> с border-collapse они не рисуются */}
+            <div className="hidden md:block overflow-x-auto bg-surface border border-border rounded-lg shadow-xs">
+              <table className="w-full border-collapse text-[13.5px]">
                 <thead className="bg-surface-subtle text-[11px] uppercase tracking-wide text-ink-3">
                   <tr>
                     <th className="w-[38px] px-3 py-2.5 border-b border-border">
@@ -767,7 +813,7 @@ function DebtsPageInner() {
                       />
                     </th>
                     <th
-                      className={`text-left px-3 py-2.5 border-b border-border cursor-pointer select-none w-[92px] ${sort === "startDate" ? "text-accent-bright" : ""}`}
+                      className={`text-left px-3 py-2.5 border-b border-border cursor-pointer select-none w-[92px] xl:w-[112px] xl:whitespace-nowrap ${sort === "startDate" ? "text-accent-bright" : ""}`}
                       onClick={() => handleSort("startDate")}
                     >
                       Дата проекта
@@ -788,13 +834,13 @@ function DebtsPageInner() {
                       <SortArrow active={sort === "amount"} order={order} />
                     </th>
                     <th
-                      className={`text-left px-3 py-2.5 border-b border-border cursor-pointer select-none w-[130px] ${sort === "status" ? "text-accent-bright" : ""}`}
+                      className={`text-left px-3 py-2.5 border-b border-border cursor-pointer select-none w-px whitespace-nowrap ${sort === "status" ? "text-accent-bright" : ""}`}
                       onClick={() => handleSort("status")}
                     >
                       Статус
                       <SortArrow active={sort === "status"} order={order} />
                     </th>
-                    <th className="text-left px-3 py-2.5 border-b border-border w-[200px]">
+                    <th className="text-left px-3 py-2.5 border-b border-border w-px whitespace-nowrap">
                       Действия
                     </th>
                   </tr>
@@ -850,13 +896,15 @@ function DebtsPageInner() {
 
                         {/* Amount */}
                         <td className="px-3 py-2.5 text-right leading-tight">
-                          <div className="mono-num font-semibold text-[14px] text-rose">
+                          <div className="mono-num font-semibold text-[14px] text-rose whitespace-nowrap">
                             {formatRub(row.amountOutstanding)}
                           </div>
                           {/* D1: show «получено» on ALL non-PAID rows */}
                           {Number(row.amountPaid) > 0 ? (
                             <div className="text-[11px] text-ink-3">
-                              получено: {formatRub(Number(row.amountPaid))} из {formatRub(Number(row.finalAmount))}
+                              {/* Перенос — только между кусками, внутри суммы никогда */}
+                              <span className="whitespace-nowrap">получено: {formatRub(Number(row.amountPaid))}</span>{" "}
+                              <span className="whitespace-nowrap">из {formatRub(Number(row.finalAmount))}</span>
                             </div>
                           ) : (
                             <div className="text-[11px] text-ink-3">получено: 0 ₽</div>
@@ -871,7 +919,7 @@ function DebtsPageInner() {
                         </td>
 
                         {/* Actions — Variant 2: CTA + icons */}
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
                           {isCollector ? (
                             <span className="text-[11.5px] text-ink-3">только просмотр</span>
                           ) : (
@@ -919,11 +967,11 @@ function DebtsPageInner() {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <label className="flex items-center gap-2">
+                      <label className="-my-2 flex min-h-[40px] items-center gap-2 pr-2">
                         <input
                           type="checkbox"
                           aria-label={`Добавить в отчёт: ${row.clientName} — ${row.projectName}`}
-                          className="rounded border-border"
+                          className="h-4 w-4 rounded border-border"
                           checked={selected.has(row.bookingId)}
                           onChange={() => toggleRow(row.bookingId)}
                         />
@@ -957,7 +1005,9 @@ function DebtsPageInner() {
                       )}
                     </div>
                     {/* D4: 3-button layout — row 1: full-width CTA, row 2: ✏️ + ⋯ at ≥44px */}
-                    {!isCollector && (
+                    {isCollector ? (
+                      <p className="text-[11.5px] text-ink-3">только просмотр</p>
+                    ) : (
                       <>
                     <div className="grid grid-cols-2 gap-1.5 mb-1.5">
                       <button
@@ -976,9 +1026,10 @@ function DebtsPageInner() {
                       </a>
                       <ActionMenu
                         row={row}
+                        triggerClassName="h-11 w-full"
                         onRemind={() => openReminder(row)}
                         onPaymentsList={() => openPaymentsList(row)}
-                              onWriteOff={() => setWriteOffRow({ bookingId: row.bookingId, projectName: row.projectName, clientName: row.clientName, outstanding: row.amountOutstanding })}
+                        onWriteOff={() => setWriteOffRow({ bookingId: row.bookingId, projectName: row.projectName, clientName: row.clientName, outstanding: row.amountOutstanding })}
                       />
                     </div>
                       </>
@@ -993,7 +1044,7 @@ function DebtsPageInner() {
       </div>
 
       {/* Панель выбора для отчёта — появляется, как только что-то отмечено.
-          z-30, не z-40: на z-40 живёт скрим мобильного меню (AppShell). */}
+          z-30: ниже кнопки «Сообщить» (z-40) и скрима мобильного меню AppShell (z-50). */}
       {selectedRows.length > 0 && (
         <div
           className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-surface shadow-lg lg:left-56"
@@ -1013,8 +1064,9 @@ function DebtsPageInner() {
               <span className="text-ink-2">
                 {selectedClients} {pluralize(selectedClients, "клиент", "клиента", "клиентов")}
               </span>
-              <span className="text-ink-3">·</span>
-              <span className="mono-num font-semibold text-ink">{formatRub(selectedTotal)}</span>
+              <span className="hidden sm:inline text-ink-3">·</span>
+              {/* На телефоне сумма всегда своей строкой — разделитель не повисает в конце */}
+              <span className="mono-num font-semibold text-ink w-full sm:w-auto">{formatRub(selectedTotal)}</span>
               {hiddenSelected > 0 && (
                 <span className="text-[11.5px] text-ink-3">
                   (из них {hiddenSelected} скрыто текущим фильтром — в отчёт войдут)

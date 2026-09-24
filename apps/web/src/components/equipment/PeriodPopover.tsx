@@ -62,7 +62,7 @@ export function PeriodPopover({ start, end, onApply, variant = "bar" }: Props) {
     open,
     onOpenChange: setOpen,
     placement: variant === "mobile" ? "bottom" : "bottom-start",
-    middleware: [offset(4), flip({ padding: 8 }), shift({ padding: 8 })],
+    middleware: [offset(4), flip({ padding: 8 }), shift({ padding: 16 })],
     whileElementsMounted: autoUpdate,
   });
 
@@ -116,7 +116,7 @@ export function PeriodPopover({ start, end, onApply, variant = "bar" }: Props) {
               style={floatingStyles}
               {...getFloatingProps()}
               aria-label="Период доступности"
-              className="z-50 w-[min(92vw,480px)] rounded-lg border border-border-strong bg-surface p-3 shadow-lg"
+              className="z-50 w-[calc(100vw-32px)] rounded-lg border border-border-strong bg-surface p-3 shadow-lg sm:w-[480px]"
             >
               <div className="mb-2.5 flex items-center justify-between gap-3">
                 <span className="eyebrow">Период доступности</span>
@@ -125,17 +125,19 @@ export function PeriodPopover({ start, end, onApply, variant = "bar" }: Props) {
                 </span>
               </div>
 
-              <div className="flex items-end gap-2">
+              {/* На телефоне поля друг под другом во всю ширину: рядом по ~150 px
+                  datetime-local обрезал время («09/24/2026, 10»). */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <label className="flex min-w-0 flex-1 flex-col gap-1">
                   <span className="eyebrow">Начало</span>
                   <input
                     type="datetime-local"
                     value={draftStart}
                     onChange={(e) => setDraftStart(e.target.value)}
-                    className={`mono-num h-9 w-full rounded border border-border-strong bg-surface px-2 text-xs text-ink ${FOCUS_RING}`}
+                    className={`mono-num h-11 w-full rounded border border-border-strong bg-surface px-2 text-base text-ink sm:h-9 sm:text-xs ${FOCUS_RING}`}
                   />
                 </label>
-                <span aria-hidden className="pb-2 text-ink-3">
+                <span aria-hidden className="hidden pb-2 text-ink-3 sm:block">
                   →
                 </span>
                 <label className="flex min-w-0 flex-1 flex-col gap-1">
@@ -144,12 +146,12 @@ export function PeriodPopover({ start, end, onApply, variant = "bar" }: Props) {
                     type="datetime-local"
                     value={draftEnd}
                     onChange={(e) => setDraftEnd(e.target.value)}
-                    className={`mono-num h-9 w-full rounded border border-border-strong bg-surface px-2 text-xs text-ink ${FOCUS_RING}`}
+                    className={`mono-num h-11 w-full rounded border border-border-strong bg-surface px-2 text-base text-ink sm:h-9 sm:text-xs ${FOCUS_RING}`}
                   />
                 </label>
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              <div className="mt-3 grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap">
                 {QUICK_PERIODS.map((p) => (
                   <button
                     key={p.type}
@@ -160,7 +162,7 @@ export function PeriodPopover({ start, end, onApply, variant = "bar" }: Props) {
                       setDraftStart(r.start);
                       setDraftEnd(r.end);
                     }}
-                    className={`h-7 rounded border border-border px-2.5 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-subtle hover:text-ink ${FOCUS_RING}`}
+                    className={`h-10 rounded border border-border px-2.5 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-subtle hover:text-ink sm:h-7 ${FOCUS_RING}`}
                   >
                     {p.label}
                   </button>
@@ -173,14 +175,14 @@ export function PeriodPopover({ start, end, onApply, variant = "bar" }: Props) {
                     key={a.label}
                     type="button"
                     onClick={() => setDraftEnd((prev) => shiftEnd(prev, a.hours))}
-                    className={`h-7 rounded border border-border px-2.5 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-subtle hover:text-ink ${FOCUS_RING}`}
+                    className={`h-10 rounded border border-border px-2.5 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-subtle hover:text-ink sm:h-7 ${FOCUS_RING}`}
                   >
                     {a.label}
                   </button>
                 ))}
               </div>
 
-              <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2.5">
+              <div className="mt-3 flex flex-col items-stretch gap-2 border-t border-border pt-2.5 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-[11px] text-ink-2">
                   {invalid
                     ? "Конец периода должен быть позже начала"
@@ -190,7 +192,7 @@ export function PeriodPopover({ start, end, onApply, variant = "bar" }: Props) {
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
-                    className={`h-7 rounded border border-border px-2.5 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-subtle hover:text-ink ${FOCUS_RING}`}
+                    className={`h-11 flex-1 rounded border border-border px-2.5 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-subtle hover:text-ink sm:h-7 sm:flex-none ${FOCUS_RING}`}
                   >
                     Отмена
                   </button>
@@ -198,7 +200,7 @@ export function PeriodPopover({ start, end, onApply, variant = "bar" }: Props) {
                     type="button"
                     onClick={apply}
                     disabled={invalid}
-                    className={`h-7 rounded bg-accent-bright px-3 text-xs font-semibold text-surface transition-colors hover:bg-accent disabled:opacity-50 ${FOCUS_RING}`}
+                    className={`h-11 flex-1 rounded bg-accent-bright px-3 text-xs font-semibold text-surface transition-colors hover:bg-accent disabled:opacity-50 sm:h-7 sm:flex-none ${FOCUS_RING}`}
                   >
                     Применить
                   </button>

@@ -79,13 +79,8 @@ export function LoginStep({
 
   return (
     <div className="w-full max-w-[360px] rounded-lg border border-border bg-surface p-6 shadow-xs">
-      <div className="mb-6">
-        <p className="eyebrow mb-1">Склад</p>
-        <h2 className="text-[17px] font-semibold tracking-tight text-ink">
-          Вход на склад
-        </h2>
-        <p className="mt-1 text-xs text-ink-3">Выберите имя и введите PIN</p>
-      </div>
+      {/* Заголовок «Склад · Вход на склад» — h1 в шапке WorkstationShell. */}
+      <p className="mb-5 text-xs text-ink-3">Выберите имя и введите PIN</p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>

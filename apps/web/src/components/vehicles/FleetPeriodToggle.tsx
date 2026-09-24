@@ -21,7 +21,7 @@ export function FleetPeriodToggle() {
     <div
       role="group"
       aria-label="Период статистики"
-      className="inline-flex items-center rounded-full border border-border bg-surface p-1"
+      className="inline-flex overflow-hidden rounded border border-border bg-surface"
     >
       {FLEET_PERIOD_OPTIONS.map((opt) => {
         const isActive = opt.value === active;
@@ -31,9 +31,10 @@ export function FleetPeriodToggle() {
             type="button"
             aria-pressed={isActive}
             onClick={() => setPeriod(opt.value)}
+            // Сегмент как группы на «Ремонтах» (GROUP_BTN): на телефоне выше — под палец.
             className={
-              "rounded-full px-3 py-1 text-xs font-medium transition-colors " +
-              (isActive ? "bg-accent text-surface" : "text-ink-3 hover:text-ink")
+              "border-r border-border px-2.5 py-2 text-[11px] font-semibold leading-[1.6] transition-colors last:border-r-0 md:py-1 " +
+              (isActive ? "bg-accent text-surface hover:bg-accent" : "text-ink-2 hover:bg-surface-muted")
             }
           >
             {opt.label}

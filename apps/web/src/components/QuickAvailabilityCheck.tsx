@@ -25,10 +25,10 @@ export function QuickAvailabilityCheck() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Поиск оборудования..."
-        className="w-full border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
+        className="h-10 sm:h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
       />
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label htmlFor="qac-start" className="text-xs text-ink-3 block mb-0.5">Начало</label>
           <input
@@ -36,7 +36,7 @@ export function QuickAvailabilityCheck() {
             type="datetime-local"
             value={start}
             onChange={(e) => setStart(e.target.value)}
-            className="w-full border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
+            className="h-10 sm:h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
           />
         </div>
         <div>
@@ -46,7 +46,7 @@ export function QuickAvailabilityCheck() {
             type="datetime-local"
             value={end}
             onChange={(e) => setEnd(e.target.value)}
-            className="w-full border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
+            className="h-10 sm:h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
           />
         </div>
       </div>
@@ -54,7 +54,7 @@ export function QuickAvailabilityCheck() {
       <button
         onClick={handleCheck}
         disabled={loading}
-        className="w-full bg-accent-bright hover:bg-accent text-surface text-sm py-1.5 rounded disabled:opacity-50 transition-colors"
+        className="h-10 sm:h-9 w-full bg-accent-bright hover:bg-accent text-surface text-sm rounded disabled:opacity-50 transition-colors"
       >
         {loading ? "Проверяю..." : "Проверить"}
       </button>

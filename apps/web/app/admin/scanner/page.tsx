@@ -71,6 +71,14 @@ const STATUS_VARIANTS: Record<string, StatusPillVariant> = {
   MISSING: "alert",
 };
 
+// Каркас страницы (общий со скелетоном загрузки). Ниже lg над страницей висит
+// мобильная шапка AppShell (sticky, ровно h-12 = 3rem) — вычитаем её, иначе низ
+// шторки уезжает за экран. Меняется высота шапки — меняй и здесь. На десктопе —
+// колонка по центру, а не мобильная раскладка на всю ширину.
+const SCANNER_ROOT =
+  "flex flex-col h-[calc(100dvh-3rem)] overflow-hidden bg-accent-chrome lg:mx-auto lg:h-dvh lg:w-full lg:max-w-3xl";
+const SCANNER_CAMERA_H = "h-[45dvh] lg:h-[60vh]";
+
 // ── Equipment Search List ─────────────────────────────────────────────────────
 
 function EquipmentList({
@@ -110,7 +118,7 @@ function EquipmentList({
     return (
       <div className="space-y-2 p-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-14 bg-surface-muted rounded-xl animate-pulse" />
+          <div key={i} className="h-14 bg-surface-muted rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -118,7 +126,7 @@ function EquipmentList({
 
   if (error) {
     return (
-      <div className="p-4 text-sm text-rose bg-rose-soft border border-rose-border rounded-xl mx-4">
+      <div className="p-4 text-sm text-rose bg-rose-soft border border-rose-border rounded-lg mx-4">
         {error}
       </div>
     );
@@ -131,7 +139,7 @@ function EquipmentList({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Поиск оборудования..."
-        className="w-full px-3 py-2.5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
+        className="w-full px-3 py-2.5 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
       />
       {filtered.length === 0 ? (
         <p className="text-sm text-ink-3 text-center py-6">
@@ -143,7 +151,7 @@ function EquipmentList({
             <button
               key={item.id}
               onClick={() => onSelect(item)}
-              className="w-full text-left px-4 py-3 bg-surface border border-border rounded-xl hover:border-border-strong hover:shadow-sm transition-all"
+              className="w-full text-left px-4 py-3 bg-surface border border-border rounded-lg hover:border-border-strong hover:shadow-sm transition-all"
             >
               <div className="text-sm font-medium text-ink truncate">
                 {item.name}
@@ -165,7 +173,7 @@ function LookupCard({ result }: { result: LookupResult }) {
     STATUS_VARIANTS[result.unit.status] ?? "none";
 
   return (
-    <div className="mx-4 mt-3 bg-surface border border-border rounded-2xl p-4 shadow-sm">
+    <div className="mx-4 mt-3 bg-surface border border-border rounded-lg p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-ink text-base truncate">
@@ -588,9 +596,9 @@ function ScannerApp() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-accent overflow-hidden">
+    <div className={SCANNER_ROOT}>
       {/* ── Top bar ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-3 bg-accent z-10 shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 lg:py-3 bg-accent-chrome z-10 shrink-0">
         <h1 className="text-white text-lg font-semibold">Сканер</h1>
         <div className="flex items-center gap-3">
           {/* Online status dot */}
@@ -617,7 +625,7 @@ function ScannerApp() {
       {/* formats у BarcodeScanner не передаём: дефолт — тот же CODE_128.
           Value-импорт enum из html5-qrcode затягивал весь zxing (~300 КБ)
           в eager-бандл страницы и обесценивал dynamic()-загрузку сканера. */}
-      <div className="h-[60vh] shrink-0 relative bg-black">
+      <div className={`${SCANNER_CAMERA_H} shrink-0 relative overflow-hidden bg-black`}>
         {activeScanHandler ? (
           <BarcodeScanner
             onScan={activeScanHandler}
@@ -626,7 +634,7 @@ function ScannerApp() {
           />
         ) : (
           <div className="flex items-center justify-center h-full">
-            <p className="text-ink-3 text-sm text-center px-8">
+            <p className="text-on-inverse/70 text-sm text-center px-8">
               {mode === "assign"
                 ? "Выберите оборудование ниже"
                 : mode === "batch"
@@ -638,7 +646,7 @@ function ScannerApp() {
       </div>
 
       {/* ── Bottom sheet ──────────────────────────────────────────────────── */}
-      <div className="flex-1 bg-surface rounded-t-3xl overflow-y-auto">
+      <div className="flex-1 bg-surface rounded-t-lg overflow-y-auto">
         {/* Mode pills */}
         <div className="flex gap-2 px-4 pt-4 pb-3 shrink-0">
           {(
@@ -651,7 +659,7 @@ function ScannerApp() {
             <button
               key={id}
               onClick={() => switchMode(id)}
-              className={`flex-1 py-2 text-sm font-medium rounded-xl transition-colors ${
+              className={`flex-1 min-h-11 py-1.5 leading-tight text-sm font-medium rounded transition-colors ${
                 mode === id
                   ? "bg-accent-bright text-surface"
                   : "bg-surface text-ink-2 border border-border hover:bg-surface-muted"
@@ -675,22 +683,22 @@ function ScannerApp() {
                 value={lookupManual}
                 onChange={(e) => setLookupManual(e.target.value)}
                 placeholder="Штрихкод вручную"
-                className="flex-1 h-11 px-3 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
+                className="flex-1 h-11 px-3 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
               />
               <button
                 type="submit"
-                className="h-11 px-4 bg-accent-bright text-surface text-sm font-medium rounded-xl"
+                className="h-11 px-4 bg-accent-bright text-surface text-sm font-medium rounded"
               >
                 Ввести
               </button>
             </form>
 
             {lookupLoading && (
-              <div className="mx-4 h-24 bg-surface-muted rounded-2xl animate-pulse" />
+              <div className="mx-4 h-24 bg-surface-muted rounded-lg animate-pulse" />
             )}
 
             {lookupNotFound && !lookupLoading && (
-              <div className="mx-4 mt-2 px-4 py-4 bg-rose-soft border border-rose-border rounded-2xl text-center text-sm text-rose">
+              <div className="mx-4 mt-2 px-4 py-4 bg-rose-soft border border-rose-border rounded-lg text-center text-sm text-rose">
                 Штрихкод не найден
               </div>
             )}
@@ -735,29 +743,29 @@ function ScannerApp() {
                     value={assignManual}
                     onChange={(e) => setAssignManual(e.target.value)}
                     placeholder="Штрихкод вручную"
-                    className="flex-1 h-11 px-3 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
+                    className="flex-1 h-11 px-3 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
                   />
                   <button
                     type="submit"
                     disabled={assignLoading}
-                    className="h-11 px-4 bg-accent-bright text-surface text-sm font-medium rounded-xl disabled:opacity-50"
+                    className="h-11 px-4 bg-accent-bright text-surface text-sm font-medium rounded disabled:opacity-50"
                   >
                     Ввести
                   </button>
                 </form>
 
                 {assignLoading && (
-                  <div className="h-16 bg-surface-muted rounded-xl animate-pulse" />
+                  <div className="h-16 bg-surface-muted rounded-lg animate-pulse" />
                 )}
 
                 {assignError && !assignLoading && (
-                  <div className="text-sm text-rose bg-rose-soft border border-rose-border rounded-xl px-4 py-3">
+                  <div className="text-sm text-rose bg-rose-soft border border-rose-border rounded-lg px-4 py-3">
                     {assignError}
                   </div>
                 )}
 
                 {assignResult && !assignLoading && (
-                  <div className="bg-emerald-soft border border-emerald-border rounded-xl px-4 py-3">
+                  <div className="bg-emerald-soft border border-emerald-border rounded-lg px-4 py-3">
                     <p className="text-sm font-medium text-emerald mb-1">
                       Привязано успешно
                     </p>
@@ -807,7 +815,7 @@ function ScannerApp() {
 
                 {/* Batch error */}
                 {batchError && (
-                  <div className="mb-3 px-4 py-3 text-sm text-rose bg-rose-soft border border-rose-border rounded-xl">
+                  <div className="mb-3 px-4 py-3 text-sm text-rose bg-rose-soft border border-rose-border rounded-lg">
                     {batchError}
                   </div>
                 )}
@@ -819,12 +827,12 @@ function ScannerApp() {
                     value={batchManual}
                     onChange={(e) => setBatchManual(e.target.value)}
                     placeholder="Штрихкод вручную"
-                    className="flex-1 h-11 px-3 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
+                    className="flex-1 h-11 px-3 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
                   />
                   <button
                     type="submit"
                     disabled={batchLoading}
-                    className="h-11 px-4 bg-accent-bright text-surface text-sm font-medium rounded-xl disabled:opacity-50"
+                    className="h-11 px-4 bg-accent-bright text-surface text-sm font-medium rounded disabled:opacity-50"
                   >
                     Ввести
                   </button>
@@ -836,7 +844,7 @@ function ScannerApp() {
                     {batchItems.map((item) => (
                       <div
                         key={item.unit.id}
-                        className="flex items-center justify-between px-3 py-2.5 bg-surface border border-border rounded-xl"
+                        className="flex items-center justify-between px-3 py-2.5 bg-surface border border-border rounded-lg"
                       >
                         <span className="text-xs font-mono text-ink-2 truncate">
                           {item.barcode}
@@ -893,10 +901,10 @@ function ScannerPageGuarded() {
   const { authorized, loading } = useRequireRole(["SUPER_ADMIN", "WAREHOUSE"]);
   if (loading) {
     return (
-      <div className="flex flex-col h-screen bg-accent overflow-hidden">
-        <div className="mx-4 mt-4 h-10 rounded-xl bg-surface/10 animate-pulse" />
-        <div className="mx-4 mt-3 h-[60vh] rounded-xl bg-surface/10 animate-pulse" />
-        <div className="flex-1 mt-3 bg-surface rounded-t-3xl" />
+      <div className={SCANNER_ROOT}>
+        <div className="mx-4 mt-4 h-10 rounded-lg bg-surface/10 animate-pulse" />
+        <div className={`mx-4 mt-3 ${SCANNER_CAMERA_H} rounded-lg bg-surface/10 animate-pulse`} />
+        <div className="flex-1 mt-3 bg-surface rounded-t-lg" />
       </div>
     );
   }

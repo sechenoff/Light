@@ -36,17 +36,17 @@ export function DayAlert({
   const c = VARIANT_CLASSES[variant];
   return (
     <div className={`${c.bg} border-l-4 ${c.border} rounded px-4 py-3`}>
-      <div className="flex justify-between items-start gap-2">
+      <div className="flex justify-between items-baseline gap-2">
         <p className={`text-sm font-semibold ${c.accent}`}>
           {title}
           {typeof count === "number" && (
-            <span className={`ml-2 inline-flex items-center justify-center min-w-[20px] px-1.5 py-0.5 rounded-full text-[11px] text-white ${variant === "rose" ? "bg-rose" : "bg-amber"}`}>
+            <span className={`ml-2 inline-flex items-center justify-center min-w-[20px] px-1.5 py-0.5 rounded-full text-[11px] text-surface ${variant === "rose" ? "bg-rose" : "bg-amber"}`}>
               {count}
             </span>
           )}
         </p>
         {linkHref && (
-          <Link href={linkHref} className="text-xs text-accent hover:underline shrink-0">
+          <Link href={linkHref} className="inline-flex items-center min-h-8 -my-2 text-xs text-accent hover:underline shrink-0">
             {linkLabel}
           </Link>
         )}

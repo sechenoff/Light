@@ -312,7 +312,7 @@ export function AddProblemItemModal({
             aria-label="Закрыть"
             onClick={onClose}
             disabled={saving}
-            className="ml-auto flex h-7 w-7 items-center justify-center rounded text-ink-3 hover:bg-surface-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright"
+            className="ml-auto flex h-9 w-9 sm:h-7 sm:w-7 items-center justify-center rounded text-ink-3 hover:bg-surface-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright"
           >
             <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-2">
               <path d="M6 6l12 12M18 6 6 18" />
@@ -411,7 +411,7 @@ export function AddProblemItemModal({
               type="button"
               onClick={() => void handleSubmit()}
               disabled={!canSubmit}
-              className="inline-flex items-center rounded border border-accent-bright bg-accent-bright px-3 py-1 text-xs font-semibold text-surface transition-colors hover:border-accent hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright focus-visible:ring-offset-2 disabled:opacity-50"
+              className="inline-flex min-h-10 items-center rounded border border-accent-bright bg-accent-bright px-4 py-1 text-xs font-semibold text-surface sm:min-h-0 sm:px-3 transition-colors hover:border-accent hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright focus-visible:ring-offset-2 disabled:opacity-50"
             >
               {saving ? "Сохраняем…" : "Завести потеряшку"}
             </button>

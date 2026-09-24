@@ -49,16 +49,16 @@ export function UploadStep({ onUpload, loading }: Props) {
   };
 
   return (
-    <div className="mx-auto max-w-xl">
+    <div className="max-w-xl">
       {/* Режим */}
       <div className="mb-6">
         <div className="eyebrow mb-3">Тип импорта</div>
-        <div className="flex gap-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
           <button
             type="button"
             onClick={() => { setMode("own"); setError(null); }}
             disabled={loading}
-            className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
               mode === "own"
                 ? "border-accent bg-accent-soft text-accent"
                 : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
@@ -70,7 +70,7 @@ export function UploadStep({ onUpload, loading }: Props) {
             type="button"
             onClick={() => { setMode("competitor"); setError(null); }}
             disabled={loading}
-            className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
               mode === "competitor"
                 ? "border-accent bg-accent-soft text-accent"
                 : "border-border bg-surface text-ink-2 hover:bg-surface-muted"

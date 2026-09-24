@@ -45,20 +45,21 @@ export function TaskChecklist({ items, canEdit, canToggle, onAdd, onToggle, onDe
 
       <ul className="space-y-1.5">
         {items.map((i) => (
-          <li key={i.id} className="group flex items-center gap-2.5">
+          <li key={i.id} className="group flex items-start gap-2.5 py-1 sm:py-0">
+            {/* before:-inset-2 — зона нажатия ~34 px без изменения раскладки строки */}
             <button
               role="checkbox"
               aria-checked={i.done}
               aria-label={i.done ? "Снять отметку" : "Отметить выполненным"}
               disabled={!canToggle}
               onClick={() => onToggle(i.id, !i.done)}
-              className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center shrink-0 transition-colors ${
+              className={`relative mt-px before:absolute before:-inset-2 w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center shrink-0 transition-colors ${
                 i.done ? "bg-teal border-teal text-surface" : "bg-surface border-border-strong hover:border-teal"
               } ${canToggle ? "cursor-pointer" : "cursor-default opacity-70"}`}
             >
               {i.done && (
                 <svg width="10" height="8" viewBox="0 0 12 10" fill="none" aria-hidden>
-                  <path d="M1 5l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M1 5l3.5 3.5L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               )}
             </button>
@@ -69,7 +70,7 @@ export function TaskChecklist({ items, canEdit, canToggle, onAdd, onToggle, onDe
               <button
                 onClick={() => void onDelete(i.id)}
                 aria-label="Удалить пункт"
-                className="text-[12px] text-ink-3 hover:text-rose opacity-0 group-hover:opacity-100 transition-opacity"
+                className="-my-1.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-[12px] text-ink-3 hover:text-rose transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100"
               >
                 ✕
               </button>

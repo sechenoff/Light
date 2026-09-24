@@ -99,18 +99,18 @@ export function BookingEstimateSection({
 
   return booking.estimate ? (
     <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-      <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-border bg-surface-subtle flex items-center justify-between gap-2">
         <p className="eyebrow">Смета (только оборудование)</p>
-        <span className="text-xs text-ink-3">Шифты: {booking.estimate.shifts}</span>
+        <span className="shrink-0 whitespace-nowrap text-xs text-ink-3">Шифты: {booking.estimate.shifts}</span>
       </div>
-      <div className="p-3 space-y-3">
+      <div className="px-4 py-3 space-y-3">
         <div className="text-sm flex justify-between">
           <span className="text-ink-2">Итого</span>
           <span className="font-medium mono-num">{formatMoneyRub(booking.estimate.subtotal)}</span>
         </div>
         <div className="text-sm flex justify-between">
           <span className="text-ink-2">Скидка</span>
-          <span className="font-medium mono-num">-{formatMoneyRub(booking.estimate.discountAmount)}</span>
+          <span className="font-medium mono-num">−{formatMoneyRub(booking.estimate.discountAmount)}</span>
         </div>
         <div className="text-sm flex justify-between pt-1 border-t border-border">
           <span className="font-semibold text-ink">После скидки</span>
@@ -190,7 +190,7 @@ export function BookingEstimateSection({
           <div className="flex items-center gap-2 text-xs text-ink-3">
             <span>Только оборудование:</span>
             <button
-              className="underline decoration-border underline-offset-2 hover:text-ink transition-colors disabled:opacity-50"
+              className="inline-flex items-center min-h-8 underline decoration-border underline-offset-2 hover:text-ink transition-colors disabled:opacity-50"
               disabled={busy !== null}
               onClick={() =>
                 run("eq-pdf", () =>
@@ -205,7 +205,7 @@ export function BookingEstimateSection({
             </button>
             <span aria-hidden>·</span>
             <button
-              className="underline decoration-border underline-offset-2 hover:text-ink transition-colors disabled:opacity-50"
+              className="inline-flex items-center min-h-8 underline decoration-border underline-offset-2 hover:text-ink transition-colors disabled:opacity-50"
               disabled={busy !== null}
               onClick={() =>
                 run("eq-xlsx", () =>
@@ -231,20 +231,25 @@ export function BookingEstimateSection({
       </div>
     </div>
   ) : (
-    <div className="rounded-lg border border-border bg-surface-subtle p-3 text-sm text-ink-2 space-y-2">
-      <div>Смета пока не сформирована (возможно, это черновик).</div>
-      {/* CTA вместо тупика: у новых черновиков MAIN-смета создаётся
-          сразу (тогда выше рендерится полный блок экспорта); у старых
-          без сметы сервер ответит 404 MAIN_ESTIMATE_NOT_FOUND — покажем
-          понятный тост вместо молчаливой заглушки. */}
-      <button
-        type="button"
-        className="inline-flex items-center gap-1.5 rounded border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-muted transition-colors no-print"
-        onClick={onDownloadEstimateFallback}
-      >
-        <IconFileText className="h-3.5 w-3.5" />
-        Скачать смету (PDF)
-      </button>
+    <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+      <div className="px-4 py-3 border-b border-border bg-surface-subtle">
+        <p className="eyebrow">Смета</p>
+      </div>
+      <div className="px-4 py-3 space-y-3 text-sm text-ink-2">
+        <div>Смета пока не сформирована (возможно, это черновик).</div>
+        {/* CTA вместо тупика: у новых черновиков MAIN-смета создаётся
+            сразу (тогда выше рендерится полный блок экспорта); у старых
+            без сметы сервер ответит 404 MAIN_ESTIMATE_NOT_FOUND — покажем
+            понятный тост вместо молчаливой заглушки. */}
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-subtle transition-colors no-print"
+          onClick={onDownloadEstimateFallback}
+        >
+          <IconFileText className="h-3.5 w-3.5" />
+          Скачать смету (PDF)
+        </button>
+      </div>
     </div>
   );
 }

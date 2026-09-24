@@ -23,45 +23,44 @@ export function BookingOrderInfoSection({
 }) {
   return (
     <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-      <div className="p-3 border-b border-border bg-surface-subtle">
+      <div className="px-4 py-3 border-b border-border bg-surface-subtle">
         <p className="eyebrow">Данные заказа</p>
       </div>
-      <div className="p-3 text-sm text-ink space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-ink-3">Клиент:</span>{" "}
-          <span className="font-medium">{booking.client.name}</span>
+      {/* Подписи и значения — двумя колонками: значения начинаются с одной
+          вертикали, перенос длинного значения не уходит под подпись. */}
+      <dl className="px-4 py-3 text-sm text-ink grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2 gap-y-2">
+        <dt className="text-ink-3">Клиент:</dt>
+        <dd className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-medium">
+          <span className="min-w-0 break-words">{booking.client.name}</span>
           {canChangeClient && (
             <button
               type="button"
               aria-label="Сменить клиента"
               onClick={onChangeClient}
-              className="ml-1 rounded border border-border px-2 py-0.5 text-xs text-ink-3 hover:bg-surface-subtle hover:text-ink transition-colors"
+              className="inline-flex items-center min-h-8 rounded border border-border px-2.5 text-xs font-normal text-ink-3 hover:bg-surface-subtle hover:text-ink transition-colors"
             >
               Сменить
             </button>
           )}
-        </div>
-        <div>
-          <span className="text-ink-3">Проект:</span>{" "}
-          {booking.projectName?.trim() === "Проект" ? (
-            <span className="font-medium text-ink-3">Без названия</span>
-          ) : (
-            <span className="font-medium">{booking.projectName}</span>
-          )}
-        </div>
-        <div>
-          <span className="text-ink-3">Период:</span>{" "}
-          <span className="font-medium">
-            {new Date(booking.startDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })} —{" "}
-            {new Date(booking.endDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
-          </span>
-        </div>
+        </dd>
+        <dt className="text-ink-3">Проект:</dt>
+        {booking.projectName?.trim() === "Проект" ? (
+          <dd className="min-w-0 break-words font-medium text-ink-3">Без названия</dd>
+        ) : (
+          <dd className="min-w-0 break-words font-medium">{booking.projectName}</dd>
+        )}
+        <dt className="text-ink-3">Период:</dt>
+        <dd className="min-w-0 break-words font-medium">
+          {new Date(booking.startDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })} —{" "}
+          {new Date(booking.endDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
+        </dd>
         {booking.comment ? (
-          <div>
-            <span className="text-ink-3">Комментарий:</span> <span>{booking.comment}</span>
-          </div>
+          <>
+            <dt className="text-ink-3">Комментарий:</dt>
+            <dd className="min-w-0 break-words">{booking.comment}</dd>
+          </>
         ) : null}
-      </div>
+      </dl>
     </div>
   );
 }

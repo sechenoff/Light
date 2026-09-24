@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { SectionHeader } from "@/components/SectionHeader";
 import { useRequireRole } from "@/hooks/useRequireRole";
 import { apiFetch } from "@/lib/api";
 import { toast } from "@/components/ToastProvider";
@@ -122,10 +123,8 @@ export default function SlangPage() {
       <div>
 
       {/* Page header */}
-      <div className="mt-4 mb-5">
-        <h1 className="text-xl font-semibold tracking-tight text-ink">
-          Словарь сленга
-        </h1>
+      <div className="mb-5">
+        <SectionHeader eyebrow="Справочник" title="Словарь сленга" />
         <p className="text-sm text-ink-2 mt-1">
           AI учится понимать, как гафферы называют оборудование. Здесь можно
           проверить, исправить или удалить выученные связи.

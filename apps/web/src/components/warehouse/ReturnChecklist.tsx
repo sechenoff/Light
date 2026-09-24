@@ -45,6 +45,7 @@ import { ProblemPanel } from "./ProblemPanel";
 import { DriverPanel } from "./DriverPanel";
 import { UnitGridRow, type UnitSlot } from "./UnitGridRow";
 import { ReturnResultView } from "./ReturnResultView";
+import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
 import { VehicleMileagePanel } from "./VehicleMileagePanel";
 import { isScanApiError } from "./types";
 import type {
@@ -757,7 +758,7 @@ export function ReturnChecklist({
 
   if (loading && !state) {
     return (
-      <div className="space-y-2 px-2.5 py-3">
+      <div className="space-y-2 px-3 py-3">
         <div className="h-[46px] animate-pulse rounded-lg bg-surface-subtle" />
         {[1, 2, 3, 4].map((i) => (
           <div
@@ -811,7 +812,7 @@ export function ReturnChecklist({
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <div className="flex-1 px-2.5 pb-4 pt-3 lg:px-4">
+      <div className="flex-1 px-3 pb-4 pt-3 lg:px-4">
         {/* Водители — при разгрузке пишем, кто привёз. */}
         <DriverPanel sessionId={sessionId} operation="RETURN" />
 
@@ -980,7 +981,7 @@ export function ReturnChecklist({
         прокрутить к ошибкам и видеть всю панель одновременно с действиями.
         Сама панель пропадает, если в брони нет BookingVehicle.
       */}
-      <div className="px-2.5 lg:px-4">
+      <div className="px-3 lg:px-4">
         <VehicleMileagePanel
           sessionId={sessionId}
           attemptedSubmit={attemptedSubmit}
@@ -990,7 +991,7 @@ export function ReturnChecklist({
       </div>
 
       {/* Sticky «Завершить приёмку →» footer (mockup .ph-bottom). */}
-      <div className="sticky bottom-0 border-t border-border bg-surface px-2.5 py-3 lg:px-4">
+      <div className={`${STICKY_ABOVE_TAB_BAR} border-t border-border bg-surface px-3 py-3 lg:px-4`}>
         {validationSummary && (
           <p
             role="alert"

@@ -43,7 +43,7 @@ export default function LkStatsPage() {
               key={p.value}
               onClick={() => setPeriod(p.value)}
               className={[
-                "px-3 py-1 text-sm rounded-md border transition-colors",
+                "inline-flex items-center h-10 sm:h-8 px-3 text-sm rounded border transition-colors",
                 period === p.value
                   ? "bg-accent-bright text-surface border-accent-bright"
                   : "border-border hover:bg-surface-muted",

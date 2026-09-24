@@ -70,8 +70,12 @@ function renderTrail(row: EquipmentStatRow, key: RowKey): ReactNode {
 }
 
 export function TopRankedSection({ title, rows, rowKey, emptyText }: TopRankedSectionProps) {
+  // У «Мёртвого груза» суммы нет — пустая колонка сдвигала показатель влево.
+  // У «Проблемных позиций» пустая ячейка остаётся нарочно: держит показатели
+  // строк на одной вертикали, когда сумма ремонта есть не у всех.
+  const hasTrail = rowKey !== "deadStock";
   return (
-    <section className="bg-surface border border-border rounded-xl p-5 mb-4">
+    <section className="bg-surface border border-border rounded-lg p-3 sm:p-4 shadow-xs mb-4">
       <header className="flex items-center justify-between mb-3">
         <h2 className="text-base font-semibold m-0">{title}</h2>
       </header>
@@ -84,14 +88,20 @@ export function TopRankedSection({ title, rows, rowKey, emptyText }: TopRankedSe
             return (
               <li
                 key={r.id}
-                className="grid grid-cols-1 gap-1 sm:grid-cols-[1fr_auto_auto] sm:gap-3 sm:items-center py-2.5"
+                className={`grid grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-0.5 py-2.5 sm:items-center ${
+                  hasTrail ? "sm:grid-cols-[1fr_auto_auto]" : "sm:grid-cols-[1fr_auto]"
+                }`}
               >
-                <Link href={`/equipment/${r.id}/units`} className="text-sm text-ink hover:text-accent">
+                <Link href={`/equipment/${r.id}/units`} className="min-w-0 text-sm text-ink hover:text-accent">
                   <div>{r.name}</div>
                   <div className="text-xs text-ink-3">{r.category}</div>
                 </Link>
-                <div className="text-sm sm:text-right">{renderPrimary(r, rowKey)}</div>
-                <div className="text-xs text-ink-3 sm:text-right sm:min-w-[6rem]">{trail ?? ""}</div>
+                <div className="text-sm text-right whitespace-nowrap">{renderPrimary(r, rowKey)}</div>
+                {hasTrail && (
+                  <div className="col-span-2 text-xs text-ink-3 sm:col-span-1 sm:min-w-[6rem] sm:text-right">
+                    {trail ?? ""}
+                  </div>
+                )}
               </li>
             );
           })}

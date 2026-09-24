@@ -44,7 +44,7 @@ export function RepairSiren({ blocking }: { blocking: RepairListItem[] }) {
   return (
     <section
       aria-label="Ремонты, срывающие брони"
-      className="mt-3.5 grid overflow-hidden rounded-lg border border-l-[3px] border-rose-border border-l-rose bg-rose-soft md:grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)_auto]"
+      className="mt-3.5 grid overflow-hidden rounded-lg border border-l-[3px] border-rose-border border-l-rose bg-rose-soft md:grid-cols-[auto_minmax(0,1fr)] xl:grid-cols-[auto_minmax(0,1fr)_auto]"
     >
       <div className="flex items-center gap-3 border-b border-rose-border px-4 py-3 md:border-b-0 md:border-r">
         <span className="mono-num text-[38px] font-semibold leading-none tracking-[-0.03em] text-rose">
@@ -55,7 +55,9 @@ export function RepairSiren({ blocking }: { blocking: RepairListItem[] }) {
         </span>
       </div>
 
-      <div className="flex min-w-0 flex-col justify-center gap-1.5 px-4 py-2.5">
+      {/* На телефоне записи разделены линией (мокап final-mobile), на широком
+          экране — просто зазором (final-desktop). */}
+      <div className="flex min-w-0 flex-col justify-center divide-y divide-rose-border px-4 py-2.5 md:gap-1.5 md:divide-y-0 [&>p:first-child]:pt-0 [&>p:last-child]:pb-0 [&>p]:py-1.5 md:[&>p]:py-0">
         {blocking.slice(0, 4).map((r) => {
           const b = r.risk.booking;
           const late =
@@ -63,18 +65,18 @@ export function RepairSiren({ blocking }: { blocking: RepairListItem[] }) {
               ? Math.abs(r.risk.slackDays)
               : null;
           return (
-            <p
-              key={r.id}
-              className="flex flex-wrap items-baseline gap-x-2 text-[12.5px] text-ink"
-            >
+            // Сплошной абзац, а не flex-обрывки: иначе перенос идёт кусками,
+            // и строка начинается с «· Имя ·».
+            <p key={r.id} className="text-[12.5px] leading-[1.45] text-ink">
               <span className="mono-num whitespace-nowrap font-semibold text-rose">
                 {b ? formatDayMonth(b.startDate) : "срок неизвестен"}
-              </span>
+              </span>{" "}
               <span className="font-semibold">{b?.projectName ?? r.title}</span>
-              {b && <span className="text-ink-2">· {b.clientName} ·</span>}
+              {b && <span className="text-ink-2"> · {b.clientName} ·</span>}{" "}
               <span className="font-semibold text-rose">
-                не хватает {r.risk.shortfall} × {r.title}
-              </span>
+                не хватает {r.risk.shortfall}{"\u00a0×\u00a0"}
+                {r.title}
+              </span>{" "}
               <span className="text-ink-2">
                 {late !== null && r.expectedReadyAt
                   ? `— чинят до ${formatDayMonth(r.expectedReadyAt)}, не успеваем`
@@ -88,7 +90,7 @@ export function RepairSiren({ blocking }: { blocking: RepairListItem[] }) {
       {/* На узком экране обе ссылки в одну строку не помещаются и обрезаются
           у правого края — переносим их, а `whitespace-nowrap` ниже не даёт
           рвать саму ссылку посередине. */}
-      <div className="flex flex-row flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-rose-border bg-surface/45 px-4 py-2.5 md:col-span-2 lg:col-span-1 lg:flex-col lg:items-start lg:justify-center lg:gap-1.5 lg:border-l lg:border-t-0">
+      <div className="flex flex-row flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-rose-border bg-surface/45 px-4 py-2.5 md:col-span-2 xl:col-span-1 xl:flex-col xl:items-start xl:justify-center xl:gap-1.5 xl:border-l xl:border-t-0">
         {firstBookingId && (
           <Link
             href={`/bookings/${firstBookingId}`}
@@ -125,12 +127,14 @@ function Tile({
 }) {
   const toneClass = tone === "rose" ? "text-rose" : tone === "amber" ? "text-amber" : "text-ink";
   return (
-    <div className="min-w-0 border-r border-border px-3 py-2.5 last:border-r-0 md:px-4">
-      <p className="eyebrow">
+    // На телефоне число стоит первым: подписи переносятся по-разному, и под
+    // ними числа разъезжались бы по высоте. Порядок в DOM не меняется.
+    <div className="flex min-w-0 flex-col border-r border-border px-3 py-2.5 last:border-r-0 md:block md:px-4">
+      <p className="eyebrow mt-0.5 md:mt-0">
         <span className="md:hidden">{mobileLabel ?? label}</span>
         <span className="hidden md:inline">{label}</span>
       </p>
-      <p className={`mono-num mt-0.5 text-[17px] font-semibold leading-tight md:text-xl ${toneClass}`}>
+      <p className={`mono-num order-first text-[17px] font-semibold leading-tight md:order-none md:mt-0.5 md:text-xl ${toneClass}`}>
         {value}
       </p>
       <p className="mt-px hidden text-[11.5px] leading-[1.45] text-ink-3 md:block">{sub}</p>
@@ -211,7 +215,9 @@ export function RepairSummaryStrip({
       aria-label="Сводка мастерской"
       className="mt-3 overflow-hidden rounded-lg border border-border bg-surface shadow-xs"
     >
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,auto)]">
+      {/* Деньги встают справа от светофора только с 1400 px (контент ≈1120, как
+          в мокапе): уже на 1024–1399 они сжимали плитки до подписи в слово. */}
+      <div className="grid min-[1400px]:grid-cols-[minmax(0,1fr)_minmax(0,auto)]">
         <div className="grid grid-cols-3">
           <Tile
             label="Срывают брони"
@@ -236,7 +242,7 @@ export function RepairSummaryStrip({
         </div>
 
         {money && (
-          <div className="hidden min-w-[280px] flex-col gap-1.5 border-t border-border bg-surface-muted px-4 py-2.5 md:flex lg:border-l lg:border-t-0">
+          <div className="hidden min-w-[280px] flex-col gap-1.5 border-t border-border bg-surface-muted px-4 py-2.5 md:flex min-[1400px]:border-l min-[1400px]:border-t-0">
             <div className="flex items-center gap-2">
               <span className="eyebrow inline-flex items-center gap-1">
                 <RepairIcon name="rub" />
@@ -287,7 +293,7 @@ export function RepairSummaryStrip({
             <RepairIcon name="rub" />
             <span>
               {pending.count} {pluralize(pending.count, "расход", "расхода", "расходов")} на{" "}
-              <span className="mono-num whitespace-nowrap">{formatRub(pending.total)}</span>{" "}
+              <span className="whitespace-nowrap">{formatRub(pending.total)}</span>{" "}
               {pluralize(pending.count, "ждёт", "ждут", "ждут")} подтверждения
             </span>
             <span className="ml-auto hidden text-[11.5px] underline md:inline">
@@ -319,7 +325,7 @@ export function RepairSummaryStrip({
                   type="button"
                   onClick={() => void handleApprove(e.id)}
                   disabled={approving === e.id}
-                  className="col-span-2 inline-flex items-center justify-center gap-1 rounded border border-border bg-surface px-2 py-0.5 text-[11px] font-semibold leading-[1.55] text-ink-2 transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright disabled:opacity-50 md:col-span-1"
+                  className="col-span-2 inline-flex items-center justify-center gap-1 rounded border border-border bg-surface px-2 py-2 text-[11px] font-semibold leading-[1.55] text-ink-2 transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright disabled:opacity-50 md:col-span-1 md:py-0.5"
                 >
                   {approving === e.id ? "…" : "Утвердить"}
                 </button>
@@ -397,7 +403,7 @@ export function RepairNextUp({
           type="button"
           onClick={() => void handleTake()}
           disabled={taking}
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded border border-accent-bright bg-accent-bright px-3 py-1.5 text-xs font-semibold text-surface transition-colors hover:border-accent hover:bg-accent disabled:opacity-60 lg:w-auto"
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded border border-accent-bright bg-accent-bright px-3 py-2.5 text-xs font-semibold text-surface transition-colors hover:border-accent hover:bg-accent disabled:opacity-60 lg:w-auto lg:py-1.5"
         >
           {taking ? "…" : "Взять в работу"}
         </button>

@@ -17,21 +17,21 @@ type Props = {
 function sourceBadge(source: SlangAlias["source"]) {
   if (source === "SEED") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent-soft text-accent border border-accent-border">
+      <span className="inline-flex w-fit justify-self-start items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent-soft text-accent border border-accent-border">
         📦 базовый
       </span>
     );
   }
   if (source === "AUTO_LEARNED") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-soft text-teal border border-teal-border">
+      <span className="inline-flex w-fit justify-self-start items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-soft text-teal border border-teal-border">
         🤖 авто
       </span>
     );
   }
   // MANUAL_ADMIN
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-soft text-slate border border-slate-border">
+    <span className="inline-flex w-fit justify-self-start items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-soft text-slate border border-slate-border">
       ✋ вручную
     </span>
   );
@@ -77,13 +77,16 @@ export function PhraseList({ aliases, equipmentId, onDelete, onRebind }: Props) 
           {visible.map((alias) => (
             <div
               key={alias.id}
-              className="grid gap-2.5 px-3.5 py-2 border-t border-surface-muted first:border-t-0 hover:bg-surface-muted transition-colors items-center"
-              style={{ gridTemplateColumns: "1fr 80px 90px 70px" }}
+              className="grid grid-cols-[minmax(0,1fr)_64px_64px] gap-2.5 px-3.5 py-2 border-t border-surface-muted first:border-t-0 hover:bg-surface-muted transition-colors items-center sm:grid-cols-[minmax(0,1fr)_80px_90px_70px]"
             >
-              <span className="font-mono text-[12.5px] text-ink font-medium truncate">
-                {alias.phraseOriginal}
-              </span>
-              {sourceBadge(alias.source)}
+              {/* На телефоне бейдж источника уходит под фразу — отдельной колонке нет места */}
+              <div className="min-w-0">
+                <span className="block truncate font-mono text-[12.5px] font-medium text-ink">
+                  {alias.phraseOriginal}
+                </span>
+                <span className="mt-0.5 flex sm:hidden">{sourceBadge(alias.source)}</span>
+              </div>
+              <span className="hidden sm:flex">{sourceBadge(alias.source)}</span>
               <span className="font-mono text-[11.5px] text-ink-2 text-right">
                 {alias.usageCount} исп.
               </span>

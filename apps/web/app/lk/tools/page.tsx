@@ -6,7 +6,7 @@ export default function LkToolsPage() {
       <section className="bg-surface-muted border border-border rounded-lg p-4 max-w-xl">
         <p className="eyebrow">Калькулятор электрической нагрузки</p>
         <p className="text-ink-2 mt-1 mb-3 text-sm">
-          Внешний инструмент Светобазы: расчёт потребления (W) и тока (A), режимы 1 фаза / 3 фазы.
+          Внешний инструмент Светобазы: расчёт потребления (W) и тока (A), режимы 1&nbsp;фаза&nbsp;/ 3&nbsp;фазы.
         </p>
         <a
           href="https://calc.svetobazarent.ru/"

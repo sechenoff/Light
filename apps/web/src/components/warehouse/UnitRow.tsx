@@ -50,7 +50,7 @@ const ISSUE_SEGMENTS: readonly SegmentDef<Exclude<IssueValue, null>>[] = [
     value: "WITHHELD",
     glyph: "✗",
     label: "не выдаём",
-    activeClass: "border-slate bg-slate text-white",
+    activeClass: "border-slate bg-slate text-surface",
     aria: "отметить «не выдаём»",
   },
 ];
@@ -129,7 +129,8 @@ function Segment<V>({
       }`}
     >
       <span aria-hidden="true">{seg.glyph}</span>
-      <span className="hidden sm:inline">{seg.label}</span>
+      {/* 1024–1279: правая панель узкая — только глифы, подпись есть в aria-label. */}
+      <span className="hidden sm:inline lg:hidden xl:inline">{seg.label}</span>
     </button>
   );
 }

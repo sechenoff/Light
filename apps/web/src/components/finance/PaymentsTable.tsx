@@ -50,6 +50,37 @@ function displayProjectName(projectName: string): string {
   return name || projectName;
 }
 
+/** «12 апр. — 15 апр.» — тот же формат, что в колонке «Период». */
+function formatPeriod(item: OverviewItem): string {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  return `${fmt(item.startDate)} — ${fmt(item.endDate)}`;
+}
+
+function EditBookingButton({ onClick, className }: { onClick: () => void; className: string }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Редактировать бронь"
+      title="Редактировать клиента, проект, сумму"
+      className={`rounded text-ink-3 hover:text-accent hover:bg-accent-soft transition-colors ${className}`}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="w-4 h-4"
+      >
+        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      </svg>
+    </button>
+  );
+}
+
 export function PaymentsTable({ items, loading, onLoadMore, onRefresh, onRecordPayment }: Props) {
   const [payingBooking, setPayingBooking] = useState<OverviewItem | null>(null);
   const [editingBooking, setEditingBooking] = useState<OverviewItem | null>(null);
@@ -80,17 +111,17 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh, onRecordP
 
   return (
     <>
-      {/* overflow-x-auto: на узких экранах (375px) таблица шире вьюпорта —
-          без горизонтального скролла колонка «Статус оплаты» с CTA «Оплатить» отсекалась */}
-      <div className="border border-border rounded-lg overflow-x-auto shadow-xs">
+      {/* Таблица — с md; «Период» — только с xl, иначе на 768–1279 строка не помещается.
+          Клиент/проект забирает остаток ширины (w-full max-w-0) и обрезается многоточием. */}
+      <div className="hidden md:block bg-surface border border-border rounded-lg overflow-x-auto shadow-xs">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-subtle">
               <th className="text-left px-4 py-3 eyebrow">Дата</th>
-              <th className="text-left px-4 py-3 eyebrow">Период</th>
+              <th className="hidden xl:table-cell text-left px-4 py-3 eyebrow">Период</th>
               <th className="text-left px-4 py-3 eyebrow">Клиент / проект</th>
               <th className="text-right pl-4 pr-8 py-3 eyebrow w-[140px]">Сумма</th>
-              <th className="text-left px-4 py-3 eyebrow w-[440px] min-w-[320px]">Статус оплаты</th>
+              <th className="text-left px-4 py-3 eyebrow min-w-[320px] xl:min-w-[440px]">Статус оплаты</th>
               <th className="px-2 py-3 w-[40px]"></th>
             </tr>
           </thead>
@@ -102,13 +133,11 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh, onRecordP
                   {new Date(item.startDate).toLocaleDateString("ru-RU")}
                 </td>
                 {/* Period */}
-                <td className="px-4 py-3 text-ink-2 text-xs whitespace-nowrap">
-                  {new Date(item.startDate).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
-                  {" — "}
-                  {new Date(item.endDate).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
+                <td className="hidden xl:table-cell px-4 py-3 text-ink-2 text-xs whitespace-nowrap">
+                  {formatPeriod(item)}
                 </td>
                 {/* Client / project — merged */}
-                <td className="px-4 py-3 max-w-[280px] truncate" title={`${item.client.name} / ${item.projectName}`}>
+                <td className="px-4 py-3 w-full max-w-0 truncate" title={`${item.client.name} / ${item.projectName}`}>
                   <span className="text-ink font-medium">{item.client.name}</span>
                   <span className="text-ink-3 mx-1">/</span>
                   <span className="text-ink-2">{displayProjectName(item.projectName)}</span>
@@ -123,30 +152,39 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh, onRecordP
                 </td>
                 {/* Edit action */}
                 <td className="px-2 py-3 text-center">
-                  <button
-                    onClick={() => setEditingBooking(item)}
-                    aria-label="Редактировать бронь"
-                    title="Редактировать клиента, проект, сумму"
-                    className="p-1.5 rounded text-ink-3 hover:text-accent hover:bg-accent-soft transition-colors"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="w-4 h-4"
-                    >
-                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                    </svg>
-                  </button>
+                  <EditBookingButton onClick={() => setEditingBooking(item)} className="p-1.5" />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Телефон: карточки вместо таблицы — статус и «Принять оплату» на всю ширину */}
+      <div className="md:hidden space-y-2">
+        {items.map((item) => (
+          <div key={item.id} className="rounded-lg border border-border bg-surface p-3 shadow-xs">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-semibold text-ink">{item.client.name}</p>
+                <p className="truncate text-[11px] text-ink-3">{displayProjectName(item.projectName)}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <span className="mono-num whitespace-nowrap text-[14px] font-semibold text-ink">
+                  {formatRub(item.finalAmount)}
+                </span>
+                <EditBookingButton
+                  onClick={() => setEditingBooking(item)}
+                  className="inline-flex h-8 w-8 items-center justify-center"
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-3 mono-num">{formatPeriod(item)}</p>
+            <div className="mt-2">
+              <StatusCell item={item} onPay={() => setPayingBooking(item)} />
+            </div>
+          </div>
+        ))}
       </div>
 
       {onLoadMore && (

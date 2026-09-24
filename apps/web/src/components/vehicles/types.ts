@@ -37,9 +37,12 @@ export const USAGE_UNIT_META: Record<
   HOURS: { short: "ч", counterLabel: "Наработка", sampleWord: "показаний" },
 };
 
-/** «90 239 км» / «1 250 ч» — число со своей единицей. */
+/**
+ * «90 239 км» / «1 250 ч» — число со своей единицей. Перед единицей — неразрывный
+ * пробел: «км» не должен уезжать на следующую строку без числа.
+ */
 export function formatUsage(n: number, unit: UsageUnit): string {
-  return `${n.toLocaleString("ru-RU")} ${USAGE_UNIT_META[unit].short}`;
+  return `${n.toLocaleString("ru-RU")}\u00a0${USAGE_UNIT_META[unit].short}`;
 }
 
 export type ServiceHealth =

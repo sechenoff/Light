@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toMoscowDateString, addDays } from "../../lib/moscowDate";
 import { TaskBookingPicker } from "./TaskBookingPicker";
+import { ModalViewport } from "../ModalViewport";
 import type { RelatedBookingRef } from "./groupTasks";
 
 // ── Типы ──────────────────────────────────────────────────────────────────────
@@ -162,17 +163,22 @@ export function TaskCreateModal({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 backdrop-blur-sm px-4"
+    // Без items-center: высокая модалка на телефоне уходила бы верхом за экран.
+    // Центрирует my-auto панели, а когда она выше окна — прокручивается подложка.
+    <ModalViewport
+      className="fixed inset-0 z-50 flex justify-center bg-scrim/40 backdrop-blur-sm px-4 py-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="task-create-title"
       onClick={() => !submitting && onClose()}
     >
       <div
-        className="w-[560px] max-w-full bg-surface border border-border rounded-[14px] shadow-[0_24px_48px_rgba(0,0,0,0.18)] overflow-hidden"
+        className="my-auto w-[560px] max-w-full bg-surface border border-border rounded-[14px] shadow-[0_24px_48px_rgba(0,0,0,0.18)] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Шапка */}
         <div className="flex justify-between items-center px-6 pt-5 pb-2">
-          <h2 className="text-[18px] font-semibold text-ink">Новая задача</h2>
+          <h2 id="task-create-title" className="text-[18px] font-semibold text-ink">Новая задача</h2>
           <button
             onClick={onClose}
             disabled={submitting}
@@ -309,7 +315,7 @@ export function TaskCreateModal({
                   onClick={() => setAssignedTo("")}
                   className={assigneePillClass(assignedTo === "")}
                 >
-                  <span className="w-5 h-5 rounded-full bg-slate text-white text-[10px] font-semibold flex items-center justify-center shrink-0">
+                  <span className="w-5 h-5 rounded-full bg-slate text-surface text-[10px] font-semibold flex items-center justify-center shrink-0">
                     ?
                   </span>
                   — Никому
@@ -324,7 +330,7 @@ export function TaskCreateModal({
                       className={assigneePillClass(assignedTo === a.id)}
                     >
                       <span
-                        className={`w-5 h-5 rounded-full text-white text-[10px] font-semibold flex items-center justify-center shrink-0 ${colorClass}`}
+                        className={`w-5 h-5 rounded-full text-surface text-[10px] font-semibold flex items-center justify-center shrink-0 ${colorClass}`}
                       >
                         {a.username.charAt(0).toUpperCase()}
                       </span>
@@ -355,7 +361,7 @@ export function TaskCreateModal({
               type="button"
               onClick={() => setUrgent((v) => !v)}
               aria-label={urgent ? "Снять срочность" : "Пометить срочным"}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border text-sm transition-colors ${
+              className={`w-full flex flex-col items-start gap-0.5 text-left px-4 py-3 rounded-lg border text-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${
                 urgent
                   ? "bg-rose-soft text-rose border-rose font-semibold"
                   : "bg-surface text-ink-2 border-border hover:border-border-strong"
@@ -397,6 +403,6 @@ export function TaskCreateModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalViewport>
   );
 }

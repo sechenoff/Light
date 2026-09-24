@@ -31,8 +31,6 @@ interface Props {
   bookingId: string;
   /** Tapped «← Принять обратно» — parent flips into RETURN with this booking. */
   onAcceptBack: (bookingId: string) => void;
-  /** Tapped «← К списку» — parent goes back to `InWorkList`. */
-  onBack: () => void;
 }
 
 /** «21.05.2026» — день.месяц.год из ISO datetime (локальное время браузера). */
@@ -43,7 +41,8 @@ function longDate(iso: string | null): string {
   return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
 }
 
-export function InWorkDetails({ bookingId, onAcceptBack, onBack }: Props) {
+// Назад к списку — стрелка в шапке WorkstationShell; своей ссылки здесь нет.
+export function InWorkDetails({ bookingId, onAcceptBack }: Props) {
   const [data, setData] = useState<InWorkDetailsT | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,15 +70,7 @@ export function InWorkDetails({ bookingId, onAcceptBack, onBack }: Props) {
 
   if (error) {
     return (
-      <div className="mx-2.5 my-2 space-y-3">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="К списку «В работе»"
-          className="text-[12px] text-accent hover:underline"
-        >
-          ← К списку «В работе»
-        </button>
+      <div className="mx-3 my-3 space-y-3 lg:mx-4">
         <div
           role="alert"
           className="rounded-lg border border-rose-border bg-rose-soft px-3 py-2.5 text-sm text-rose"
@@ -92,7 +83,7 @@ export function InWorkDetails({ bookingId, onAcceptBack, onBack }: Props) {
 
   if (!data) {
     return (
-      <div className="mx-2.5 my-2 space-y-2">
+      <div className="mx-3 my-3 space-y-2 lg:mx-4">
         <div
           className="h-4 w-32 animate-pulse rounded bg-surface-muted"
           aria-hidden="true"
@@ -114,16 +105,7 @@ export function InWorkDetails({ bookingId, onAcceptBack, onBack }: Props) {
   const itemsCount = data.items.length;
 
   return (
-    <div className="mx-2.5 my-2 space-y-4">
-      <button
-        type="button"
-        onClick={onBack}
-        aria-label="К списку «В работе»"
-        className="text-[12px] text-accent hover:underline"
-      >
-        ← К списку «В работе»
-      </button>
-
+    <div className="mx-3 my-3 space-y-4 lg:mx-4">
       <header>
         <p className="eyebrow">{data.displayNo}</p>
         <h2 className="mt-1 text-lg font-semibold text-ink">

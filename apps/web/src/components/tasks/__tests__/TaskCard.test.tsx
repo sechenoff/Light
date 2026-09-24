@@ -67,7 +67,7 @@ describe("TaskCard", () => {
     expect(screen.getByTitle("Иван")).toBeInTheDocument();
   });
 
-  it("applies rose left border when urgent=true", () => {
+  it("applies rose left stripe when urgent=true", () => {
     const { container } = render(
       <TaskCard
         task={makeTask({ urgent: true })}
@@ -77,9 +77,9 @@ describe("TaskCard", () => {
         onDelete={vi.fn()}
       />,
     );
-    // The root element should have the urgent border class
+    // Полоса срочности — псевдоэлемент поверх левого паддинга строки
     const card = container.firstChild as HTMLElement;
-    expect(card.className).toMatch(/border-rose/);
+    expect(card.className).toMatch(/before:bg-rose/);
   });
 
   it("toggles urgent flag via ⋯ menu when not urgent", () => {

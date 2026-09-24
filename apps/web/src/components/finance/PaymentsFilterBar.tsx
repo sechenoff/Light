@@ -58,14 +58,17 @@ export function PaymentsFilterBar({ filter, onChange }: Props) {
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-3 pb-4 border-b border-border mb-4">
+    // Телефон: сетка 2 колонки, пары «С/По» и «от/до» раскладываются по ячейкам
+    // (contents). С sm — строка с переносом. Все контролы h-9: при items-end
+    // одинаковая высота выравнивает и низ групп, и подписи над ними.
+    <div className="grid grid-cols-2 gap-3 pb-4 border-b border-border mb-4 sm:flex sm:flex-wrap sm:items-end">
       {/* Date range */}
-      <div className="flex items-center gap-2">
+      <div className="contents sm:flex sm:items-center sm:gap-2">
         <div>
           <label className="eyebrow block mb-1">С</label>
           <input
             type="date"
-            className="border border-border rounded px-2.5 py-1.5 text-sm bg-surface text-ink w-36"
+            className="border border-border rounded h-9 px-2.5 text-sm bg-surface text-ink w-full sm:w-36"
             value={filter.from}
             onChange={(e) => set("from", e.target.value)}
           />
@@ -74,7 +77,7 @@ export function PaymentsFilterBar({ filter, onChange }: Props) {
           <label className="eyebrow block mb-1">По</label>
           <input
             type="date"
-            className="border border-border rounded px-2.5 py-1.5 text-sm bg-surface text-ink w-36"
+            className="border border-border rounded h-9 px-2.5 text-sm bg-surface text-ink w-full sm:w-36"
             value={filter.to}
             onChange={(e) => set("to", e.target.value)}
           />
@@ -82,10 +85,10 @@ export function PaymentsFilterBar({ filter, onChange }: Props) {
       </div>
 
       {/* Client select */}
-      <div>
+      <div className="col-span-2 sm:col-span-1">
         <label className="eyebrow block mb-1">Клиент</label>
         <select
-          className="border border-border rounded px-2.5 py-1.5 text-sm bg-surface text-ink w-44"
+          className="border border-border rounded h-9 px-2.5 text-sm bg-surface text-ink w-full sm:w-44"
           value={filter.clientId}
           onChange={(e) => set("clientId", e.target.value)}
         >
@@ -97,12 +100,12 @@ export function PaymentsFilterBar({ filter, onChange }: Props) {
       </div>
 
       {/* Amount range */}
-      <div className="flex items-center gap-2">
+      <div className="contents sm:flex sm:items-center sm:gap-2">
         <div>
           <label className="eyebrow block mb-1">Сумма от</label>
           <input
             type="number"
-            className="border border-border rounded px-2.5 py-1.5 text-sm bg-surface text-ink w-28"
+            className="border border-border rounded h-9 px-2.5 text-sm bg-surface text-ink w-full sm:w-28"
             value={filter.amountMin}
             onChange={(e) => set("amountMin", e.target.value)}
             placeholder="0"
@@ -113,7 +116,7 @@ export function PaymentsFilterBar({ filter, onChange }: Props) {
           <label className="eyebrow block mb-1">до</label>
           <input
             type="number"
-            className="border border-border rounded px-2.5 py-1.5 text-sm bg-surface text-ink w-28"
+            className="border border-border rounded h-9 px-2.5 text-sm bg-surface text-ink w-full sm:w-28"
             value={filter.amountMax}
             onChange={(e) => set("amountMax", e.target.value)}
             placeholder="∞"
@@ -123,7 +126,7 @@ export function PaymentsFilterBar({ filter, onChange }: Props) {
       </div>
 
       {/* Payment status chips */}
-      <div>
+      <div className="col-span-2 sm:col-span-1">
         <p className="eyebrow mb-1">Статус оплаты</p>
         <div className="flex gap-1.5 flex-wrap">
           {ALL_STATUSES.map((s) => {
@@ -132,7 +135,7 @@ export function PaymentsFilterBar({ filter, onChange }: Props) {
               <button
                 key={s}
                 onClick={() => toggleStatus(s)}
-                className={`px-2.5 py-1 text-xs rounded border font-medium transition-colors ${
+                className={`inline-flex h-9 items-center px-2.5 text-xs rounded border font-medium transition-colors ${
                   active
                     ? "bg-accent-soft text-accent border-accent-border"
                     : "bg-surface text-ink-2 border-border hover:border-accent-border hover:text-accent"
@@ -156,7 +159,7 @@ export function PaymentsFilterBar({ filter, onChange }: Props) {
             amountMax: "",
             paymentStatuses: ["NOT_PAID", "PARTIALLY_PAID", "PAID", "OVERDUE"],
           })}
-          className="text-xs text-ink-2 hover:text-rose border border-border rounded px-2.5 py-1.5 self-end"
+          className="text-xs text-ink-2 hover:text-rose border border-border rounded h-9 px-2.5 self-end sm:ml-auto"
         >
           Сбросить
         </button>

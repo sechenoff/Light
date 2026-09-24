@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
 import { toast } from "../ToastProvider";
+import { BTN_MINI, BTN_PRIMARY, CHIP, CHIP_OFF, CHIP_ON } from "./cardChrome";
 import { RepairIcon } from "./RepairRiskBadge";
 import {
   formatDayMonth,
@@ -48,11 +49,6 @@ const UNIT_BLOCKED: Partial<Record<EquipmentUnitItem["status"], string>> = {
   MISSING: "не найдена",
 };
 
-const CHIP =
-  "rounded-xl border px-2.5 py-px text-[11px] font-semibold leading-[1.6] transition-colors";
-const CHIP_OFF =
-  "border-border bg-surface text-ink-2 hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright";
-const CHIP_ON = "border-accent bg-accent text-surface";
 const FIELD =
   "w-full rounded border border-border bg-surface px-2 py-1.5 text-[12.5px] text-ink placeholder:text-ink-3";
 const MINI =
@@ -633,14 +629,16 @@ export function AddRepairModal({
             сразу, в статусе «Ждёт ремонта».
           </p>
           <span className="ml-auto" />
-          <button type="button" onClick={onClose} disabled={saving} className={MINI}>
+          {/* Обе кнопки подвала — из общей фурнитуры: разная высота «Отмены» и
+              основной кнопки в одном ряду смотрелась как сбой вёрстки. */}
+          <button type="button" onClick={onClose} disabled={saving} className={BTN_MINI}>
             Отмена
           </button>
           <button
             type="button"
             onClick={() => void handleSubmit()}
             disabled={!canSubmit}
-            className="inline-flex items-center gap-1.5 rounded border border-accent-bright bg-accent-bright px-3 py-1 text-xs font-semibold text-surface transition-colors hover:border-accent hover:bg-accent disabled:opacity-50"
+            className={BTN_PRIMARY}
           >
             <RepairIcon name="wrench" />
             {saving ? "Сохраняем…" : "Вывести из работы"}

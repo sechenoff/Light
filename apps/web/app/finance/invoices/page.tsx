@@ -9,6 +9,8 @@ import { apiFetch, apiFetchRaw } from "../../../src/lib/api";
 import { formatRub, pluralize } from "../../../src/lib/format";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
+import { PeriodSelector } from "../../../src/components/finance/PeriodSelector";
+import type { PeriodKey as SelectorPeriodKey } from "../../../src/lib/periodUtils";
 import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoiceModal";
 import { VoidInvoiceModal } from "../../../src/components/finance/VoidInvoiceModal";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
@@ -68,13 +70,8 @@ function effectiveStatus(inv: Invoice): InvoiceStatus {
 
 type PeriodKey = "today" | "7d" | "30d" | "quarter" | "year" | "all";
 
-const PERIOD_OPTIONS: Array<{ key: PeriodKey; label: string }> = [
-  { key: "7d", label: "7 дней" },
-  { key: "30d", label: "30 дней" },
-  { key: "quarter", label: "Квартал" },
-  { key: "year", label: "Год" },
-  { key: "all", label: "За всё время" },
-];
+// Переключатель — общий PeriodSelector, но с урезанным набором периодов.
+const PERIOD_OPTIONS: SelectorPeriodKey[] = ["7d", "30d", "quarter", "year", "all"];
 
 function periodToDates(period: PeriodKey): { createdAfter?: string; createdBefore?: string } {
   if (period === "all") return {};
@@ -327,7 +324,7 @@ function InvoicesPage() {
   const draftSelectedCount = invoices.filter((inv) => selected.has(inv.id) && inv.status === "DRAFT").length;
 
   return (
-    <div className="min-h-screen bg-surface-subtle">
+    <div className="min-h-screen">
       <FinanceTabNav />
 
       <div className="p-4 lg:p-6">
@@ -339,7 +336,8 @@ function InvoicesPage() {
         </div>
 
         {/* Tabs (underline style) */}
-        <div className="flex border-b border-border mb-4 overflow-x-auto gap-0.5">
+        {/* На телефоне лента выходит к краю экрана — обрез читается как прокрутка (как на «Счетах на оплату») */}
+        <div className="-mx-4 flex border-b border-border mb-4 overflow-x-auto gap-0.5 px-4 sm:mx-0 sm:px-0">
           {STATUS_TABS.map((tab) => {
             const count = counts[tab.key] ?? 0;
             const active = statusTab === tab.key;
@@ -373,38 +371,27 @@ function InvoicesPage() {
 
         {/* Filter bar + CTA */}
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
             <input
               type="text"
               placeholder="🔍 № счёта, клиент, проект…"
-              className="border border-border rounded-lg px-3 py-2 text-[13px] bg-surface text-ink min-w-[240px]"
+              className="h-10 w-full border border-border rounded-lg px-3 py-0 text-[13px] bg-surface text-ink sm:h-9 sm:w-auto sm:min-w-[240px]"
               value={search}
               onChange={(e) => changeSearch(e.target.value)}
             />
-            {/* Period pills */}
-            <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 overflow-x-auto flex-nowrap">
-              {PERIOD_OPTIONS.map((opt) => (
-                <button
-                  key={opt.key}
-                  onClick={() => changePeriod(opt.key)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap ${
-                    period === opt.key
-                      ? "bg-accent-bright text-surface shadow-xs"
-                      : "text-ink-2 hover:text-ink"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <PeriodSelector
+              value={period}
+              onChange={(p) => changePeriod(p as PeriodKey)}
+              options={PERIOD_OPTIONS}
+            />
           </div>
-          <div className="flex gap-2">
+          <div className="flex w-full gap-2 sm:w-auto">
             {/* FIN-09: кнопка «Экспорт XLSX» была без onClick (тупик) — эндпоинта
                 экспорта счетов нет. Убрана, чтобы не создавать ложного аффорданса. */}
             {isSA && (
               <button
                 onClick={() => setCreateOpen(true)}
-                className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-surface rounded-lg hover:opacity-90 transition-opacity"
+                className="inline-flex h-10 w-full items-center justify-center whitespace-nowrap rounded px-3.5 text-[12px] font-semibold bg-accent-bright text-surface hover:opacity-90 transition-opacity sm:h-9 sm:w-auto"
               >
                 + Создать счёт
               </button>
@@ -434,14 +421,15 @@ function InvoicesPage() {
         {loading ? (
           <div className="text-center py-12 text-ink-3 text-sm">Загрузка…</div>
         ) : visibleInvoices.length === 0 ? (
-          <div className="text-center py-16 text-ink-2 bg-surface border border-border rounded-lg">
+          <div className="text-center py-16 px-6 text-ink-2 bg-surface border border-border rounded-lg">
             <p className="text-[15px] font-medium mb-2">Счетов нет</p>
-            <p className="text-sm text-ink-3">Создайте счёт на странице брони → «Создать счёт»</p>
+            <p className="text-sm text-ink-3 text-balance">Создайте счёт на странице брони → «Создать счёт»</p>
           </div>
         ) : (
           <>
             {/* Desktop table */}
-            <div className="hidden md:block bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
+            {/* overflow-x-auto: на 768–1279 таблица шире карточки — прокрутка внутри, а не обрез */}
+            <div className="hidden md:block bg-surface border border-border rounded-lg overflow-x-auto shadow-xs">
               <table className="w-full text-[12.5px]">
                 <thead className="bg-surface-subtle border-b border-border">
                   <tr>
@@ -456,8 +444,8 @@ function InvoicesPage() {
                     </th>
                     <th className="px-3 py-3 text-left eyebrow">№ счёта</th>
                     <th className="px-3 py-3 text-left eyebrow">Клиент</th>
-                    <th className="px-3 py-3 text-left eyebrow">Бронь</th>
-                    <th className="px-3 py-3 text-left eyebrow">Тип</th>
+                    <th className="hidden px-3 py-3 text-left eyebrow xl:table-cell">Бронь</th>
+                    <th className="hidden px-3 py-3 text-left eyebrow xl:table-cell">Тип</th>
                     <th className="px-3 py-3 text-right eyebrow">Сумма</th>
                     <th className="px-3 py-3 text-right eyebrow">Оплачено</th>
                     <th className="px-3 py-3 text-right eyebrow">{FINANCE_TERMS.invoiceOutstanding}</th>
@@ -491,21 +479,21 @@ function InvoicesPage() {
 
                         </td>
                         <td className="px-3 py-3">
-                          <span className={`font-mono text-xs bg-surface-subtle border border-border rounded px-1.5 py-0.5 ${isVoid ? "line-through" : ""}`}>
+                          <span className={`font-mono text-xs bg-surface-subtle border border-border rounded px-1.5 py-0.5 whitespace-nowrap ${isVoid ? "line-through" : ""}`}>
                             {invoiceNumberLabel(inv.number)}
                           </span>
                         </td>
                         <td className="px-3 py-3">
                           <div className="font-medium text-ink">{inv.booking.client.name}</div>
-                          <div className="text-[11px] text-ink-3 mt-0.5 truncate max-w-[180px]">{inv.booking.projectName}</div>
+                          <div className="text-[11px] text-ink-3 mt-0.5 truncate max-w-[160px]">{inv.booking.projectName}</div>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="hidden px-3 py-3 xl:table-cell">
                           <Link href={`/bookings/${inv.booking.id}`} className="text-[11px] text-accent hover:underline font-mono">
                             #{inv.booking.id.slice(-6)}
                           </Link>
                         </td>
-                        <td className="px-3 py-3 text-ink-2">{KIND_LABELS[inv.kind]}</td>
-                        <td className={`px-3 py-3 text-right mono-num ${isVoid ? "line-through text-ink-3" : ""}`}>{formatRub(Number(inv.total))}{Number(inv.adjustmentAmount ?? 0) !== 0 && <span className="block text-xs text-ink-3">С корректировкой · исходно {formatRub(Number(inv.originalTotal))}</span>}</td>
+                        <td className="hidden px-3 py-3 text-ink-2 xl:table-cell">{KIND_LABELS[inv.kind]}</td>
+                        <td className={`px-3 py-3 text-right mono-num ${isVoid ? "line-through text-ink-3" : ""}`}>{formatRub(Number(inv.total))}{Number(inv.adjustmentAmount ?? 0) !== 0 && <span className="block font-sans text-[11px] text-ink-3" title="С корректировкой">исходно <span className="whitespace-nowrap">{formatRub(Number(inv.originalTotal))}</span></span>}</td>
                         <td className="px-3 py-3 text-right mono-num text-ink-2">
                           {isVoid ? "—" : formatRub(Number(inv.paidAmount))}
                         </td>
@@ -513,7 +501,7 @@ function InvoicesPage() {
                           {isVoid ? "—" : outstanding > 0 ? formatRub(outstanding) : "—"}
                         </td>
                         <td className="px-3 py-3 text-ink-2">
-                          <div className="text-[12px]">{isVoid ? "—" : formatDate(inv.dueDate)}</div>
+                          <div className="text-[12px] whitespace-nowrap">{isVoid ? "—" : formatDate(inv.dueDate)}</div>
                           {!isVoid && effStatus !== "PAID" && overdueDays && (
                             <div className="text-rose text-[11px]">{overdueDays} дн. проср.</div>
                           )}
@@ -610,7 +598,8 @@ function InvoicesPage() {
                         <StatusPill variant={statusVariant(effStatus)} label={statusLabel(effStatus)} />
                       </div>
                       <div className="mono-num text-[18px] font-semibold mb-3">
-                        {formatRub(Number(inv.total))}{Number(inv.adjustmentAmount ?? 0) !== 0 && <span className="block text-xs text-ink-3">С корректировкой · исходно {formatRub(Number(inv.originalTotal))}</span>}
+                        {/* В карточке место есть, а подсказки по наведению на телефоне нет — пишем полностью */}
+                        {formatRub(Number(inv.total))}{Number(inv.adjustmentAmount ?? 0) !== 0 && <span className="block font-sans text-[11px] font-normal text-ink-3">С корректировкой · исходно <span className="whitespace-nowrap">{formatRub(Number(inv.originalTotal))}</span></span>}
                       </div>
                       <div className="flex gap-2">
                         {["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (

@@ -103,8 +103,9 @@ export type ProjectData = {
     lines: ProjectLine[];
   } | null;
 };
+// 16 px на телефоне — против автозума iOS; с md кегль как у формы обычной брони.
 export const projectInput =
-  "w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-base text-ink";
+  "w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-base text-ink md:text-[13.5px]";
 export const projectButton =
   "rounded border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-surface-muted disabled:opacity-50 disabled:cursor-not-allowed";
 export const projectPrimary =

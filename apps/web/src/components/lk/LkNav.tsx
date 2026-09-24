@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -14,8 +15,25 @@ const items = [
 
 export function LkNav() {
   const pathname = usePathname();
+  const navRef = useRef<HTMLElement>(null);
+
+  // На телефоне меню — прокручиваемая лента: правые пункты за краем, поэтому
+  // активный пункт, если он не виден целиком, докручиваем в видимую область.
+  // Именно scrollLeft, а не scrollIntoView — страница не прыгает по вертикали.
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+    const hidden = active.offsetLeft + active.offsetWidth > nav.scrollLeft + nav.clientWidth;
+    if (hidden || active.offsetLeft < nav.scrollLeft) nav.scrollLeft = active.offsetLeft - 16;
+  }, [pathname]);
+
   return (
-    <nav className="flex flex-wrap gap-x-1 gap-y-2 overflow-x-auto" aria-label="Меню кабинета">
+    <nav
+      ref={navRef}
+      className="relative -mx-4 px-4 flex gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible"
+      aria-label="Меню кабинета"
+    >
       {items.map((it) => {
         const active =
           pathname === it.href ||
@@ -24,10 +42,11 @@ export function LkNav() {
           <Link
             key={it.href}
             href={it.href}
-            className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
+            aria-current={active ? "page" : undefined}
+            className={`shrink-0 inline-flex items-center h-10 sm:h-8 px-3 rounded text-sm transition-colors ${
               active
                 ? "bg-accent-bright text-surface"
-                : "text-surface/80 hover:bg-surface/10"
+                : "text-on-inverse/80 hover:bg-on-inverse/10 hover:text-on-inverse"
             }`}
           >
             {it.label}

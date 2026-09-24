@@ -116,9 +116,9 @@ export function EquipmentImportTab() {
       </div>
 
       {/* Step 1: File pick */}
-      <div className="rounded-xl border border-border bg-surface overflow-hidden">
+      <div className="rounded-lg border border-border bg-surface overflow-hidden">
         <div className="px-4 py-3 bg-surface border-b border-border flex items-center justify-between">
-          <span className="text-xs font-semibold text-ink-2 uppercase tracking-wide">
+          <span className="eyebrow">
             Шаг 1 — Файл
           </span>
           {preview && (
@@ -128,19 +128,28 @@ export function EquipmentImportTab() {
           )}
         </div>
         <div className="p-4 flex items-center gap-4 flex-wrap">
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={(e) => {
-              const f = e.target.files?.[0] ?? null;
-              setFile(f);
-              setPreview(null);
-              setCommitResult(null);
-              setError(null);
-            }}
-          />
+          {/* Своя кнопка вместо нативного «Choose File»: подпись по-русски и имя файла
+              из state — после «Сбросить» нативное поле продолжало бы показывать старое. */}
+          <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded border border-border bg-surface px-4 text-sm text-ink hover:bg-surface-muted focus-within:ring-2 focus-within:ring-accent">
+            Выбрать файл
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                setFile(f);
+                setPreview(null);
+                setCommitResult(null);
+                setError(null);
+                // Сброс value: после «Сбросить» можно выбрать тот же файл ещё раз.
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <span className="max-w-[220px] truncate text-sm text-ink-2">{file?.name ?? "Файл не выбран"}</span>
           <button
-            className="rounded-lg bg-accent text-surface px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-40 transition-colors"
+            className="h-9 rounded bg-accent-bright text-surface px-4 text-sm hover:bg-accent disabled:opacity-40 transition-colors"
             disabled={!file || loadingPreview}
             onClick={handlePreview}
           >
@@ -151,9 +160,9 @@ export function EquipmentImportTab() {
 
       {/* Step 2: Mapping + preview */}
       {preview && (
-        <div className="rounded-xl border border-border bg-surface overflow-hidden">
+        <div className="rounded-lg border border-border bg-surface overflow-hidden">
           <div className="px-4 py-3 bg-surface border-b border-border">
-            <span className="text-xs font-semibold text-ink-2 uppercase tracking-wide">
+            <span className="eyebrow">
               Шаг 2 — Сопоставление колонок
             </span>
           </div>
@@ -214,15 +223,15 @@ export function EquipmentImportTab() {
 
             {/* Step 3: Commit */}
             <div className="lg:col-span-5 space-y-4">
-              <div className="rounded-xl border border-border bg-surface p-4">
-                <span className="text-xs font-semibold text-ink-2 uppercase tracking-wide">
+              <div className="rounded-lg border border-border bg-surface p-4">
+                <span className="eyebrow">
                   Шаг 3 — Запуск импорта
                 </span>
                 <p className="text-sm text-ink-2 mt-2 mb-4">
                   После нажатия новые позиции будут созданы, существующие — обновлены. Действие нельзя отменить.
                 </p>
                 <button
-                  className="w-full rounded-lg bg-emerald text-surface px-4 py-3 text-sm font-medium hover:bg-emerald-soft0 disabled:opacity-50 transition-colors"
+                  className="w-full rounded bg-emerald text-surface px-4 py-3 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-colors"
                   onClick={handleCommit}
                   disabled={!preview}
                 >

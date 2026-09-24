@@ -56,7 +56,7 @@ function EntryRow({ e }: { e: JournalEntryData }) {
     return (
       <div className="flex min-h-[48px] items-center gap-2.5 border-b border-surface-subtle px-3.5 py-2 last:border-b-0">
         <span aria-hidden className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md bg-amber">
-          <IconWrench className="h-[13px] w-[13px] text-white" strokeWidth={2.2} />
+          <IconWrench className="h-[13px] w-[13px] text-surface" strokeWidth={2.2} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[12.5px] font-medium">
@@ -85,7 +85,7 @@ function EntryRow({ e }: { e: JournalEntryData }) {
         aria-hidden
         className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md ${isIssue ? "bg-accent-bright" : "bg-teal"}`}
       >
-        <Icon className="h-[13px] w-[13px] text-white" strokeWidth={2.2} />
+        <Icon className="h-[13px] w-[13px] text-surface" strokeWidth={2.2} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12.5px] font-medium">
@@ -146,7 +146,7 @@ export function JournalScreen({ onOpenProblems }: { onOpenProblems: () => void }
           onClick={() => setScope(s)}
           className={`min-h-[28px] rounded-full border px-3 py-0.5 text-[10.5px] font-semibold transition-colors ${
             scope === s
-              ? "border-ink bg-ink text-white"
+              ? "border-inverse bg-inverse text-on-inverse"
               : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
           }`}
         >
@@ -183,89 +183,92 @@ export function JournalScreen({ onOpenProblems }: { onOpenProblems: () => void }
     : 1;
 
   return (
-    <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-5 lg:py-4">
-      {/* KPI недели */}
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { l: "Неделя", v: data?.stats.sessions, s: "сессий" },
-          { l: "Позиций", v: data?.stats.items, s: "обработано" },
-          {
-            l: "Средняя",
-            v: data?.stats.avgMinutes != null ? `${data.stats.avgMinutes}м` : "—",
-            s: "длительность",
-          },
-        ].map((k) => (
-          <div key={k.l} className="rounded-lg border border-border bg-surface px-3 py-2.5 shadow-xs">
-            <p className="eyebrow">{k.l}</p>
-            <p className="mono-num text-[22px] font-semibold leading-tight">
-              {data ? k.v : "…"}
-            </p>
-            <p className="text-[10.5px] text-ink-3">{k.s}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Бары по дням */}
-      <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
-        <div className="flex items-center justify-between border-b border-border bg-surface-muted px-3.5 py-2.5">
-          <h3 className="text-[12.5px] font-semibold">Операции по дням</h3>
-          {scopeToggle}
-        </div>
-        <div className="flex h-[96px] items-end gap-1.5 px-3.5 pb-1.5 pt-3" aria-hidden>
-          {(data?.stats.perDay ?? Array.from({ length: 7 }, () => null)).map(
-            (d, i) => {
-              const issuesH = d ? (d.issues / maxDayOps) * 100 : 0;
-              const returnsH = d ? (d.returns / maxDayOps) * 100 : 0;
-              const isToday = i === 6;
-              return (
-                <div key={i} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
-                  <div className="flex w-full max-w-[34px] flex-1 flex-col justify-end gap-0.5">
-                    {issuesH > 0 && (
-                      <div className="rounded-t-[3px] bg-accent-bright" style={{ height: `${issuesH * 0.72}%` }} />
-                    )}
-                    {returnsH > 0 && (
-                      <div className="rounded-b-[2px] bg-teal" style={{ height: `${returnsH * 0.72}%` }} />
-                    )}
-                  </div>
-                  <span
-                    className={`mono-num text-[9.5px] ${isToday ? "font-bold text-accent-bright" : "text-ink-3"}`}
-                  >
-                    {d ? WEEKDAY_FMT.format(new Date(`${d.date}T12:00:00`)) : ""}
-                  </span>
-                </div>
-              );
+    // С 1280 px — две колонки, как в мокапе 05: слева KPI и бары, справа лента.
+    <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-6 lg:py-4 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] xl:items-start">
+      <div className="flex min-w-0 flex-col gap-3">
+        {/* KPI недели */}
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { l: "Неделя", v: data?.stats.sessions, s: "сессий" },
+            { l: "Позиций", v: data?.stats.items, s: "обработано" },
+            {
+              l: "Средняя",
+              v: data?.stats.avgMinutes != null ? `${data.stats.avgMinutes}м` : "—",
+              s: "длительность",
             },
-          )}
+          ].map((k) => (
+            <div key={k.l} className="rounded-lg border border-border bg-surface px-3 py-2.5 shadow-xs">
+              <p className="eyebrow">{k.l}</p>
+              <p className="mono-num text-[22px] font-semibold leading-tight">
+                {data ? k.v : "…"}
+              </p>
+              <p className="text-[10.5px] text-ink-3">{k.s}</p>
+            </div>
+          ))}
         </div>
-        <div className="flex gap-3.5 px-3.5 pb-3 text-[11px] text-ink-2">
-          <span className="flex items-center gap-1.5">
-            <i aria-hidden className="inline-block h-[9px] w-[9px] rounded-[2px] bg-accent-bright" />
-            Выдачи
-          </span>
-          <span className="flex items-center gap-1.5">
-            <i aria-hidden className="inline-block h-[9px] w-[9px] rounded-[2px] bg-teal" />
-            Возвраты
-          </span>
-        </div>
-      </section>
 
-      {/* Ссылка на «Поломки» со счётчиками месяца — виден на мобильном
-          (на десктопе Поломки — отдельный пункт rail). */}
-      <button
-        type="button"
-        onClick={onOpenProblems}
-        className="flex items-center gap-2.5 rounded-lg border border-amber-border bg-amber-soft px-3.5 py-3 text-left transition-colors hover:bg-surface lg:hidden"
-      >
-        <IconWrench className="h-5 w-5 shrink-0 text-amber" strokeWidth={2} />
-        <span className="flex-1 text-[13px] font-semibold text-amber">
-          Поломки и потеряшки
-        </span>
-        <span className="text-[11px] text-amber/80">
-          {data
-            ? `${data.stats.repairsMonth} рем. · ${data.stats.problemsMonth} потер. · ${data.stats.closedMonth} почин.`
-            : "…"}
-        </span>
-      </button>
+        {/* Бары по дням */}
+        <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+          <div className="flex items-center justify-between border-b border-border bg-surface-muted px-3.5 py-2.5">
+            <h3 className="text-[12.5px] font-semibold">Операции по дням</h3>
+            {scopeToggle}
+          </div>
+          <div className="flex h-[96px] items-end gap-1.5 px-3.5 pb-1.5 pt-3" aria-hidden>
+            {(data?.stats.perDay ?? Array.from({ length: 7 }, () => null)).map(
+              (d, i) => {
+                const issuesH = d ? (d.issues / maxDayOps) * 100 : 0;
+                const returnsH = d ? (d.returns / maxDayOps) * 100 : 0;
+                const isToday = i === 6;
+                return (
+                  <div key={i} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
+                    <div className="flex w-full max-w-[34px] flex-1 flex-col justify-end gap-0.5">
+                      {issuesH > 0 && (
+                        <div className="rounded-t-[3px] bg-accent-bright" style={{ height: `${issuesH * 0.72}%` }} />
+                      )}
+                      {returnsH > 0 && (
+                        <div className="rounded-b-[2px] bg-teal" style={{ height: `${returnsH * 0.72}%` }} />
+                      )}
+                    </div>
+                    <span
+                      className={`mono-num text-[9.5px] ${isToday ? "font-bold text-accent-bright" : "text-ink-3"}`}
+                    >
+                      {d ? WEEKDAY_FMT.format(new Date(`${d.date}T12:00:00`)) : ""}
+                    </span>
+                  </div>
+                );
+              },
+            )}
+          </div>
+          <div className="flex gap-3.5 px-3.5 pb-3 text-[11px] text-ink-2">
+            <span className="flex items-center gap-1.5">
+              <i aria-hidden className="inline-block h-[9px] w-[9px] rounded-[2px] bg-accent-bright" />
+              Выдачи
+            </span>
+            <span className="flex items-center gap-1.5">
+              <i aria-hidden className="inline-block h-[9px] w-[9px] rounded-[2px] bg-teal" />
+              Возвраты
+            </span>
+          </div>
+        </section>
+
+        {/* Ссылка на «Поломки» со счётчиками месяца — виден на мобильном
+            (на десктопе Поломки — отдельный пункт rail). */}
+        <button
+          type="button"
+          onClick={onOpenProblems}
+          className="flex items-center gap-2.5 rounded-lg border border-amber-border bg-amber-soft px-3.5 py-3 text-left transition-colors hover:bg-surface lg:hidden"
+        >
+          <IconWrench className="h-5 w-5 shrink-0 text-amber" strokeWidth={2} />
+          <span className="flex-1 text-[13px] font-semibold text-amber">
+            Поломки и потеряшки
+          </span>
+          <span className="text-[11px] text-amber/80">
+            {data
+              ? `${data.stats.repairsMonth} рем. · ${data.stats.problemsMonth} потер. · ${data.stats.closedMonth} почин.`
+              : "…"}
+          </span>
+        </button>
+      </div>
 
       {/* Лента */}
       <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">

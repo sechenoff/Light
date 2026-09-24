@@ -43,9 +43,10 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
         const startD = new Date(booking.startDate);
         const endD = new Date(booking.endDate);
         const tz = { timeZone: "Europe/Moscow" } as const;
-        const heroDate = startD.toLocaleDateString("ru-RU", {
-          day: "2-digit", month: "long", year: "numeric", ...tz,
-        });
+        // ru-RU дописывает «г.» к году — в надстрочнике оно лишнее (мокап: «Бронь · 17 мая 2026»).
+        const heroDate = startD
+          .toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric", ...tz })
+          .replace(/\s?г\.$/, "");
         const project =
           booking.projectName?.trim() && booking.projectName.trim() !== "Проект"
             ? booking.projectName.trim()
@@ -91,23 +92,27 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
           <>
             <section className="mb-5 no-print">
               <p className="eyebrow text-ink-3">Бронь · {heroDate}</p>
-              <h1 className="mt-1 font-cond text-3xl md:text-4xl leading-tight tracking-tight text-ink">
+              <h1 className="mt-1 font-cond text-2xl sm:text-3xl md:text-4xl leading-tight tracking-tight text-ink break-words">
                 {project}
               </h1>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-3">
-                <StatusPill variant={statusVariant(booking.status)} label={statusText(booking.status)} />
-                <StatusPill variant={payVariant} label={payLabel} />
-                {booking.paymentForm === "CASHLESS" && (
-                  <StatusPill
-                    variant="info"
-                    label={`По счёту (ИП)${
-                      booking.cashlessSurchargePercent ? ` · +${Number(booking.cashlessSurchargePercent)} %` : ""
-                    }`}
-                  />
-                )}
-                <span className="text-border-strong">·</span>
+              {/* На телефоне пилюли, клиент и период — отдельными строками без «·»:
+                  разделители-флекс-элементы при переносе повисали на краю строки. */}
+              <div className="mt-3 flex flex-col gap-1.5 text-sm text-ink-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusPill variant={statusVariant(booking.status)} label={statusText(booking.status)} />
+                  <StatusPill variant={payVariant} label={payLabel} />
+                  {booking.paymentForm === "CASHLESS" && (
+                    <StatusPill
+                      variant="info"
+                      label={`По счёту (ИП)${
+                        booking.cashlessSurchargePercent ? ` · +${Number(booking.cashlessSurchargePercent)} %` : ""
+                      }`}
+                    />
+                  )}
+                </div>
+                <span aria-hidden className="hidden sm:inline text-border-strong">·</span>
                 <span>{booking.client.name}</span>
-                <span className="text-border-strong">·</span>
+                <span aria-hidden className="hidden sm:inline text-border-strong">·</span>
                 <span className="mono-num">
                   {periodStr} · {shifts} {shifts === 1 ? "смена" : shifts < 5 ? "смены" : "смен"}
                 </span>
@@ -131,8 +136,8 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
                   {booking.manualFinalAmount != null
                     ? "override SUPER_ADMIN'а — автомат не применяется"
                     : booking.paymentForm === "CASHLESS"
-                      ? "оборудование + транспорт − скидка + надбавка за безнал"
-                      : "оборудование + транспорт − скидка"}
+                      ? "оборудование + транспорт\u00A0−\u00A0скидка + надбавка за безнал"
+                      : "оборудование + транспорт\u00A0−\u00A0скидка"}
                 </p>
               </div>
               <div className={`rounded-lg border shadow-xs p-3 ${paidCardTone ? "border-emerald-border bg-gradient-to-b from-emerald-soft to-surface" : "border-border bg-surface"}`}>

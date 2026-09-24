@@ -10,6 +10,10 @@ export const control =
   "min-h-10 w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-base sm:text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 export const button =
   "inline-flex min-h-10 items-center justify-center gap-2 rounded border border-border bg-surface px-3 py-2 text-sm font-medium text-ink-2 hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
+/** Главная кнопка на синей заливке: text-surface (а не text-white), чтобы ночью
+ *  надпись оставалась читаемой на осветлённом accent; hover с !important
+ *  специфичнее `!bg-accent` и потому срабатывает. */
+export const primaryButton = `${button} !border-accent !bg-accent !text-surface hover:!border-accent-bright hover:!bg-accent-bright`;
 export function RegisterFilters({
   params,
   options,
@@ -45,7 +49,7 @@ export function RegisterFilters({
   );
   return (
     <form
-      className="rounded-lg border border-border bg-surface-subtle p-4"
+      className="rounded bg-surface-subtle p-3 sm:p-4"
       onSubmit={(e) => {
         e.preventDefault();
         const data = new FormData(e.currentTarget),
@@ -114,6 +118,15 @@ export function RegisterFilters({
           }),
         )}
         {field(
+          "age",
+          "Срок просрочки оплаты",
+          select("age", {
+            "1-7": "До 7 дней включительно",
+            "8-30": "8–30 дней",
+            "31+": "Более 30 дней",
+          }),
+        )}
+        {field(
           "dateField",
           "По какой дате",
           <select
@@ -148,15 +161,7 @@ export function RegisterFilters({
             defaultValue={params.get("to") ?? ""}
           />,
         )}
-        {field(
-          "age",
-          "Срок просрочки оплаты",
-          select("age", {
-            "1-7": "До 7 дней включительно",
-            "8-30": "8–30 дней",
-            "31+": "Более 30 дней",
-          }),
-        )}
+        {field("action", "Требуемое действие", select("action", actionLabels))}
         {field(
           "amountField",
           "Фильтровать сумму",
@@ -195,7 +200,6 @@ export function RegisterFilters({
             defaultValue={params.get("max") ?? ""}
           />,
         )}
-        {field("action", "Требуемое действие", select("action", actionLabels))}
         {field("issue", "Проблемы оборудования", select("issue", BOOKING_ISSUE_FILTERS))}
       </div>
       <fieldset className="mt-4">
@@ -225,7 +229,7 @@ export function RegisterFilters({
           «Период аренды» находит все брони, пересекающие выбранные даты,
           включая длинные проекты. Фильтры применяются ко всей базе.
         </p>
-        <button className={`${button} !bg-accent !text-white`} type="submit">
+        <button className={`${primaryButton} ml-auto`} type="submit">
           Применить фильтры
         </button>
       </div>

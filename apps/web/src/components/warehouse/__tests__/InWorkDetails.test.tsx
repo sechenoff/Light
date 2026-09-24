@@ -4,7 +4,6 @@
  * Verifies:
  *  - Renders booking items + finance breakdown
  *  - «← Принять обратно» button calls onAcceptBack(bookingId)
- *  - «← К списку» calls onBack()
  *  - Loading state
  */
 
@@ -64,7 +63,6 @@ describe("InWorkDetails", () => {
       <InWorkDetails
         bookingId="b1"
         onAcceptBack={vi.fn()}
-        onBack={vi.fn()}
       />,
     );
     await screen.findByText("Test project");
@@ -83,7 +81,6 @@ describe("InWorkDetails", () => {
       <InWorkDetails
         bookingId="b1"
         onAcceptBack={onAcceptBack}
-        onBack={vi.fn()}
       />,
     );
     await screen.findByText("Test project");
@@ -93,19 +90,11 @@ describe("InWorkDetails", () => {
     expect(onAcceptBack).toHaveBeenCalledWith("b1");
   });
 
-  it("«← К списку» calls onBack", async () => {
+  it("не рисует свою ссылку «К списку» — назад ведёт стрелка шапки", async () => {
     vi.mocked(scanApi.getInWorkDetails).mockResolvedValue(fixtureDetails);
-    const onBack = vi.fn();
-    render(
-      <InWorkDetails
-        bookingId="b1"
-        onAcceptBack={vi.fn()}
-        onBack={onBack}
-      />,
-    );
+    render(<InWorkDetails bookingId="b1" onAcceptBack={vi.fn()} />);
     await screen.findByText("Test project");
-    fireEvent.click(screen.getByRole("button", { name: /К списку/i }));
-    expect(onBack).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /К списку/i })).not.toBeInTheDocument();
   });
 
   it("shows outstanding in rose when > 0", async () => {
@@ -114,7 +103,6 @@ describe("InWorkDetails", () => {
       <InWorkDetails
         bookingId="b1"
         onAcceptBack={vi.fn()}
-        onBack={vi.fn()}
       />,
     );
     await screen.findByText("Test project");
@@ -127,7 +115,6 @@ describe("InWorkDetails", () => {
       <InWorkDetails
         bookingId="b1"
         onAcceptBack={vi.fn()}
-        onBack={vi.fn()}
       />,
     );
     await screen.findByText("Test project");
@@ -143,7 +130,6 @@ describe("InWorkDetails", () => {
       <InWorkDetails
         bookingId="b1"
         onAcceptBack={vi.fn()}
-        onBack={vi.fn()}
       />,
     );
     await screen.findByText("Test project");

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 
 import { apiFetch } from "../../../src/lib/api";
-import { SectionHeader } from "../../../src/components/SectionHeader";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { BOOKING_STATUS_LABELS } from "../../../src/components/finance/StatusCell";
@@ -190,25 +189,35 @@ function VehicleDetailView() {
   const unitMeta = USAGE_UNIT_META[unit] ?? USAGE_UNIT_META.KM;
 
   return (
-    <div className="p-4 lg:p-6">
-      <Link className="text-sm text-accent-bright hover:text-accent" href="/vehicles">
+    // Нижний запас — под плавающую кнопку «Сообщить»: без него она лежала на
+    // журнале ТО.
+    <div className="p-4 pb-20 lg:p-6 lg:pb-24">
+      <Link
+        className="inline-flex min-h-8 items-center text-xs font-semibold text-accent-bright hover:text-accent hover:underline"
+        href="/vehicles"
+      >
         ← Назад к автопарку
       </Link>
 
-      <SectionHeader
-        eyebrow="Машина"
-        title={vehicle.name}
-        actions={
-          vehicle.active ? (
-            <StatusPill variant="ok" label="Активна" />
-          ) : (
-            <StatusPill variant="none" label="Не активна" />
-          )
-        }
-      />
+      {/* Шапка страницы — как у карточки ремонта и в мокапе: h1 Condensed с
+          линией снизу, а не h2 секции. */}
+      <header className="mt-2.5 flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-b border-border pb-3">
+        <div className="min-w-0">
+          <p className="eyebrow">Машина</p>
+          <h1 className="mt-0.5 font-cond text-2xl font-bold leading-tight tracking-[-0.01em]">
+            {vehicle.name}
+          </h1>
+        </div>
+        {vehicle.active ? (
+          <StatusPill variant="ok" label="Активна" />
+        ) : (
+          <StatusPill variant="none" label="Не активна" />
+        )}
+      </header>
 
-      {/* Шапка */}
-      <section className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* Показатели: 2×2 до 1024, дальше — четыре в ряд (было 3 + одинокий
+          «Гос. номер» во втором ряду). */}
+      <section className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card
           label={unitMeta.counterLabel === "Пробег" ? "Текущий пробег" : "Наработка"}
           value={formatCounter(vehicle.currentMileage, unit)}
@@ -223,6 +232,7 @@ function VehicleDetailView() {
         <Card
           label="Последнее ТО / ремонт"
           value={vehicle.lastServiceAt ? formatDate(vehicle.lastServiceAt) : "—"}
+          valueClass="mono-num"
           sub={
             vehicle.lastServiceKind
               ? SERVICE_KIND_LABEL[vehicle.lastServiceKind]
@@ -259,7 +269,9 @@ function VehicleDetailView() {
 
       {/* Журнал пробега */}
       <section className="mt-6">
-        <div className="flex items-center justify-between">
+        {/* flex-wrap: раскрытая форма встаёт отдельной строкой во всю ширину,
+            а не сжимает заголовок в узкую колонку. */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-medium text-ink">
             {unit === "KM" ? "Журнал пробега" : "Журнал наработки"}
           </h2>
@@ -273,27 +285,29 @@ function VehicleDetailView() {
             />
           )}
         </div>
-        <div className="mt-2 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+        {/* На телефоне таблица листается вбок: пять колонок в 343 px не влезают,
+            и «Заметка» просто обрезалась. */}
+        <div className="mt-2 rounded-lg border border-border bg-surface shadow-xs overflow-x-auto">
           {mileageLogs.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-ink-3">
               {unit === "KM" ? "Записей пробега пока нет." : "Показаний счётчика пока нет."}
             </p>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-slate--soft text-ink-2 border-b border-border">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="bg-surface-muted border-b border-border">
                 <tr>
-                  <th className="text-left px-3 py-2 font-medium">Дата</th>
-                  <th className="text-right px-3 py-2 font-medium">{unitMeta.counterLabel}</th>
-                  <th className="text-left px-3 py-2 font-medium">Источник</th>
-                  <th className="text-left px-3 py-2 font-medium">Кто</th>
-                  <th className="text-left px-3 py-2 font-medium">Заметка</th>
+                  <th className="text-left px-3 py-2 eyebrow">Дата</th>
+                  <th className="text-right px-3 py-2 eyebrow">{unitMeta.counterLabel}</th>
+                  <th className="text-left px-3 py-2 eyebrow">Источник</th>
+                  <th className="text-left px-3 py-2 eyebrow">Кто</th>
+                  <th className="text-left px-3 py-2 eyebrow">Заметка</th>
                 </tr>
               </thead>
               <tbody>
                 {mileageLogs.map((m) => (
                   <tr key={m.id} className="border-t border-border">
-                    <td className="px-3 py-2 mono-num text-ink-2">{formatDate(m.recordedAt)}</td>
-                    <td className="px-3 py-2 mono-num text-right text-ink">{formatCounter(m.mileage, unit)}</td>
+                    <td className="px-3 py-2 mono-num whitespace-nowrap text-ink-2">{formatDate(m.recordedAt)}</td>
+                    <td className="px-3 py-2 mono-num whitespace-nowrap text-right text-ink">{formatCounter(m.mileage, unit)}</td>
                     <td className="px-3 py-2 text-ink-2">
                       {m.source === "RETURN" ? (
                         <span>На возврате брони{m.bookingId ? <> · <Link className="text-accent-bright hover:text-accent" href={`/bookings/${m.bookingId}`}>открыть</Link></> : null}</span>
@@ -317,7 +331,7 @@ function VehicleDetailView() {
 
       {/* Журнал ТО / ремонтов */}
       <section className="mt-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-medium text-ink">Журнал ТО и ремонтов</h2>
           {canEdit && (
             <AddServiceForm
@@ -487,7 +501,7 @@ function VehicleEditPanel({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="text-xs text-accent-bright hover:text-accent font-medium"
+          className="py-2 text-xs text-accent-bright hover:text-accent font-medium sm:py-0"
         >
           Редактировать гос. номер / интервал ТО / заметки
         </button>
@@ -635,7 +649,7 @@ function AddMileageForm({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-xs rounded border border-border px-3 py-1.5 text-ink-2 hover:bg-surface-muted"
+        className="text-xs rounded border border-border px-3 py-2.5 text-ink-2 hover:bg-surface-muted sm:py-1.5"
       >
         + Записать пробег
       </button>
@@ -643,7 +657,7 @@ function AddMileageForm({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-2 shadow-xs flex flex-wrap items-end gap-2">
+    <div className="basis-full rounded-lg border border-border bg-surface p-2 shadow-xs flex flex-wrap items-end gap-2">
       <div>
         <label className="eyebrow mb-1 block">
           {unitMeta.counterLabel}, {unitMeta.short}
@@ -782,7 +796,7 @@ function AddServiceForm({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-xs rounded border border-border px-3 py-1.5 text-ink-2 hover:bg-surface-muted"
+        className="text-xs rounded border border-border px-3 py-2.5 text-ink-2 hover:bg-surface-muted sm:py-1.5"
       >
         + Запись ТО / ремонта
       </button>

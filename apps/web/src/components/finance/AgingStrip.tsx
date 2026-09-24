@@ -44,7 +44,8 @@ export function AgingStrip({ aging }: { aging: AgingData }) {
     <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
       <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
         <h3 className="text-[13.5px] font-semibold text-ink">Долг по возрасту</h3>
-        <Link href="/finance/debts" className="text-xs text-accent-bright font-medium hover:underline">
+        {/* -my-2 py-2: зона нажатия 32 px без роста шапки */}
+        <Link href="/finance/debts" className="-my-2 py-2 text-xs text-accent-bright font-medium hover:underline">
           Все долги →
         </Link>
       </div>
@@ -61,12 +62,12 @@ export function AgingStrip({ aging }: { aging: AgingData }) {
           ))}
         </div>
         {/* Чипы-легенда: значение + подпись, кликабельны */}
-        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+        <div className="mt-3 grid grid-cols-1 gap-y-1 sm:grid-cols-2 sm:gap-x-5 sm:gap-y-2">
           {visible.map((v) => (
-            <Link key={v.key} href={v.href} className="group flex items-baseline gap-1.5 hover:opacity-80 transition-opacity">
+            <Link key={v.key} href={v.href} className="group flex min-h-[32px] min-w-0 items-center gap-1.5 whitespace-nowrap hover:opacity-80 transition-opacity sm:min-h-0 sm:items-baseline">
               <span aria-hidden="true" className={`inline-block h-2 w-2 rounded-sm self-center ${v.barClass}`} />
               <span className="text-[11.5px] text-ink-2 group-hover:underline">{v.label}</span>
-              <span className={`mono-num text-[12.5px] font-semibold ${v.chipClass}`}>{formatRub(v.value)}</span>
+              <span className={`ml-auto mono-num text-[12.5px] font-semibold sm:ml-0 ${v.chipClass}`}>{formatRub(v.value)}</span>
             </Link>
           ))}
         </div>

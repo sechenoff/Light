@@ -139,20 +139,20 @@ export function BookingJournalSection({
   );
   return (
     <section className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden min-w-0">
-      <div className="p-3 border-b border-border flex flex-wrap items-center justify-between gap-2">
+      <div className="px-4 py-3 border-b border-border bg-surface-subtle flex flex-wrap items-center justify-between gap-2">
         <h2 className="eyebrow">Журнал изменений</h2>
         {canViewAudit && bookingId && (
           <button
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="text-xs text-accent-bright min-h-9 px-2 disabled:opacity-50"
+            className="-my-2.5 -mr-2 min-h-9 px-2 text-xs text-accent-bright disabled:opacity-50"
           >
             Обновить журнал
           </button>
         )}
       </div>
-      <div className="p-3 space-y-3">
+      <div className="px-4 py-3 space-y-3">
         {canViewAudit && bookingId ? (
           <>
             <p className="text-xs text-ink-3">
@@ -192,14 +192,14 @@ export function BookingJournalSection({
               </button>
             )}
             <details className="border-t border-border pt-3">
-              <summary className="text-sm text-ink-2 cursor-pointer min-h-9">
+              <summary className="text-sm text-ink-2 cursor-pointer min-h-9 leading-9">
                 Финансовые события · {financeEvents?.length ?? 0}
               </summary>
               {legacy}
             </details>
             <Link
               href={`/admin/audit?entityType=Booking&entityId=${encodeURIComponent(bookingId)}`}
-              className="inline-block text-xs text-accent-bright min-h-8"
+              className="inline-flex items-center min-h-8 text-xs text-accent-bright"
             >
               Открыть в общем журнале
             </Link>

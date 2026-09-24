@@ -231,141 +231,123 @@ export function TasksPage() {
   const isEmpty = !loading && filteredTasks.length === 0;
 
   return (
-    <div className="p-4 lg:p-6 space-y-4 w-full">
-      {/* Заголовок: eyebrow + h1 + кнопка */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="eyebrow">Задачи</p>
-          <h1 className="text-[22px] font-semibold text-ink mt-0.5 tracking-tight">
-            {FILTER_TITLE[filter]}
-          </h1>
-          <p className="text-[13px] text-ink-3 mt-0.5">
-            {buildCountsLine()}
-          </p>
-        </div>
-        <button
-          onClick={() => setCreating(true)}
-          className="shrink-0 bg-accent-bright text-surface px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity inline-flex items-center gap-1.5"
-        >
-          + Создать задачу
-        </button>
-      </div>
-
-      {/* Filter bar */}
-      <div className="bg-surface border border-border rounded-[10px] px-4 py-3 flex justify-between items-center gap-4 flex-wrap">
-        {/* Левые пилюли */}
-        <TaskFilterPills value={filter} onChange={handleFilterChange} />
-
-        {/* Правые контролы */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Исполнитель */}
-          <div className="flex items-center gap-1.5">
-            <label className="text-[11px] text-ink-3 uppercase tracking-[0.04em] font-medium">
-              Исполнитель
-            </label>
-            <select
-              value={assigneeFilter}
-              onChange={(e) => setAssigneeFilter(e.target.value)}
-              className="text-[13px] px-2.5 py-1.5 border border-border rounded-md bg-surface text-ink focus:outline-none focus:border-accent"
-            >
-              <option value="">Любой</option>
-              {assigneeOptions.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.username}
-                </option>
-              ))}
-              <option value="__none__">— Никому</option>
-            </select>
+    <>
+      {/* pb-24 — запас под плавающую кнопку «Сообщить», иначе она накрывает промо-карточку архива. */}
+      <div className="p-4 pb-24 lg:p-6 lg:pb-24 space-y-4 w-full">
+        {/* Заголовок: eyebrow + h1 + кнопка */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="eyebrow">Задачи</p>
+            <h1 className="text-[22px] font-semibold text-ink mt-0.5 tracking-tight">
+              {FILTER_TITLE[filter]}
+            </h1>
+            <p className="text-[13px] text-ink-3 mt-0.5">
+              {buildCountsLine()}
+            </p>
           </div>
-
-          {/* Только срочные */}
           <button
-            type="button"
-            onClick={() => setUrgentOnly((v) => !v)}
-            className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors ${
-              urgentOnly
-                ? "bg-rose-soft text-rose border-rose-border font-medium"
-                : "bg-surface text-ink-2 border-border hover:border-border-strong"
-            }`}
+            onClick={() => setCreating(true)}
+            className="shrink-0 bg-accent-bright text-surface px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity inline-flex items-center gap-1.5"
           >
-            🔥 Только срочные
+            + Создать задачу
           </button>
         </div>
-      </div>
 
-      {/* Ошибка */}
-      {error && (
-        <div className="bg-rose-soft border border-rose-border rounded-lg px-4 py-3 text-sm text-rose">
-          {error}
-        </div>
-      )}
+        {/* Filter bar */}
+        <div className="bg-surface border border-border rounded-lg px-4 py-3 flex justify-between items-center gap-4 flex-wrap">
+          {/* Левые пилюли */}
+          <TaskFilterPills value={filter} onChange={handleFilterChange} />
 
-      {/* Скелетон при загрузке */}
-      {loading && (
-        <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-0">
-              <div className="w-5 h-5 rounded bg-surface-muted animate-pulse shrink-0" />
-              <div className="flex-1 h-4 bg-surface-muted rounded animate-pulse" />
-              <div className="h-4 w-20 bg-surface-muted rounded animate-pulse" />
+          {/* Правые контролы */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Исполнитель */}
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] text-ink-3 uppercase tracking-[0.04em] font-medium">
+                Исполнитель
+              </label>
+              <select
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+                className="h-8 text-[13px] px-2.5 py-0 border border-border rounded-md bg-surface text-ink focus:outline-none focus:border-accent"
+              >
+                <option value="">Любой</option>
+                {assigneeOptions.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.username}
+                  </option>
+                ))}
+                <option value="__none__">— Никому</option>
+              </select>
             </div>
-          ))}
+
+            {/* Только срочные */}
+            <button
+              type="button"
+              onClick={() => setUrgentOnly((v) => !v)}
+              className={`inline-flex h-8 items-center gap-1.5 text-xs px-3 py-0 rounded-md border transition-colors ${
+                urgentOnly
+                  ? "bg-rose-soft text-rose border-rose-border font-medium"
+                  : "bg-surface text-ink-2 border-border hover:border-border-strong"
+              }`}
+            >
+              🔥 Только срочные
+            </button>
+          </div>
         </div>
-      )}
 
-      {/* Список задач */}
-      {!loading && !isEmpty && (
-        <TaskGroupList
-          tasks={filteredTasks}
-          onComplete={handleComplete}
-          onReopen={handleReopen}
-          onUpdate={handleUpdate}
-          onDelete={handleDelete}
-          onOpenEdit={setEditingTask}
-          onOpenDetail={openDetail}
-        />
-      )}
+        {/* Ошибка */}
+        {error && (
+          <div className="bg-rose-soft border border-rose-border rounded-lg px-4 py-3 text-sm text-rose">
+            {error}
+          </div>
+        )}
 
-      {/* Пустое состояние */}
-      {isEmpty && <TaskEmptyState />}
+        {/* Скелетон при загрузке */}
+        {loading && (
+          <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-0">
+                <div className="w-5 h-5 rounded bg-surface-muted animate-pulse shrink-0" />
+                <div className="flex-1 h-4 bg-surface-muted rounded animate-pulse" />
+                <div className="h-4 w-20 bg-surface-muted rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        )}
 
-      {/* Архивная прomo-карточка */}
-      <div className="flex justify-between items-center gap-3 mt-5 p-4 bg-surface border border-border rounded-lg">
-        <div className="text-sm">
-          <b className="text-ink font-medium">Архив задач</b>
-          <span className="text-ink-3"> · выполненные старше 24 часов уходят сюда</span>
+        {/* Список задач */}
+        {!loading && !isEmpty && (
+          <TaskGroupList
+            tasks={filteredTasks}
+            onComplete={handleComplete}
+            onReopen={handleReopen}
+            onUpdate={handleUpdate}
+            onDelete={handleDelete}
+            onOpenEdit={setEditingTask}
+            onOpenDetail={openDetail}
+          />
+        )}
+
+        {/* Пустое состояние */}
+        {isEmpty && <TaskEmptyState />}
+
+        {/* Архивная прomo-карточка */}
+        <div className="flex flex-col items-stretch gap-3 mt-5 p-4 bg-surface border border-border rounded-lg sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm">
+            <b className="text-ink font-medium">Архив задач</b>
+            <span className="text-ink-3"> · выполненные старше 24 часов уходят сюда</span>
+          </div>
+          <Link
+            href="/tasks/archive"
+            className="text-sm font-medium px-4 py-2 rounded-md border border-border-strong text-ink hover:bg-surface-muted inline-flex items-center justify-center gap-2 whitespace-nowrap sm:justify-start"
+          >
+            📁 Открыть архив →
+          </Link>
         </div>
-        <Link
-          href="/tasks/archive"
-          className="text-sm font-medium px-4 py-2 rounded-md border border-border-strong text-ink hover:bg-surface-muted inline-flex items-center gap-2 whitespace-nowrap"
-        >
-          📁 Открыть архив →
-        </Link>
       </div>
 
-      {/* Модалка редактирования */}
-      {editingTask && (
-        <TaskEditModal
-          task={editingTask}
-          assigneeOptions={assigneeOptions}
-          onSave={handleSaveEdit}
-          onClose={() => setEditingTask(null)}
-        />
-      )}
-
-      {/* Модалка создания */}
-      {creating && (
-        <TaskCreateModal
-          onSubmit={async (input) => {
-            await handleCreate(input);
-            setCreating(false);
-          }}
-          onClose={() => setCreating(false)}
-          assigneeOptions={assigneeOptions}
-        />
-      )}
-
-      {/* Панель деталей задачи (?task=<id>) */}
+      {/* Оверлеи — вне space-y-контейнера (иначе fixed-корень получает margin-top 16 px)
+          и в порядке наложения: модалки, открытые из панели задачи, должны лечь поверх неё. */}
       {openTaskId && user && (
         <TaskDetailPanel
           taskId={openTaskId}
@@ -377,6 +359,26 @@ export function TasksPage() {
           onEdit={(task) => setEditingTask(task)}
         />
       )}
-    </div>
+
+      {editingTask && (
+        <TaskEditModal
+          task={editingTask}
+          assigneeOptions={assigneeOptions}
+          onSave={handleSaveEdit}
+          onClose={() => setEditingTask(null)}
+        />
+      )}
+
+      {creating && (
+        <TaskCreateModal
+          onSubmit={async (input) => {
+            await handleCreate(input);
+            setCreating(false);
+          }}
+          onClose={() => setCreating(false)}
+          assigneeOptions={assigneeOptions}
+        />
+      )}
+    </>
   );
 }

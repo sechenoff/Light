@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 
-import { SectionHeader } from "../SectionHeader";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { pluralize } from "../../lib/format";
 import { FleetKpiRow } from "./FleetKpiRow";
@@ -79,16 +78,16 @@ function AttentionBand({ vehicles }: { vehicles: FleetVehicle[] }) {
               {v.stats.serviceHealth === "OVERDUE" && v.stats.kmToNextService != null && v.stats.kmToNextService <= 0 && (
                 <span className="text-ink-2">
                   {" · перепробег "}
-                  <span className="mono-num">
-                    {Math.abs(v.stats.kmToNextService).toLocaleString("ru-RU")} км
+                  <span className="whitespace-nowrap">
+                    {Math.abs(v.stats.kmToNextService).toLocaleString("ru-RU")}{"\u00a0"}км
                   </span>
                 </span>
               )}
               {v.stats.serviceHealth === "DUE_SOON" && v.stats.kmToNextService != null && (
                 <span className="text-ink-2">
                   {" · осталось "}
-                  <span className="mono-num">
-                    {v.stats.kmToNextService.toLocaleString("ru-RU")} км
+                  <span className="whitespace-nowrap">
+                    {v.stats.kmToNextService.toLocaleString("ru-RU")}{"\u00a0"}км
                   </span>
                 </span>
               )}
@@ -121,24 +120,30 @@ export function VehiclesDashboard() {
   const canEdit = user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
 
   return (
-    <div className="p-4 lg:p-6 space-y-4">
-      <SectionHeader
-        eyebrow="Автопарк"
-        title="Машины"
-        actions={
-          <div className="flex items-center gap-2">
-            <FleetPeriodToggle />
-            {user?.role === "SUPER_ADMIN" && (
-              <Link
-                href="/admin/vehicles"
-                className="text-xs font-medium text-accent-bright hover:text-accent"
-              >
-                Тарифы →
-              </Link>
-            )}
-          </div>
-        }
-      />
+    // Нижний запас — под плавающую кнопку «Сообщить»: без него она закрывала
+    // «Открыть карточку →» последней машины.
+    <div className="p-4 pb-20 lg:p-6 lg:pb-24 space-y-4">
+      {/* Шапка раздела — как у «Ремонтов» и в мокапе (concept-editorial): h1
+          Condensed 24 px с линией снизу, а не h2 секции. */}
+      <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-b border-border pb-3">
+        <div>
+          <p className="eyebrow">Автопарк</p>
+          <h1 className="mt-0.5 font-cond text-2xl font-bold leading-tight tracking-[-0.01em]">
+            Машины
+          </h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <FleetPeriodToggle />
+          {user?.role === "SUPER_ADMIN" && (
+            <Link
+              href="/admin/vehicles"
+              className="text-xs font-medium text-accent-bright hover:text-accent"
+            >
+              Тарифы →
+            </Link>
+          )}
+        </div>
+      </header>
 
       {error && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-rose-border bg-rose-soft px-3 py-2 text-sm text-rose">
@@ -155,7 +160,7 @@ export function VehiclesDashboard() {
 
       {loading && !data && (
         <>
-          <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 grid-cols-2 xl:grid-cols-5">
             {Array.from({ length: canSeeMoney ? 5 : 3 }).map((_, i) => (
               <div key={i} className="h-[74px] animate-pulse rounded-lg border border-border bg-surface" />
             ))}

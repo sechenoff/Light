@@ -90,10 +90,29 @@ export function BookingItemsTable({
         _deleted: false,
         _added: false,
       }));
+  const isEmpty = displayItems.length === 0;
+
+  // Цена строки общая для таблицы и мобильного списка.
+  function priceFor(it: { equipmentId: string | null; equipment?: { name: string } | null; customName?: string | null }) {
+    const mainPrice =
+      (it.equipmentId ? priceByEquipmentId.get(it.equipmentId) : undefined) ??
+      priceByName.get(it.equipment?.name ?? it.customName ?? "");
+    const addon = it.equipmentId ? addonByEquipmentId.get(it.equipmentId) : undefined;
+    // Позиция целиком добор — цены берём из доп-сметы; частичный добор —
+    // цена за единицу та же, сумма строки = основная + добор.
+    const price = mainPrice
+      ? addon
+        ? { unitPrice: mainPrice.unitPrice, lineSum: String(Number(mainPrice.lineSum) + Number(addon.lineSum)) }
+        : mainPrice
+      : addon
+        ? { unitPrice: addon.unitPrice, lineSum: addon.lineSum }
+        : undefined;
+    return { price, addon };
+  }
 
   return (
-    <div className="lg:col-span-8 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-      <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
+    <div className="xl:col-span-8 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+      <div className="px-4 py-3 border-b border-border bg-surface-subtle flex items-center justify-between gap-2">
         <p className="eyebrow">Позиции брони ({displayItems.filter((i) => !(i as any)._deleted).length})</p>
         {retroEditMode && (
           <button
@@ -105,37 +124,68 @@ export function BookingItemsTable({
           </button>
         )}
       </div>
+      {isEmpty && !retroEditMode ? (
+        <p className="px-4 py-6 text-center text-sm text-ink-3">Нет позиций</p>
+      ) : (
+      <>
+      {/* До md — список строк вместо таблицы: пять колонок в 340 px не влезают,
+          а горизонтальный скролл прятал количество и сумму. В режиме «задним
+          числом» остаётся таблица — там степперы и ✕ по строкам. */}
+      {!retroEditMode && (
+        <ul className="divide-y divide-border md:hidden print:hidden">
+          {displayItems.map((it) => {
+            const { price, addon } = priceFor(it);
+            return (
+              <li key={it.id} className="px-4 py-3">
+                <p className="text-sm font-medium text-ink break-words">
+                  {it.equipment?.name ?? it.customName ?? "—"}
+                </p>
+                <p className="mt-0.5 text-xs text-ink-3">
+                  {it.equipment?.category ?? it.customCategory ?? "—"}
+                  {addon && (
+                    <span className="ml-1 text-accent" title="Добавлено поверх согласованной сметы">
+                      · добор ×{addon.quantity}
+                    </span>
+                  )}
+                </p>
+                <div className="mt-1.5 flex items-baseline justify-between gap-3 text-sm">
+                  {showPrices ? (
+                    <>
+                      <span className="mono-num text-ink-2">
+                        {it.quantity} × {price ? formatMoneyRub(price.unitPrice) : "—"}
+                      </span>
+                      <span className="mono-num font-medium text-ink whitespace-nowrap">
+                        {price ? formatMoneyRub(price.lineSum) : "—"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="mono-num text-ink-2">{it.quantity} шт.</span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {/* Вертикального окна нет: список разворачивается целиком, страница скроллится сама.
-          По горизонтали скролл оставлен страховкой — на узких экранах колонки иначе
-          нечитаемо сжимаются. С lg жёсткий min-w снят, и на широком экране таблица
-          укладывается в колонку целиком: раньше «Сумма» уезжала за горизонтальный скролл. */}
-      <div className="overflow-x-auto">
-        <table className="min-w-[860px] lg:min-w-0 w-full text-sm">
+          По горизонтали скролл оставлен страховкой для режима «задним числом» на узких
+          экранах. С md жёсткий min-w снят, и таблица укладывается в колонку целиком.
+          print:block — лист A4 уже 768 px, и md: при печати не срабатывает. */}
+      <div className={retroEditMode ? "overflow-x-auto" : "hidden md:block print:block overflow-x-auto"}>
+        <table className="min-w-[860px] md:min-w-0 print:min-w-0 w-full text-sm">
           <thead className="bg-surface-subtle text-ink-2 border-b border-border">
             <tr>
-              <th className="text-left px-3 py-2 font-medium">Категория</th>
-              <th className="text-left px-3 py-2 font-medium">Наименование</th>
-              <th className="px-3 py-2 w-[100px] font-medium text-right">Кол-во</th>
-              {showPrices && <th className="px-3 py-2 w-[120px] font-medium text-right">Цена</th>}
-              {showPrices && <th className="px-3 py-2 w-[130px] font-medium text-right">Сумма</th>}
-              {retroEditMode && <th className="px-3 py-2 w-[40px] no-print"></th>}
+              <th className="text-left px-3 py-2 first:pl-4 last:pr-4 font-medium whitespace-nowrap">Категория</th>
+              <th className="text-left px-3 py-2 first:pl-4 last:pr-4 font-medium whitespace-nowrap">Наименование</th>
+              <th className="px-3 py-2 first:pl-4 last:pr-4 w-[100px] font-medium text-right whitespace-nowrap">Кол-во</th>
+              {showPrices && <th className="px-3 py-2 first:pl-4 last:pr-4 w-[120px] font-medium text-right whitespace-nowrap">Цена</th>}
+              {showPrices && <th className="px-3 py-2 first:pl-4 last:pr-4 w-[130px] font-medium text-right whitespace-nowrap">Сумма</th>}
+              {retroEditMode && <th className="px-3 py-2 first:pl-4 last:pr-4 w-[40px] no-print"></th>}
             </tr>
           </thead>
           <tbody>
             {displayItems.map((it) => {
-              const mainPrice =
-                (it.equipmentId ? priceByEquipmentId.get(it.equipmentId) : undefined) ??
-                priceByName.get(it.equipment?.name ?? it.customName ?? "");
-              const addon = it.equipmentId ? addonByEquipmentId.get(it.equipmentId) : undefined;
-              // Позиция целиком добор — цены берём из доп-сметы; частичный добор —
-              // цена за единицу та же, сумма строки = основная + добор.
-              const price = mainPrice
-                ? addon
-                  ? { unitPrice: mainPrice.unitPrice, lineSum: String(Number(mainPrice.lineSum) + Number(addon.lineSum)) }
-                  : mainPrice
-                : addon
-                  ? { unitPrice: addon.unitPrice, lineSum: addon.lineSum }
-                  : undefined;
+              const { price, addon } = priceFor(it);
               const anyIt = it as RetroEditItem;
               const qtyChanged =
                 retroEditMode &&
@@ -151,8 +201,8 @@ export function BookingItemsTable({
                     : "border-t border-border";
               return (
                 <tr key={it.id} className={rowClass}>
-                  <td className="px-3 py-2 text-ink-2">{it.equipment?.category ?? it.customCategory ?? "—"}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 first:pl-4 last:pr-4 text-ink-2">{it.equipment?.category ?? it.customCategory ?? "—"}</td>
+                  <td className="px-3 py-2 first:pl-4 last:pr-4">
                     <div className={`font-medium text-ink ${anyIt._deleted ? "line-through text-ink-3" : ""}`}>
                       {it.equipment?.name ?? it.customName ?? "—"}
                     </div>
@@ -172,7 +222,7 @@ export function BookingItemsTable({
                       {anyIt._deleted && <span className="text-rose ml-1">· к удалению</span>}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right mono-num">
+                  <td className="px-3 py-2 first:pl-4 last:pr-4 text-right mono-num">
                     {retroEditMode ? (
                       <input
                         type="number"
@@ -190,12 +240,12 @@ export function BookingItemsTable({
                     )}
                   </td>
                   {showPrices && (
-                    <td className="px-3 py-2 text-right mono-num text-ink-2">
+                    <td className="px-3 py-2 first:pl-4 last:pr-4 text-right mono-num text-ink-2">
                       {price ? formatMoneyRub(price.unitPrice) : "—"}
                     </td>
                   )}
                   {showPrices && (
-                    <td className={`px-3 py-2 text-right mono-num font-medium ${qtyChanged ? "text-amber" : "text-ink"}`}>
+                    <td className={`px-3 py-2 first:pl-4 last:pr-4 text-right mono-num font-medium ${qtyChanged ? "text-amber" : "text-ink"}`}>
                       {price
                         ? retroEditMode && !anyIt._deleted
                           // Live-пересчёт суммы строки при правке кол-ва:
@@ -207,7 +257,7 @@ export function BookingItemsTable({
                     </td>
                   )}
                   {retroEditMode && (
-                    <td className="px-3 py-2 text-center no-print">
+                    <td className="px-3 py-2 first:pl-4 last:pr-4 text-center no-print">
                       <button
                         type="button"
                         onClick={() => onToggleDeleted(it.id)}
@@ -222,9 +272,12 @@ export function BookingItemsTable({
                 </tr>
               );
             })}
-            {displayItems.length === 0 ? (
+            {/* Пустая таблица остаётся только в режиме «задним числом» —
+                туда добавляют позиции кнопкой в шапке. До md таблица шире
+                экрана (min-w 860), поэтому подпись прижата влево, иначе её не видно. */}
+            {isEmpty ? (
               <tr>
-                <td className="px-3 py-6 text-center text-ink-3" colSpan={colCount}>
+                <td className="px-4 py-6 text-left md:text-center text-ink-3" colSpan={colCount}>
                   Нет позиций
                 </td>
               </tr>
@@ -232,6 +285,8 @@ export function BookingItemsTable({
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 }

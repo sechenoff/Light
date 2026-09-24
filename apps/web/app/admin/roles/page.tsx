@@ -23,6 +23,14 @@ const ROLE_STRIPE: Record<(typeof ROLE_KEYS)[number], string> = {
   COLLECTOR: "bg-rose",
 };
 
+/** Цвет подписи роли в шапке таблицы — тот же, что у полосы и тега карточки. */
+const ROLE_TEXT: Record<(typeof ROLE_KEYS)[number], string> = {
+  SUPER_ADMIN: "text-indigo",
+  WAREHOUSE:   "text-teal",
+  TECHNICIAN:  "text-amber",
+  COLLECTOR: "text-rose",
+};
+
 const ROLE_TAG_CLS: Record<(typeof ROLE_KEYS)[number], string> = {
   SUPER_ADMIN: "bg-indigo-soft text-indigo border-indigo-border",
   WAREHOUSE:   "bg-teal-soft text-teal border-teal-border",
@@ -58,7 +66,7 @@ function renderInline(text: string): React.ReactNode[] {
       parts.push(<strong key={key++} className="font-semibold text-ink">{token.slice(2, -2)}</strong>);
     } else {
       parts.push(
-        <code key={key++} className="break-all font-mono text-xs bg-surface border border-border rounded px-1 py-0.5 text-ink">
+        <code key={key++} className="break-words box-decoration-clone font-mono text-xs bg-surface border border-border rounded px-1 py-0.5 text-ink">
           {token.slice(1, -1)}
         </code>
       );
@@ -81,7 +89,7 @@ export default function AdminRolesPage() {
       <div className="space-y-6 pb-8">
 
       {/* Заголовок */}
-      <SectionHeader eyebrow="Справочник" title="Матрица прав" className="mt-2" />
+      <SectionHeader eyebrow="Справочник" title="Матрица прав" />
 
       {/* Intro-блок */}
       <div className="bg-indigo-soft border border-indigo-border rounded-lg p-5">
@@ -93,16 +101,18 @@ export default function AdminRolesPage() {
         </p>
       </div>
 
-      {/* Шапка трёх ролей */}
-      <div className="bg-surface border border-border rounded-lg shadow-xs overflow-x-auto">
-        <div className="grid grid-cols-[240px_1fr_1fr_1fr_1fr] min-w-[860px]">
-          <div className="p-5 bg-slate-soft border-r border-border flex items-end eyebrow">
+      {/* Шапка ролей: стопкой на телефоне, 2×2 до xl, на xl — строкой с той же
+          сеткой, что у таблицы (260 px + четыре равные колонки). Разделители —
+          это gap-px на подложке bg-border. */}
+      <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
+        <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-[260px_repeat(4,minmax(0,1fr))]">
+          <div className="hidden xl:flex items-end p-5 bg-slate-soft eyebrow">
             Раздел / Роль
           </div>
           {ROLE_KEYS.map((key) => {
             const d = ROLE_DESCRIPTIONS[key];
             return (
-              <div key={key} className="relative p-5 border-r border-border last:border-r-0">
+              <div key={key} className="relative p-5 bg-surface">
                 <div className={`absolute top-0 left-0 right-0 h-[3px] ${ROLE_STRIPE[key]}`} />
                 <span className={`inline-block text-[10.5px] font-cond font-semibold uppercase tracking-wider px-2 py-0.5 rounded border ${ROLE_TAG_CLS[key]} mb-2.5`}>
                   {d.tag}
@@ -112,7 +122,7 @@ export default function AdminRolesPage() {
                   {d.subtitle}
                 </div>
                 <p className="text-[12.5px] text-ink-2 leading-relaxed">{d.desc}</p>
-                <p className="mono-num text-[11px] text-ink-3 mt-2.5">{d.count}</p>
+                <p className="text-[11px] tabular-nums text-ink-3 mt-2.5">{d.count}</p>
               </div>
             );
           })}
@@ -120,36 +130,36 @@ export default function AdminRolesPage() {
       </div>
 
       {/* Легенда */}
-      <div className="bg-surface border border-border rounded-lg shadow-xs px-5 py-3.5 flex flex-wrap gap-5 items-center">
-        <span className="eyebrow mr-3">Обозначения</span>
-        {LEGEND_ITEMS.map((item) => (
-          <span key={item.level} className="inline-flex items-center gap-2 text-xs text-ink-2">
-            <StatusPill variant={item.level} label={item.label} />
-            {item.hint}
-          </span>
-        ))}
+      <div className="bg-surface border border-border rounded-lg shadow-xs px-5 py-3.5 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-5">
+        <span className="eyebrow shrink-0 sm:pt-1">Обозначения</span>
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {LEGEND_ITEMS.map((item) => (
+            <span key={item.level} className="inline-flex items-center gap-2 text-xs text-ink-2">
+              <StatusPill variant={item.level} label={item.label} />
+              {item.hint}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Матрица */}
       <div className="bg-surface border border-border rounded-lg shadow-xs overflow-x-auto">
-        <table className="w-full min-w-[860px] text-sm">
+        <table className="w-full min-w-[640px] table-fixed text-sm xl:min-w-0">
           <colgroup>
-            <col style={{ width: "260px" }} />
-            <col />
-            <col />
-            <col />
+            <col className="w-[160px] sm:w-[200px] xl:w-[260px]" />
+            {ROLE_KEYS.map((k) => (
+              <col key={k} />
+            ))}
           </colgroup>
           <thead>
             <tr>
-              <th className="px-5 py-3 text-left bg-slate-soft border-b border-border eyebrow">Функция</th>
+              {/* «Функция» закреплена: на узком экране роли листаются под ней. Разделитель —
+                  тенью: границы ячеек в border-collapse за sticky-ячейкой не едут. */}
+              <th className="sticky left-0 z-[1] px-3 sm:px-5 py-3 text-left bg-slate-soft border-b border-border shadow-[inset_-1px_0_0_theme(colors.border.DEFAULT)] eyebrow">Функция</th>
               {ROLE_KEYS.map((key) => {
                 const d = ROLE_DESCRIPTIONS[key];
-                const colCls =
-                  key === "SUPER_ADMIN" ? "text-indigo"
-                : key === "WAREHOUSE"   ? "text-teal"
-                                        : "text-amber";
                 return (
-                  <th key={key} className={`px-5 py-3 text-center bg-slate-soft border-b border-r border-border eyebrow ${colCls} last:border-r-0`}>
+                  <th key={key} className={`px-3 xl:px-5 py-3 text-center bg-slate-soft border-b border-r border-border eyebrow ${ROLE_TEXT[key]} last:border-r-0`}>
                     {d.title}
                   </th>
                 );
@@ -165,11 +175,11 @@ export default function AdminRolesPage() {
       </div>
 
       {/* Спорные места */}
-      <div className="bg-surface border border-border rounded-lg shadow-xs p-6">
+      <div className="bg-surface border border-border rounded-lg shadow-xs p-4 sm:p-6">
         <h2 className="text-base font-semibold text-ink mb-4">Спорные места — где важно договориться на берегу</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {EDGE_CASES.map((c) => (
-            <div key={c.scenario} className="border border-border rounded p-4 bg-surface">
+            <div key={c.scenario} className="border border-border rounded p-3 sm:p-4 bg-surface">
               <div className="eyebrow text-accent mb-1.5">{c.scenario}</div>
               <div className="text-sm font-semibold text-ink mb-1">{c.title}</div>
               <div className="text-[12.5px] text-ink-2 leading-relaxed">{renderInline(c.body)}</div>
@@ -197,13 +207,16 @@ function SectionRows({ section }: { section: typeof MATRIX_SECTIONS[number] }) {
   return (
     <>
       <tr>
-        <td colSpan={4} className="bg-slate-soft/60 border-y border-border px-5 py-2.5 eyebrow text-ink">
-          {section.title}
-          {section.hint && (
-            <span className="font-sans font-normal normal-case tracking-normal text-[11.5px] text-ink-2 ml-3">
-              {section.hint}
-            </span>
-          )}
+        <td colSpan={ROLE_KEYS.length + 1} className="bg-slate-soft/60 border-y border-border px-3 sm:px-5 py-2.5 eyebrow text-ink">
+          {/* sticky: при прокрутке вбок название раздела остаётся на месте */}
+          <span className="sticky left-3 sm:left-5">
+            {section.title}
+            {section.hint && (
+              <span className="font-sans font-normal normal-case tracking-normal text-[11.5px] text-ink-2 ml-3">
+                {section.hint}
+              </span>
+            )}
+          </span>
         </td>
       </tr>
       {section.rows.map((row, i) => (
@@ -216,7 +229,7 @@ function SectionRows({ section }: { section: typeof MATRIX_SECTIONS[number] }) {
 function MatrixTableRow({ row }: { row: MatrixRow }) {
   return (
     <tr className="border-b border-border last:border-b-0">
-      <td className="px-5 py-3 align-middle">
+      <td className="sticky left-0 z-[1] bg-surface px-3 sm:px-5 py-3 align-middle shadow-[inset_-1px_0_0_theme(colors.border.DEFAULT)]">
         <div className="text-sm font-medium text-ink">{row.capability}</div>
         {row.hint && <div className="text-[11.5px] text-ink-3 mt-0.5">{row.hint}</div>}
       </td>
@@ -226,7 +239,7 @@ function MatrixTableRow({ row }: { row: MatrixRow }) {
         // У взыскания ячейка задаётся только там, где доступ есть; остальное — «нет».
         const cell = row[roleKey] ?? { level: "none" as const, label: "нет" };
         return (
-          <td key={key} className={`px-5 py-3 text-center align-middle border-l border-border ${ROLE_CELL_BG[key]}`}>
+          <td key={key} className={`px-3 xl:px-5 py-3 text-center align-middle border-l border-border ${ROLE_CELL_BG[key]}`}>
             <StatusPill variant={cell.level} label={cell.label} />
           </td>
         );

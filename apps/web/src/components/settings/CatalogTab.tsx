@@ -44,7 +44,7 @@ export function CatalogTab() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h2 className="text-base font-semibold text-ink">Каталог техники</h2>
           <p className="text-sm text-ink-2 mt-1">
@@ -53,7 +53,7 @@ export function CatalogTab() {
         </div>
         <Link
           href="/equipment/manage"
-          className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-accent text-surface hover:bg-accent transition-colors"
+          className="self-start shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium bg-accent-bright text-surface hover:bg-accent transition-colors"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -66,13 +66,13 @@ export function CatalogTab() {
       {loading ? (
         <div className="py-8 text-center text-sm text-ink-3">Загрузка…</div>
       ) : error ? (
-        <div className="p-4 rounded-xl border border-rose-border bg-rose-soft text-sm text-rose">
+        <div className="p-4 rounded-lg border border-rose-border bg-rose-soft text-sm text-rose">
           <div className="font-medium mb-1">Ошибка загрузки</div>
           <div>{error}</div>
           <button onClick={load} className="mt-2 text-xs underline">Повторить</button>
         </div>
       ) : rows.length === 0 ? (
-        <div className="p-8 text-center rounded-xl border border-dashed border-border">
+        <div className="p-8 text-center rounded-lg border border-dashed border-border">
           <div className="text-sm font-medium text-ink-2 mb-1">Каталог пуст</div>
           <p className="text-xs text-ink-3">
             Добавьте оборудование через вкладку{" "}
@@ -83,37 +83,32 @@ export function CatalogTab() {
       ) : (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-lg border border-border bg-surface p-4">
               <div className="text-2xl font-bold text-ink">{rows.length}</div>
               <div className="text-xs text-ink-2 mt-0.5">позиций в каталоге</div>
             </div>
-            <div className="rounded-xl border border-border bg-surface p-4">
+            <div className="rounded-lg border border-border bg-surface p-4">
               <div className="text-2xl font-bold text-ink">{byCategory.length}</div>
               <div className="text-xs text-ink-2 mt-0.5">категорий</div>
             </div>
-            <div className="rounded-xl border border-border bg-surface p-4">
+            <div className="rounded-lg border border-border bg-surface p-4">
               <div className="text-2xl font-bold text-ink">
                 {rows.reduce((s, r) => s + r.totalQuantity, 0)}
               </div>
               <div className="text-xs text-ink-2 mt-0.5">единиц всего</div>
             </div>
-            <div className="rounded-xl border border-border bg-surface p-4">
-              <button
-                onClick={load}
-                className="text-xs text-ink-2 hover:text-ink underline"
-              >
-                Обновить
-              </button>
-            </div>
           </div>
 
           {/* Category breakdown */}
-          <div className="rounded-xl border border-border overflow-hidden">
-            <div className="px-4 py-2.5 bg-surface border-b border-border text-xs font-semibold text-ink-2 uppercase tracking-wide">
-              По категориям
+          <div className="rounded-lg border border-border bg-surface overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+              <span className="eyebrow">По категориям</span>
+              <button onClick={load} className="text-xs text-accent-bright hover:text-accent">
+                Обновить
+              </button>
             </div>
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-border">
               {byCategory.map(([cat, count]) => (
                 <div key={cat} className="flex items-center justify-between px-4 py-2.5">
                   <span className="text-sm text-ink">{cat}</span>

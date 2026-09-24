@@ -125,7 +125,7 @@ export function CountLineRow({
             type="button"
             onClick={() => onSet(expected, { immediate: true })}
             aria-label={`Всё на месте: ${expected}`}
-            className={`whitespace-nowrap rounded border border-emerald-border bg-emerald-soft px-2 py-[3px] text-[11px] font-semibold text-emerald transition-colors hover:bg-emerald hover:text-surface ${FOCUS}`}
+            className={`inline-flex min-h-10 items-center whitespace-nowrap rounded border border-emerald-border bg-emerald-soft px-3 text-[11px] font-semibold lg:min-h-0 lg:px-2 lg:py-[3px] text-emerald transition-colors hover:bg-emerald hover:text-surface ${FOCUS}`}
           >
             = {expected}
           </button>
@@ -161,7 +161,7 @@ function SingleUnitButtons({
   disabled: boolean;
   onSet: CountLineRowProps["onSet"];
 }) {
-  const base = `inline-flex min-h-[28px] items-center rounded border px-2.5 text-[11.5px] font-semibold transition-colors disabled:opacity-60 ${FOCUS}`;
+  const base = `inline-flex min-h-10 items-center rounded border px-3.5 text-[11.5px] font-semibold lg:min-h-[28px] lg:px-2.5 transition-colors disabled:opacity-60 ${FOCUS}`;
   return (
     <div role="group" aria-label={`${name}: на полке?`} className="inline-flex gap-1">
       <button
@@ -215,7 +215,9 @@ function Stepper({
   const base = value ?? expected;
   const step = (delta: number) => onSet(clamp(base + delta));
 
-  const btn = `h-7 w-[26px] bg-surface-subtle text-sm leading-none text-ink-2 transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-40 ${FOCUS}`;
+  // До lg считают пальцем: кнопки 40 px, поле 16 px (мельче — iOS зумит страницу
+  // при фокусе). С lg — размеры десктопного мокапа.
+  const btn = `h-10 w-10 bg-surface-subtle lg:h-7 lg:w-[26px] text-sm leading-none text-ink-2 transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-40 ${FOCUS}`;
   return (
     <span className="inline-flex items-center overflow-hidden rounded border border-border-strong bg-surface">
       <button
@@ -260,7 +262,7 @@ function Stepper({
             onSet(next);
           }
         }}
-        className={`mono-num h-7 w-11 border-x border-border bg-surface text-center text-[13.5px] font-semibold text-ink placeholder:font-normal placeholder:text-ink-3 ${FOCUS} focus-visible:outline-offset-[-2px]`}
+        className={`mono-num h-10 w-14 border-x border-border bg-surface text-center text-base font-semibold lg:h-7 lg:w-11 lg:text-[13.5px] text-ink placeholder:font-normal placeholder:text-ink-3 ${FOCUS} focus-visible:outline-offset-[-2px]`}
       />
       <button type="button" onClick={() => step(1)} aria-label={`Больше: ${name}`} className={btn}>
         +

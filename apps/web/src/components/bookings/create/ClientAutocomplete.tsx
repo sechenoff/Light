@@ -272,7 +272,7 @@ export function ClientAutocomplete({
         type="text"
         value={value}
         disabled
-        className="w-full rounded border border-border-strong px-3 py-2 text-[13.5px] text-ink bg-surface opacity-60 cursor-not-allowed"
+        className="w-full rounded border border-border-strong px-3 py-2 text-base sm:text-[13.5px] text-ink bg-surface opacity-60 cursor-not-allowed"
         placeholder={placeholder}
       />
     );
@@ -299,7 +299,7 @@ export function ClientAutocomplete({
         aria-autocomplete="list"
         aria-controls={listId}
         aria-activedescendant={activeDescendant}
-        className="w-full rounded border border-border-strong px-3 py-2 text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
+        className="w-full rounded border border-border-strong px-3 py-2 text-base sm:text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
       />
 
       {isSelectedExisting && (

@@ -36,7 +36,7 @@ export function TransportCard({
 
   return (
     <section className="rounded-lg border border-border bg-surface p-5 shadow-xs">
-      <h2 className="mb-1 text-sm font-semibold text-ink">Транспорт</h2>
+      <h2 className="mb-1 text-[13px] font-medium text-ink">Транспорт</h2>
       <p className="mb-4 text-xs text-ink-3">
         {selected.length === 0
           ? "Без транспорта — отметьте машины ниже"
@@ -74,14 +74,14 @@ export function TransportCard({
                 <div className="flex flex-col gap-3 border-t border-border px-3 py-3">
                   {/* Generator option */}
                   {vehicle.hasGeneratorOption && (
-                    <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                    <label className="flex cursor-pointer items-start gap-2 text-sm text-ink">
                       <input
                         type="checkbox"
                         checked={sel.withGenerator}
                         onChange={(e) =>
                           onPatchVehicle(vehicle.id, { withGenerator: e.target.checked })
                         }
-                        className="h-4 w-4 accent-accent"
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
                         aria-label={`Генератор для ${vehicle.name}`}
                       />
                       <span>
@@ -115,14 +115,14 @@ export function TransportCard({
                   </div>
 
                   {/* Skip overtime */}
-                  <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                  <label className="flex cursor-pointer items-start gap-2 text-sm text-ink">
                     <input
                       type="checkbox"
                       checked={sel.skipOvertime}
                       onChange={(e) =>
                         onPatchVehicle(vehicle.id, { skipOvertime: e.target.checked })
                       }
-                      className="h-4 w-4 accent-accent"
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
                       aria-label={`Без переработки для ${vehicle.name}`}
                     />
                     <span>Без переработки</span>
@@ -130,7 +130,7 @@ export function TransportCard({
 
                   {/* Outside MKAD */}
                   <div className="flex flex-col gap-2">
-                    <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                    <label className="flex cursor-pointer items-start gap-2 text-sm text-ink">
                       <input
                         type="checkbox"
                         checked={sel.kmOutsideMkad > 0}
@@ -139,7 +139,7 @@ export function TransportCard({
                             kmOutsideMkad: e.target.checked ? sel.kmOutsideMkad || 1 : 0,
                           })
                         }
-                        className="h-4 w-4 accent-accent"
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
                         aria-label={`Выезд за МКАД для ${vehicle.name}`}
                       />
                       <span>Выезд за МКАД (120 ₽/км × туда-обратно)</span>
@@ -165,14 +165,14 @@ export function TransportCard({
                   </div>
 
                   {/* TTK entry */}
-                  <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                  <label className="flex cursor-pointer items-start gap-2 text-sm text-ink">
                     <input
                       type="checkbox"
                       checked={sel.ttkEntry}
                       onChange={(e) =>
                         onPatchVehicle(vehicle.id, { ttkEntry: e.target.checked })
                       }
-                      className="h-4 w-4 accent-accent"
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
                       aria-label={`Заезд в ТТК для ${vehicle.name}`}
                     />
                     <span>Заезд в ТТК (+500 ₽)</span>
@@ -231,8 +231,9 @@ export function TransportCard({
                                 isNegotiated={sel.negotiatedTotalRub != null}
                                 onChange={(v) => onChangeNegotiatedTotal(sel.vehicleId, v)}
                                 ariaLabel={`Сумма за машину: ${vehicle.name}`}
+                                className="-mr-[7px]"
                               />
-                              <span className="text-ink-3">₽</span>
+                              <span className="ml-0.5 text-ink-3">₽</span>
                             </span>
                           ) : (
                             <span className="mono-num">{formatMoneyRubWhole(Number(breakdown.total))} ₽</span>

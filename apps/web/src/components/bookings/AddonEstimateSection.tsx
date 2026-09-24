@@ -90,7 +90,7 @@ export function AddonEstimateSection({
   const linkClass = "rounded border border-border px-3 py-1.5 hover:bg-surface-muted";
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-surface p-4">
+    <section className="rounded-lg border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-[14px] font-semibold text-ink">Доб-смета</h2>

@@ -178,7 +178,7 @@ export function ResolveProblemModal({
             type="button"
             onClick={handleSubmit}
             disabled={disabled}
-            className={`rounded px-4 py-2 text-sm text-white disabled:opacity-50 ${
+            className={`rounded px-4 py-2 text-sm text-surface disabled:opacity-50 ${
               outcome === "FOUND"
                 ? "bg-emerald hover:bg-emerald/90"
                 : "bg-rose hover:bg-rose/90"

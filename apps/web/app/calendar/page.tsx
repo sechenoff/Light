@@ -78,6 +78,10 @@ function cellColorClass(occupied: number, total: number): string {
 // чтобы отличать «На согласовании» от подтверждённой занятости.
 const PENDING_CELL_CLASS = "text-amber bg-amber-soft border border-dashed border-amber-border";
 
+// Разделители липких ячеек сетки (sticky уже позиционирует ячейку для absolute).
+const STICKY_DIVIDER_RIGHT = "after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-border";
+const STICKY_DIVIDER_BOTTOM = "before:absolute before:inset-x-0 before:bottom-0 before:h-px before:bg-border";
+
 function isPendingOnly(occupied: number, bookings: CalendarEvent[]): boolean {
   return (
     occupied > 0 &&
@@ -403,7 +407,7 @@ function CalendarPageInner() {
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && applySearch()}
             placeholder="Поиск..."
-            className="border border-border rounded-md px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-accent-bright"
+            className="border border-border rounded-md bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-ink-3 w-48 focus:outline-none focus:ring-2 focus:ring-accent-bright"
           />
 
           {/* Черновики */}
@@ -472,20 +476,26 @@ function CalendarPageInner() {
 
         {/* Таблица */}
         {!loading && !error && !isEmpty && (
-          <div className="overflow-x-auto rounded-lg border border-border">
+          // Свой скролл-бокс по обеим осям: шапка с датами и колонка названий
+          // липкие, иначе со второго экрана не понять, какой столбец какой день.
+          // 15rem снизу — низ бокса выше плавающей «Сообщить», и на 1440 страница
+          // не заводит собственную прокрутку поверх прокрутки бокса.
+          <div className="max-h-[calc(100vh-15rem)] overflow-auto rounded-lg border border-border">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="bg-surface-subtle border-b border-border">
-                  <th className="text-left px-3 py-2 font-medium text-ink-2 whitespace-nowrap min-w-[180px] sticky left-0 bg-surface-subtle">
+                  {/* Разделители липких ячеек — псевдоэлементами: при border-collapse
+                      рамка (border-r / border-b) остаётся на месте, а ячейка уезжает. */}
+                  <th className={`text-left px-3 py-2 font-medium text-ink-2 whitespace-nowrap min-w-[180px] sticky left-0 top-0 z-20 bg-surface-subtle ${STICKY_DIVIDER_RIGHT} ${STICKY_DIVIDER_BOTTOM}`}>
                     Оборудование
                   </th>
                   {days.map((d) => (
                     <th
                       key={d}
-                      className={`text-center px-2 py-2 font-medium text-ink-2 whitespace-nowrap min-w-[52px] ${
+                      className={`sticky top-0 z-10 text-center px-2 py-2 font-medium whitespace-nowrap min-w-[52px] ${STICKY_DIVIDER_BOTTOM} ${
                         d === today
                           ? "bg-accent-soft text-accent"
-                          : ""
+                          : "bg-surface-subtle text-ink-2"
                       }`}
                     >
                       {formatDayHeader(d)}
@@ -505,12 +515,15 @@ function CalendarPageInner() {
                         colSpan={days.length + 1}
                         className="px-3 py-1.5 font-semibold text-ink-2 text-xs uppercase tracking-wide"
                       >
-                        <span className="mr-2">
-                          {collapsed.has(cat) ? "▸" : "▾"}
-                        </span>
-                        {cat}
-                        <span className="ml-2 text-ink-3 font-normal">
-                          ({catResources.length})
+                        {/* Подпись группы держится у левого края при горизонтальном скролле */}
+                        <span className="sticky left-3 inline-flex items-center">
+                          <span className="mr-2">
+                            {collapsed.has(cat) ? "▸" : "▾"}
+                          </span>
+                          {cat}
+                          <span className="ml-2 text-ink-3 font-normal">
+                            ({catResources.length})
+                          </span>
                         </span>
                       </td>
                     </tr>
@@ -522,7 +535,10 @@ function CalendarPageInner() {
                           key={resource.id}
                           className="border-b border-border hover:bg-surface-muted transition-colors"
                         >
-                          <td className="px-3 py-1.5 text-ink whitespace-nowrap sticky left-0 bg-surface hover:bg-surface-muted max-w-[220px] truncate">
+                          <td
+                            title={resource.name}
+                            className={`px-3 py-1.5 text-ink whitespace-nowrap sticky left-0 bg-surface hover:bg-surface-muted max-w-[220px] truncate ${STICKY_DIVIDER_RIGHT}`}
+                          >
                             {resource.name}
                           </td>
                           {days.map((d) => {
@@ -611,7 +627,7 @@ function CalendarPageInner() {
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && applySearch()}
             placeholder="Поиск оборудования..."
-            className="w-full min-w-0 basis-full border border-border rounded-md px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-accent-bright"
+            className="w-full min-w-0 basis-full border border-border rounded-md bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-accent-bright"
           />
           <select
             value={category}
@@ -637,21 +653,23 @@ function CalendarPageInner() {
         </div>
 
         {/* Навигация по дням */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
           <button
             onClick={mobilePrevDay}
-            className="px-3 py-2 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors"
+            aria-label="Предыдущий день"
+            className="h-10 whitespace-nowrap px-3 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors"
           >
-            ← Пред. день
+            ← Пред.
           </button>
-          <span className="text-sm text-ink-2 font-medium text-center">
+          <span className="text-sm text-ink-2 font-medium text-center leading-tight">
             {capitalize(formatDayRu(mobileDay))}
           </span>
           <button
             onClick={mobileNextDay}
-            className="px-3 py-2 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors"
+            aria-label="Следующий день"
+            className="h-10 whitespace-nowrap px-3 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors"
           >
-            След. день →
+            След. →
           </button>
         </div>
 
@@ -701,12 +719,13 @@ function CalendarPageInner() {
                   key={resource.id}
                   className="rounded-lg border border-border bg-surface p-3 space-y-2"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-ink truncate">
+                  <div className="flex items-start justify-between gap-2">
+                    {/* Две строки вместо многоточия: позиции часто различаются концом названия */}
+                    <span className="min-w-0 font-medium text-ink line-clamp-2">
                       {resource.name}
                     </span>
                     <span
-                      className={`text-xs font-medium px-2 py-0.5 rounded shrink-0 ${
+                      className={`mt-0.5 text-xs font-medium px-2 py-0.5 rounded shrink-0 ${
                         occupied > 0
                           ? colorClass
                           : "text-ink-3"

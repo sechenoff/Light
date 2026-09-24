@@ -16,6 +16,7 @@
 
 import { useCallback, useState } from "react";
 import {
+  STICKY_ABOVE_TAB_BAR,
   WorkstationShell,
   type WorkstationShellProps,
 } from "./WorkstationShell";
@@ -122,7 +123,7 @@ function CategoryLines({
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-2 px-2.5 py-2.5 lg:px-5 lg:py-4">
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-2 px-3 py-2.5 lg:px-5 lg:py-4">
         {lines.map((line) => (
           <StockCountLineCard
             key={line.id}
@@ -154,9 +155,9 @@ function CategoryLines({
           />
         ))}
       </div>
-      {/* Над нижним таб-баром на телефоне (52 px + safe area), у края на десктопе. */}
-      <footer className="sticky bottom-[calc(52px_+_env(safe-area-inset-bottom))] z-20 border-t border-border bg-surface lg:bottom-0">
-        <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-3.5 py-1.5 text-[12.5px] text-ink-2">
+      {/* Над нижним таб-баром на телефоне, у края окна на десктопе. */}
+      <footer className={`${STICKY_ABOVE_TAB_BAR} border-t border-border bg-surface`}>
+        <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-3 py-1.5 text-[12.5px] text-ink-2 lg:px-5">
           <span>
             расхождений{" "}
             {noDiff ? (
@@ -177,7 +178,7 @@ function CategoryLines({
           <button
             type="button"
             onClick={onPause}
-            className="min-h-[44px] rounded px-3 font-semibold text-accent-bright hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright"
+            className="-mr-3 min-h-[44px] rounded px-3 font-semibold text-accent-bright hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright"
           >
             Пауза
           </button>

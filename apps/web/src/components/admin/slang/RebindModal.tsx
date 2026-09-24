@@ -40,13 +40,15 @@ export function RebindModal({ phrase, currentEquipmentId, onRebind, onClose }: P
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        type EquipmentResponse = { items?: { id: string; name: string; category: string }[] };
-        const data = await apiFetch<EquipmentResponse | { id: string; name: string; category: string }[]>(
+        type EquipmentItem = { id: string; name: string; category: string };
+        // GET /api/equipment отдаёт `{ equipments }`; `items` оставлен для совместимости
+        type EquipmentResponse = { equipments?: EquipmentItem[]; items?: EquipmentItem[] };
+        const data = await apiFetch<EquipmentResponse | EquipmentItem[]>(
           `/api/equipment?search=${encodeURIComponent(search.trim())}`
         );
         // Discard stale responses
         if (requestId !== searchCounterRef.current) return;
-        const items = Array.isArray(data) ? data : (data as EquipmentResponse).items ?? [];
+        const items = Array.isArray(data) ? data : data.equipments ?? data.items ?? [];
         setResults(items.map((e) => ({ id: e.id, name: e.name, category: e.category })));
       } catch {
         if (requestId === searchCounterRef.current) setResults([]);
@@ -72,10 +74,10 @@ export function RebindModal({ phrase, currentEquipmentId, onRebind, onClose }: P
 
   return (
     <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-scrim/40 flex items-center justify-center z-50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-surface rounded-xl w-full max-w-[480px] max-h-[520px] shadow-lg overflow-hidden">
+      <div className="bg-surface rounded-lg w-full max-w-[480px] max-h-[520px] shadow-lg overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border">
           <h3 className="text-sm font-semibold text-ink">
@@ -84,7 +86,7 @@ export function RebindModal({ phrase, currentEquipmentId, onRebind, onClose }: P
           <button
             onClick={onClose}
             aria-label="Закрыть"
-            className="text-ink-3 hover:text-ink text-lg leading-none"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-surface-muted hover:text-ink text-lg leading-none"
           >
             ×
           </button>

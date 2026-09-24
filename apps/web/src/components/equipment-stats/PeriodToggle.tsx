@@ -19,7 +19,7 @@ export function PeriodToggle() {
     <div
       role="group"
       aria-label="Период"
-      className="inline-flex items-center bg-surface border border-border rounded-full p-1"
+      className="inline-flex overflow-hidden rounded border border-border bg-surface"
     >
       {PERIOD_OPTIONS.map((opt) => {
         const isActive = opt.value === active;
@@ -30,10 +30,9 @@ export function PeriodToggle() {
             aria-pressed={isActive}
             onClick={() => setPeriod(opt.value)}
             className={
-              "text-sm font-medium px-3.5 py-1.5 rounded-full transition-colors " +
-              (isActive
-                ? "bg-accent text-surface"
-                : "text-ink-3 hover:text-ink")
+              // Тот же сегмент, что у периода автопарка (FleetPeriodToggle) и групп «Ремонтов».
+              "border-r border-border px-2.5 py-2 text-[11px] font-semibold leading-[1.6] transition-colors last:border-r-0 md:py-1 " +
+              (isActive ? "bg-accent text-surface hover:bg-accent" : "text-ink-2 hover:bg-surface-muted")
             }
           >
             {opt.label}

@@ -22,8 +22,10 @@ export function AuditEntryCard({
   const entity = entry.entityLabel || auditEntityLabel(entry.entityType);
   return (
     <article className="min-w-0 rounded-lg border border-border bg-surface p-3 sm:p-4 space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 space-y-1">
+      {/* basis-48 + grow: время уходит под автора по ширине карточки, а не по
+          длине заголовка — во всём списке оно стоит одинаково. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <div className="min-w-0 basis-48 grow space-y-1">
           <h3 className="text-sm font-semibold text-ink break-words">
             {auditActionLabel(entry.action)}
           </h3>
@@ -31,7 +33,7 @@ export function AuditEntryCard({
             {entry.user && entry.userId !== "_system_" ? (
               <Link
                 href={`/admin/audit?userId=${encodeURIComponent(entry.userId)}`}
-                className="text-accent-bright hover:underline"
+                className="inline-block py-1 -my-1 text-accent-bright hover:underline"
               >
                 {auditActorLabel(entry)}
               </Link>
@@ -42,7 +44,7 @@ export function AuditEntryCard({
           {showEntity && (
             <p className="text-xs text-ink-3 break-words">
               {href ? (
-                <Link href={href} className="hover:underline">
+                <Link href={href} className="inline-block py-1 -my-1 hover:underline">
                   {entity}
                 </Link>
               ) : (
@@ -53,14 +55,15 @@ export function AuditEntryCard({
         </div>
         <time
           dateTime={entry.createdAt}
-          className="text-xs text-ink-3 mono-num"
+          className="shrink-0 whitespace-nowrap text-xs text-ink-3 mono-num"
         >
           {auditTimestamp(entry.createdAt)}
         </time>
       </div>
       {changes.length ? (
         <details open={changes.length <= 4}>
-          <summary className="cursor-pointer min-h-8 text-xs font-medium text-accent-bright">
+          {/* py-2 -my-2: зона нажатия 32 px без пустой полосы под строкой. */}
+          <summary className="cursor-pointer py-2 -my-2 text-xs font-medium text-accent-bright">
             Что изменилось · {changes.length}
           </summary>
           <div className="space-y-2 mt-2">

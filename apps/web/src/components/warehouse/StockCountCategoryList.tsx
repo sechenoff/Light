@@ -15,6 +15,15 @@ import type { StockCountDetail } from "../inventory/types";
 import { pluralize } from "../../lib/format";
 import { countersText } from "./StockCountFormat";
 
+/** Цифровой пробел (U+2007) — шириной ровно в цифру, не схлопывается и не рвёт строку. */
+const FIGURE_SPACE = "\u2007";
+
+/** «8» → «  8» / «8  »: число, добитое до 3 знаков, для колонки «посчитано / всего». */
+function padCount(n: number, side: "start" | "end"): string {
+  const s = String(n);
+  return side === "start" ? s.padStart(3, FIGURE_SPACE) : s.padEnd(3, FIGURE_SPACE);
+}
+
 export function StockCountCategoryList({
   detail,
   onOpen,
@@ -103,8 +112,10 @@ export function StockCountCategoryList({
                         <span className="sr-only">посчитано, </span>
                       </>
                     )}
+                    {/* Числа добиты цифровыми пробелами до 3 знаков: в моноширинном
+                        шрифте слэш встаёт на одну вертикаль в «0 / 8» и «0 / 17». */}
                     <span>
-                      {c.counted} / {c.lines}
+                      {padCount(c.counted, "start")} / {padCount(c.lines, "end")}
                     </span>
                   </span>
                   <span aria-hidden className="shrink-0 text-[18px] leading-none text-ink-3">

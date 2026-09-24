@@ -29,6 +29,7 @@ import {
   BTN_PRIMARY,
   CARD,
   CARD_ZONE,
+  META_ITEM,
   daysText,
 } from "../../../src/components/repair/cardChrome";
 import {
@@ -304,7 +305,7 @@ export default function RepairDetailPage() {
       <div className="space-y-3 p-4 lg:p-6">
         <div className="h-16 animate-pulse rounded-lg bg-surface-muted" />
         <div className="h-10 animate-pulse rounded-lg bg-surface-muted" />
-        <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
           <div className="h-64 animate-pulse rounded-lg bg-surface-muted" />
           <div className="h-64 animate-pulse rounded-lg bg-surface-muted" />
         </div>
@@ -355,17 +356,18 @@ export default function RepairDetailPage() {
       : "Ремонт ведёт техник. Ваше отсюда — подобрать подмену и следить за сроком.";
 
   return (
-    <div className="p-4 lg:p-6">
+    // Нижний запас — под плавающую кнопку «Сообщить».
+    <div className="p-4 pb-20 lg:p-6 lg:pb-24">
       <Link
         href="/repair"
-        className="text-xs font-semibold text-accent-bright hover:text-accent hover:underline"
+        className="inline-flex min-h-8 items-center text-xs font-semibold text-accent-bright hover:text-accent hover:underline"
       >
         ← Мастерская
       </Link>
 
       {/* ── Шапка ── */}
       <header className="mt-2.5 flex flex-wrap items-start justify-between gap-5 border-b border-border pb-3">
-        <div className="min-w-0">
+        <div className="min-w-0 grow basis-[360px]">
           <p className="eyebrow">
             Ремонт · заведён {formatLongDate(repair.createdAt)}
             {repair.sourceBooking && canSeeBooking
@@ -375,27 +377,34 @@ export default function RepairDetailPage() {
           <h1 className="mt-0.5 font-cond text-[27px] font-bold leading-[1.15] tracking-[-0.012em]">
             {repair.title}
           </h1>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-2">
-            <RepairStatusPill status={repair.status} />
-            <UrgencyPill urgency={repair.urgency} />
-            <QuantityTag quantity={repair.quantity} />
-            <TitleSourceTag source={repair.titleSource} />
-            <span className="text-border-strong">·</span>
-            {repair.assignedToName ? (
-              <span className="inline-flex items-center gap-1">
-                чинит <b className="font-semibold text-ink">{repair.assignedToName}</b>
-              </span>
-            ) : (
-              <span className="text-ink-3">исполнитель не назначен</span>
-            )}
-            <span className="text-border-strong">·</span>
-            <span>{ageText(repair)}</span>
-            <span className="text-border-strong">·</span>
-            <span className={quiet ? "font-semibold text-amber" : ""}>{activityText(repair)}</span>
+          {/* Разделители «·» рисует ::before пунктов (META_ITEM): при переносе
+              точка не повисает на краю строки. */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-1 overflow-hidden text-[12.5px] text-ink-2">
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <RepairStatusPill status={repair.status} />
+              <UrgencyPill urgency={repair.urgency} />
+              <QuantityTag quantity={repair.quantity} />
+              <TitleSourceTag source={repair.titleSource} />
+            </span>
+            <span className={META_ITEM}>
+              {repair.assignedToName ? (
+                <span className="inline-flex items-center gap-1">
+                  чинит <b className="font-semibold text-ink">{repair.assignedToName}</b>
+                </span>
+              ) : (
+                <span className="text-ink-3">исполнитель не назначен</span>
+              )}
+            </span>
+            <span className={META_ITEM}>{ageText(repair)}</span>
+            <span className={META_ITEM}>
+              <span className={quiet ? "font-semibold text-amber" : ""}>{activityText(repair)}</span>
+            </span>
           </div>
         </div>
 
-        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:max-w-[520px] lg:justify-end">
+        {/* Справа от заголовка — только с xl: на 1024 (контент 752) блок не
+            помещается рядом и висел посреди страницы. Ниже — во всю ширину слева. */}
+        <div className="flex w-full flex-wrap items-center gap-2 empty:hidden xl:ml-auto xl:w-auto xl:max-w-[520px] xl:justify-end">
           {canFinish && (
             <button
               type="button"
@@ -464,9 +473,12 @@ export default function RepairDetailPage() {
               Не чинится — списать
             </button>
           )}
-          <p className="basis-full text-[11px] leading-[1.45] text-ink-3 lg:text-right">
-            {roleHint}
-          </p>
+          {/* Подсказка объясняет кнопки — без них ей нечего объяснять. */}
+          {(isSuperAdmin ? canWriteOff : isActive) && (
+            <p className="basis-full text-[11px] leading-[1.45] text-ink-3 xl:text-right">
+              {roleHint}
+            </p>
+          )}
         </div>
       </header>
 
@@ -485,7 +497,7 @@ export default function RepairDetailPage() {
         )}
       </div>
 
-      <div className="mt-3.5 grid items-start gap-3.5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+      <div className="mt-3.5 grid items-start gap-3.5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         {/* ── Левая колонка ── */}
         <div className="flex min-w-0 flex-col gap-3.5">
           {/* Что видел кладовщик на приёмке */}
@@ -497,7 +509,7 @@ export default function RepairDetailPage() {
                   Что видел кладовщик на приёмке
                 </span>
                 {repair.photos.length > 0 && (
-                  <span className="ml-auto text-[11px] text-ink-3">
+                  <span className="basis-full text-[11px] text-ink-3 sm:ml-auto sm:basis-auto">
                     {photoStripCaption(repair.photos.length, repair.createdAt, repair.createdByName)}
                   </span>
                 )}
@@ -595,12 +607,12 @@ export default function RepairDetailPage() {
           {showMoney && (
             <section className={CARD}>
               <div className={CARD_ZONE}>
-                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="eyebrow inline-flex items-center gap-1.5">
                     <RepairIcon name="rub" />
                     Затраты по этому ремонту
                   </span>
-                  <span className="ml-auto rounded-[3px] border border-indigo-border bg-indigo-soft px-1 font-cond text-[9.5px] font-semibold uppercase leading-[1.6] tracking-[0.06em] text-indigo">
+                  <span className="rounded-[3px] border border-indigo-border bg-indigo-soft px-1 font-cond text-[9.5px] font-semibold uppercase leading-[1.6] tracking-[0.06em] text-indigo sm:ml-auto">
                     только руководитель
                   </span>
                 </div>

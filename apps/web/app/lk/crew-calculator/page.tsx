@@ -215,7 +215,7 @@ function HourRibbon({ hours }: { hours: number }) {
           return (
             <div
               key={i}
-              className={`absolute top-0 bottom-0 ${palette.bg} ${i === 0 ? "" : "border-l border-white"}`}
+              className={`absolute top-0 bottom-0 ${palette.bg} ${i === 0 ? "" : "border-l border-surface"}`}
               style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
               title={`${seg.label}: ${seg.from}–${seg.to.toFixed(seg.to % 1 === 0 ? 0 : 1)} ч`}
             >
@@ -246,10 +246,12 @@ function HourRibbon({ hours }: { hours: number }) {
       </div>
       {/* Tick labels */}
       <div className="relative h-3 text-[10px] font-cond text-ink-3 tabular-nums">
+        {/* Крайние метки прижаты внутрь шкалы: центрированные на границе, они
+            наполовину вылезали за её края. */}
         {ticks.map((t) => (
           <span
             key={t}
-            className="absolute -translate-x-1/2"
+            className={`absolute ${t === 0 ? "" : t === cap ? "-translate-x-full" : "-translate-x-1/2"}`}
             style={{ left: `${(t / cap) * 100}%` }}
           >
             {t}ч
@@ -299,22 +301,24 @@ function RoleRow({
 
   return (
     <div
-      className={`group py-3 px-3 -mx-3 rounded-md transition-colors ${
+      className={`group px-4 py-3 transition-colors ${
         isActive ? "bg-accent-soft/40" : "hover:bg-surface-subtle"
       }`}
     >
-      {/* Top row: name | stepper | total */}
-      <div className="flex items-center gap-3">
+      {/* Top row: name | stepper | total. Когда места мало, степпер с суммой
+          уходят второй строкой вправо — имя и ставка не обрезаются. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         {/* Role name + rate */}
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 grow">
           <div className="text-sm font-semibold text-ink truncate">{role.label}</div>
           <div className="text-xs text-ink-3 mono-num">
-            {formatMoneyRub(role.shiftRate)} ₽ / смена
+            <span className="whitespace-nowrap">{formatMoneyRub(role.shiftRate)} ₽</span>{" "}
+            <span className="whitespace-nowrap">/ смена</span>
           </div>
         </div>
 
-        {/* Stepper */}
-        <div className="shrink-0">
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          {/* Stepper */}
           <div className="inline-flex items-center rounded-md border border-border bg-surface overflow-hidden">
             <button
               type="button"
@@ -337,21 +341,25 @@ function RoleRow({
               +
             </button>
           </div>
-        </div>
 
-        {/* Total — appears only when active */}
-        {isActive && breakdown && (
-          <div className="text-right shrink-0 min-w-[88px]">
-            <div className="text-sm font-semibold text-ink mono-num whitespace-nowrap">
-              {formatMoneyRub(breakdown.total)} ₽
-            </div>
-            {count > 1 && (
-              <div className="text-[10px] text-ink-3 mono-num whitespace-nowrap leading-tight">
-                {formatMoneyRub(breakdown.totalPerPerson)} × {count}
-              </div>
-            )}
+          {/* Total — колонка зарезервирована и у пустой строки, чтобы степперы стояли
+              в одну вертикаль. На телефоне пустую не держим: иначе каждая строка
+              пустого состояния уходила бы в две с висящим посередине степпером. */}
+          <div className={`min-w-28 text-right ${isActive ? "" : "hidden sm:block"}`}>
+            {isActive && breakdown ? (
+              <>
+                <div className="text-sm font-semibold text-ink mono-num whitespace-nowrap">
+                  {formatMoneyRub(breakdown.total)} ₽
+                </div>
+                {count > 1 && (
+                  <div className="text-[10px] text-ink-3 mono-num whitespace-nowrap leading-tight">
+                    {formatMoneyRub(breakdown.totalPerPerson)} × {count}
+                  </div>
+                )}
+              </>
+            ) : null}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Bottom row: bar + legend (full-width when active) */}
@@ -548,7 +556,7 @@ function CrewCalculatorPageInner() {
 
   // ───────────────────────────────────────────────────────────────────────────
   return (
-    <div className="px-4 sm:px-6 py-6 max-w-6xl mx-auto pb-32 lg:pb-6">
+    <div className="pb-32 lg:pb-0">
       {/* ─── Print-only header ─── */}
       <div className="hidden print:block mb-6">
         <div className="flex items-start justify-between">
@@ -607,7 +615,7 @@ function CrewCalculatorPageInner() {
             </span>
           </div>
         </div>
-        <h1 className="font-cond text-3xl sm:text-4xl font-bold text-ink leading-tight tracking-tight">
+        <h1 className="text-2xl font-medium text-ink">
           Расчёт смены осветителей
         </h1>
         <p className="text-sm text-ink-2 mt-2 max-w-2xl">
@@ -620,18 +628,18 @@ function CrewCalculatorPageInner() {
 
       {/* ─── HERO KPI strip ─── */}
       <section className="print:hidden mb-8">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-border rounded-lg overflow-hidden border border-border">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] gap-px bg-border rounded-lg overflow-hidden border border-border">
           {/* Total */}
           <div className="bg-inverse text-on-inverse p-5">
             <div className="text-[10px] font-cond uppercase tracking-widest text-ink-3">Итого за день</div>
-            <div className="font-cond font-bold mono-num leading-none mt-2 text-4xl sm:text-5xl">
+            <div className="font-cond font-bold mono-num leading-none mt-2 whitespace-nowrap text-4xl lg:text-5xl">
               {formatMoneyRub(result.grandTotal)}
-              <span className="ml-1 text-2xl sm:text-3xl text-ink-3 font-normal"> ₽</span>
+              <span className="ml-1 text-2xl lg:text-3xl text-ink-3 font-normal"> ₽</span>
             </div>
             <div className="mt-3 text-xs text-ink-3 min-h-[1rem]">
               {overtimePremium > 0 ? (
                 <span>
-                  <span className="text-amber-soft/90">+{formatMoneyRub(overtimePremium)} ₽</span>{" "}
+                  <span className="font-semibold text-on-inverse">+{formatMoneyRub(overtimePremium)} ₽</span>{" "}
                   за переработку
                 </span>
               ) : totalCrewSize > 0 ? (
@@ -645,9 +653,9 @@ function CrewCalculatorPageInner() {
           {/* Effective rate */}
           <div className="bg-surface p-5">
             <div className="eyebrow">Ставка / час / человек</div>
-            <div className="font-cond font-bold mono-num leading-none mt-2 text-3xl sm:text-4xl text-ink">
+            <div className="font-cond font-bold mono-num leading-none mt-2 whitespace-nowrap text-3xl lg:text-4xl text-ink">
               {effectiveRate > 0 ? formatMoneyRub(Math.round(effectiveRate)) : "—"}
-              {effectiveRate > 0 && <span className="ml-1 text-xl sm:text-2xl text-ink-3 font-normal"> ₽</span>}
+              {effectiveRate > 0 && <span className="ml-1 text-xl lg:text-2xl text-ink-3 font-normal"> ₽</span>}
             </div>
             <div className="mt-3 text-xs text-ink-2 min-h-[1rem]">
               {hours !== null && totalCrewSize > 0 ? (
@@ -666,9 +674,9 @@ function CrewCalculatorPageInner() {
           {/* Composition */}
           <div className="bg-surface p-5">
             <div className="eyebrow">Команда</div>
-            <div className="font-cond font-bold mono-num leading-none mt-2 text-3xl sm:text-4xl text-ink">
+            <div className="font-cond font-bold mono-num leading-none mt-2 whitespace-nowrap text-3xl lg:text-4xl text-ink">
               {totalCrewSize || "—"}
-              {totalCrewSize > 0 && <span className="ml-1 text-xl sm:text-2xl text-ink-3 font-normal"> чел.</span>}
+              {totalCrewSize > 0 && <span className="ml-1 text-xl lg:text-2xl text-ink-3 font-normal"> чел.</span>}
             </div>
             <div className="mt-3 text-xs text-ink-2 min-h-[1rem] truncate">
               {result.lines.length > 0 ? (
@@ -718,19 +726,19 @@ function CrewCalculatorPageInner() {
                   );
                 })}
                 {/* Custom input */}
-                <div className="flex items-center rounded-md border border-border bg-surface overflow-hidden flex-1 min-w-[110px]">
+                <div className="flex h-9 items-center rounded-md border border-border bg-surface overflow-hidden flex-1 min-w-[110px]">
                   <input
                     type="number"
                     min={0}
                     step={0.5}
                     inputMode="decimal"
-                    className="h-9 flex-1 w-full px-2.5 bg-transparent text-sm font-semibold mono-num focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
+                    className="h-full flex-1 w-full px-2.5 bg-transparent text-sm font-semibold mono-num focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
                     placeholder="N"
                     value={hoursRaw}
                     onChange={(e) => setHoursRaw(e.target.value)}
                     aria-label="Произвольное количество часов"
                   />
-                  <div className="px-2 text-xs text-ink-3 border-l border-border h-9 flex items-center">
+                  <div className="px-2 text-xs text-ink-3 border-l border-border h-full flex items-center">
                     часов
                   </div>
                 </div>
@@ -800,7 +808,7 @@ function CrewCalculatorPageInner() {
               </div>
             </header>
 
-            <div className="px-3 py-2 divide-y divide-border/60">
+            <div className="divide-y divide-border/60">
               {activeRoles.map((role) => {
                 const n = parseCount(counts[role.id]);
                 return (
@@ -857,7 +865,7 @@ function CrewCalculatorPageInner() {
         </aside>
 
         {/* ── RIGHT: Results ── */}
-        <main className="lg:col-span-7 space-y-5">
+        <section aria-label="Результат расчёта" className="lg:col-span-7 space-y-5">
           {/* Empty state */}
           {(hours === null || result.lines.length === 0) && (
             <div className="rounded-lg border border-dashed border-border bg-surface-muted px-6 py-16 text-center">
@@ -873,9 +881,14 @@ function CrewCalculatorPageInner() {
                 {hours === null ? "Укажите часы" : "Добавьте людей"}
               </div>
               <div className="text-xs text-ink-3 mt-1 max-w-xs mx-auto">
-                {hours === null
-                  ? "Выберите длительность смены — слева есть быстрые пресеты на 8, 10, 12, 14 и 16 часов."
-                  : "Нажмите на любой пресет состава или соберите команду вручную."}
+                {hours === null ? (
+                  <>
+                    Выберите длительность смены — <span className="lg:hidden">выше</span>
+                    <span className="hidden lg:inline">слева</span> есть быстрые пресеты на 8, 10, 12, 14 и 16 часов.
+                  </>
+                ) : (
+                  "Нажмите на любой пресет состава или соберите команду вручную."
+                )}
               </div>
             </div>
           )}
@@ -960,7 +973,7 @@ function CrewCalculatorPageInner() {
 
           {/* OT detail + base comparison */}
           {result.lines.length > 0 && overtimeHours > 0 && (
-            <section className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-5">
               {/* OT detail */}
               <div className="rounded-lg border border-amber-border bg-amber-soft/40 p-4">
                 <div className="eyebrow text-amber">Переработка по ролям</div>
@@ -968,43 +981,43 @@ function CrewCalculatorPageInner() {
                   {result.lines
                     .filter((l) => l.totalOvertimeCostPerPerson > 0)
                     .map((l) => (
-                      <div key={l.role} className="flex justify-between items-baseline text-sm">
-                        <span className="text-ink-2 truncate pr-2">
+                      <div key={l.role} className="flex justify-between items-baseline gap-3 text-sm">
+                        <span className="text-ink-2 truncate">
                           {l.label} <span className="text-ink-3 mono-num">×{l.count}</span>
                         </span>
-                        <span className="mono-num font-medium text-amber shrink-0">
+                        <span className="mono-num font-medium text-amber shrink-0 whitespace-nowrap">
                           +{formatMoneyRub(l.totalOvertimeCostPerPerson * l.count)} ₽
                         </span>
                       </div>
                     ))}
-                  <div className="flex justify-between items-baseline text-sm font-semibold border-t border-amber-border pt-1.5 mt-1.5">
-                    <span className="text-amber">Всего переработка</span>
-                    <span className="mono-num text-amber">+{formatMoneyRub(totalOvertimeCost)} ₽</span>
+                  <div className="flex justify-between items-baseline gap-3 text-sm font-semibold border-t border-amber-border pt-1.5 mt-1.5">
+                    <span className="text-amber min-w-0">Всего переработка</span>
+                    <span className="mono-num text-amber shrink-0 whitespace-nowrap">+{formatMoneyRub(totalOvertimeCost)} ₽</span>
                   </div>
                 </div>
               </div>
 
               {/* Base comparison */}
               <div className="rounded-lg border border-border bg-surface p-4">
-                <div className="eyebrow">Если бы смена была 10 ч</div>
+                <div className="eyebrow">Если бы смена была 10&nbsp;ч</div>
                 <div className="mt-2 space-y-2">
-                  <div className="flex justify-between items-baseline text-sm">
-                    <span className="text-ink-2">Базовая смена</span>
-                    <span className="mono-num font-medium text-ink-2">{formatMoneyRub(baseResult.grandTotal)} ₽</span>
+                  <div className="flex justify-between items-baseline gap-3 text-sm">
+                    <span className="text-ink-2 min-w-0">Базовая смена</span>
+                    <span className="mono-num font-medium text-ink-2 shrink-0 whitespace-nowrap">{formatMoneyRub(baseResult.grandTotal)} ₽</span>
                   </div>
-                  <div className="flex justify-between items-baseline text-sm">
-                    <span className="text-ink-2">Текущая смена</span>
-                    <span className="mono-num font-semibold text-ink">{formatMoneyRub(result.grandTotal)} ₽</span>
+                  <div className="flex justify-between items-baseline gap-3 text-sm">
+                    <span className="text-ink-2 min-w-0">Текущая смена</span>
+                    <span className="mono-num font-semibold text-ink shrink-0 whitespace-nowrap">{formatMoneyRub(result.grandTotal)} ₽</span>
                   </div>
-                  <div className="flex justify-between items-baseline text-sm border-t border-border pt-2 mt-2">
-                    <span className="text-amber font-semibold">Доплата за {overtimeHours} ч ОТ</span>
-                    <span className="mono-num font-bold text-amber">+{formatMoneyRub(overtimePremium)} ₽</span>
+                  <div className="flex justify-between items-baseline gap-3 text-sm border-t border-border pt-2 mt-2">
+                    <span className="text-amber font-semibold min-w-0">Доплата за {overtimeHours} ч ОТ</span>
+                    <span className="mono-num font-bold text-amber shrink-0 whitespace-nowrap">+{formatMoneyRub(overtimePremium)} ₽</span>
                   </div>
                 </div>
               </div>
             </section>
           )}
-        </main>
+        </section>
       </div>
 
       {/* ── Mobile sticky bottom bar ── */}
@@ -1185,7 +1198,7 @@ function PersonStackVis({ line }: { line: RoleBreakdown }) {
               <div className="text-[10px] font-cond uppercase tracking-wide text-ink-3 truncate">
                 {i.label}
               </div>
-              <div className="mono-num text-ink-2 text-[11px] leading-tight">
+              <div className="mono-num text-ink-2 text-[11px] leading-tight whitespace-nowrap">
                 {formatMoneyRub(i.value)} ₽
               </div>
             </div>

@@ -62,6 +62,9 @@ export function TaskEditModal({
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        // Модалка открывается и поверх панели задачи — Esc закрывает только её
+        // (панель пропускает уже обработанное событие).
+        e.preventDefault();
         onClose();
         return;
       }
@@ -120,7 +123,7 @@ export function TaskEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+      className="fixed inset-0 z-50 flex justify-center overflow-y-auto p-4 bg-scrim/40"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -130,7 +133,7 @@ export function TaskEditModal({
     >
       <div
         ref={dialogRef}
-        className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-md space-y-4 p-6"
+        className="my-auto bg-surface border border-border rounded-xl shadow-lg w-full max-w-md space-y-4 p-6"
       >
         {/* Заголовок модалки */}
         <div className="flex items-center justify-between">

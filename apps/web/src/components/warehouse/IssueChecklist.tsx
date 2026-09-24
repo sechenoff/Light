@@ -55,6 +55,7 @@ import { scanApi } from "./api";
 import { isScanApiError } from "./types";
 import type { CompleteResult } from "./types";
 import { IssueResultView } from "./IssueResultView";
+import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
 
 /** «#» + последние 6 символов id брони, в верхнем регистре (как в BookingList). */
 function displayNo(id: string): string {
@@ -220,11 +221,13 @@ function IssueRow({
 
   return (
     <div
-      className={`flex flex-wrap items-center gap-2 rounded-lg border px-2.5 py-2 lg:flex-nowrap lg:px-3 lg:py-2.5 ${rowClass} ${
+      // В одну строку — только с 1280: на 1024 правая панель ~460 px, и
+      // название рядом со степпером и кнопкой обрезалось до 15 символов.
+      className={`flex flex-wrap items-center gap-2 rounded-lg border px-2.5 py-2 lg:px-3 lg:py-2.5 xl:flex-nowrap ${rowClass} ${
         dimmed ? "opacity-60" : ""
       }`}
     >
-      <div className="min-w-0 flex-1 basis-full lg:basis-auto">
+      <div className="min-w-0 flex-1 basis-full xl:basis-auto">
         <div
           className={`flex flex-wrap items-center gap-x-1 text-[13px] leading-tight ${
             dimmed ? "line-through text-ink-3" : "text-ink"
@@ -259,7 +262,7 @@ function IssueRow({
           min={0}
           max={maxN}
           aria-label={`Количество к выдаче — ${item.equipmentName}`}
-          className="mono-num h-10 w-12 rounded border border-border bg-surface text-center text-[13px] font-semibold text-ink outline-none focus:border-accent-bright"
+          className="mono-num h-10 w-12 rounded border border-border bg-surface text-center text-[13px] font-semibold text-ink outline-none [appearance:textfield] focus:border-accent-bright [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
         <button
           type="button"
@@ -370,7 +373,7 @@ function LiveFinanceBlock({
                степпера). Раньше подпись ложно обещала «остальные не выданы». */
             : `Завершить выдачу — собрано ${checkedCount} из ${totalCount} позиций (выдаётся указанное количество)`
         }
-        className={`!mt-3 block w-full rounded-lg px-4 py-3 text-center text-[14px] font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60 ${
+        className={`!mt-3 block w-full rounded-lg px-4 py-3 text-center text-[14px] font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60 ${
           allChecked ? "bg-emerald" : "bg-amber"
         }`}
       >
@@ -632,7 +635,7 @@ export function IssueChecklist({
 
   if (loading && !state) {
     return (
-      <div className="space-y-2 px-2.5 py-3">
+      <div className="space-y-2 px-3 py-3">
         <div className="h-[46px] animate-pulse rounded-lg bg-surface-subtle" />
         {[1, 2, 3, 4].map((i) => (
           <div
@@ -802,18 +805,18 @@ export function IssueChecklist({
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <div className="flex-1 px-2.5 pb-4 pt-3 lg:px-4">
+      <div className="flex-1 px-3 pb-4 pt-3 lg:px-4">
         {/* Водители — заполняется в момент погрузки. */}
         <DriverPanel sessionId={sessionId} operation="ISSUE" />
 
         {/* Desktop heading line with progress + bulk actions + «+ Добор» chip. */}
-        <div className="mb-2 hidden items-center gap-3 px-1 lg:flex">
-          <h2 className="text-[15px] font-semibold text-ink">
+        <div className="mb-2 hidden flex-wrap items-center gap-x-3 gap-y-1.5 px-1 lg:flex">
+          <h2 className="whitespace-nowrap text-[15px] font-semibold text-ink">
             Чек-лист выдачи
           </h2>
           <span
             aria-label={`Выдано ${activeChecked} из ${activeTotal} позиций`}
-            className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-ink-2"
+            className="whitespace-nowrap rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-ink-2"
           >
             <span className={activeChecked === activeTotal && activeTotal > 0 ? "text-emerald" : ""}>
               {activeChecked}
@@ -826,7 +829,7 @@ export function IssueChecklist({
               type="button"
               onClick={checkAllRows}
               aria-label="Отметить все позиции как «Выдано»"
-              className="rounded border border-emerald-border px-2.5 py-1 text-xs font-semibold text-emerald transition-colors hover:bg-emerald-soft"
+              className="whitespace-nowrap rounded border border-emerald-border px-2.5 py-1 text-xs font-semibold text-emerald transition-colors hover:bg-emerald-soft"
             >
               ✓ Все выдано
             </button>
@@ -835,7 +838,7 @@ export function IssueChecklist({
               type="button"
               onClick={uncheckAllRows}
               aria-label="Снять все отметки «Выдано»"
-              className="rounded border border-border px-2.5 py-1 text-xs font-semibold text-ink-2 transition-colors hover:bg-surface-muted"
+              className="whitespace-nowrap rounded border border-border px-2.5 py-1 text-xs font-semibold text-ink-2 transition-colors hover:bg-surface-muted"
             >
               Снять все отметки
             </button>
@@ -844,7 +847,7 @@ export function IssueChecklist({
             type="button"
             onClick={handleAddonClick}
             aria-label="Добор — добавить артикул не из заявки"
-            className="ml-auto rounded border border-dashed border-accent-bright px-2.5 py-1 text-xs font-semibold text-accent-bright transition-colors hover:bg-accent-soft"
+            className="ml-auto whitespace-nowrap rounded border border-dashed border-accent-bright px-2.5 py-1 text-xs font-semibold text-accent-bright transition-colors hover:bg-accent-soft"
           >
             ＋ Добор
           </button>
@@ -942,13 +945,12 @@ export function IssueChecklist({
       </div>
 
       {/*
-        Sticky live finance block — sits at the bottom of the viewport on
-        mobile (fixed-ish via `sticky bottom-0`) and at the bottom of the
-        flex column on desktop. The block renders even when finance is all
+        Sticky live finance block — sits at the bottom of the viewport, on
+        mobile right above the fixed tab bar (STICKY_ABOVE_TAB_BAR). The block renders even when finance is all
         zeros (e.g. DRAFT booking with no MAIN) so «Готово, выдать» is
         always reachable.
       */}
-      <div className="sticky bottom-0 border-t border-border bg-surface px-3 py-3 lg:px-5">
+      <div className={`${STICKY_ABOVE_TAB_BAR} border-t border-border bg-surface px-3 py-3 lg:px-4`}>
         <LiveFinanceBlock
           finance={finance}
           onSubmit={() => {

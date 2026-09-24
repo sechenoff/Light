@@ -61,7 +61,7 @@ export function InventoryStartPage() {
   if (!authorized) return null;
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] p-4 pb-14 lg:p-6 lg:pb-14">
+    <div className="mx-auto w-full max-w-[1240px] p-4 pb-24 lg:p-6 lg:pb-24">
       <PageHead title="Инвентаризация" sub="пройти склад, пересчитать и узнать, что пропало и как" />
       <div className="mt-3">
         <WarehouseSubnav active="inventory" />

@@ -17,11 +17,14 @@ export function EquipmentStatsPage() {
   const { data, error, loading, retry } = useEquipmentStats();
 
   return (
-    <div className="p-4 lg:p-6 space-y-2">
+    // pb-24 — запас под плавающую кнопку «Сообщить» (AdminShell здесь нет).
+    // Раздельные px/pt, а не p-4 + pb-24: lg:p-6 из медиазапроса перебил бы pb-24.
+    <div className="px-4 pt-4 pb-24 lg:px-6 lg:pt-6 space-y-6">
       <SectionHeader
         eyebrow="Аналитика"
         title="Статистика техники"
         actions={<PeriodToggle />}
+        className="flex-wrap"
       />
 
       {loading && !data ? (

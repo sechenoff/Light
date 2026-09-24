@@ -80,22 +80,30 @@ export function MasterTable({ rows }: MasterTableProps) {
         <ChipButton active={chip === "no-rental"} onClick={() => setChip("no-rental")}>Без аренды</ChipButton>
         <ChipButton active={chip === "with-incidents"} onClick={() => setChip("with-incidents")}>С поломками</ChipButton>
       </div>
-      <div className="overflow-x-auto bg-surface border border-border rounded-xl">
-        <table className="w-full text-sm border-collapse">
+      {/* border-separate, а не collapse: при collapse линию строки рисует таблица
+          под липкой ячейкой «Позиция», и при прокрутке вбок разделитель пропадает. */}
+      <div className="overflow-x-auto bg-surface border border-border rounded-lg">
+        <table className="w-full text-sm border-separate border-spacing-0">
           <thead className="bg-surface-muted">
             <tr>
               {COLUMNS.map((c) => (
                 <th
                   key={c.key}
                   scope="col"
-                  className="p-0"
+                  className={
+                    c.key === "name"
+                      ? "p-0 sticky left-0 z-[1] bg-surface-muted"
+                      : c.key === "category"
+                        ? "p-0 hidden xl:table-cell"
+                        : "p-0"
+                  }
                   aria-sort={sortKey === c.key ? (sortDir === 1 ? "ascending" : "descending") : "none"}
                 >
                   <button
                     type="button"
                     onClick={() => onHeader(c.key)}
                     className={
-                      "w-full px-3 py-2.5 text-xs uppercase tracking-wide font-semibold text-ink-3 select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset " +
+                      "w-full px-3 py-2.5 eyebrow whitespace-nowrap select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset " +
                       (c.align === "right" ? "text-right" : "text-left")
                     }
                   >
@@ -109,10 +117,10 @@ export function MasterTable({ rows }: MasterTableProps) {
             {visible.map((r) => (
               <tr
                 key={r.id}
-                className="border-t border-border hover:bg-surface-muted cursor-pointer"
+                className="group cursor-pointer hover:bg-surface-muted [&>td]:border-t [&>td]:border-border"
                 onClick={() => router.push(`/equipment/${r.id}/units`)}
               >
-                <td className="px-3 py-2">
+                <td className="sticky left-0 z-[1] min-w-[180px] bg-surface px-3 py-2 group-hover:bg-surface-muted">
                   <Link
                     href={`/equipment/${r.id}/units`}
                     className="text-ink hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
@@ -120,15 +128,17 @@ export function MasterTable({ rows }: MasterTableProps) {
                   >
                     {r.name}
                   </Link>
+                  {/* Колонка «Категория» видна только с xl — до этого категория под названием. */}
+                  <div className="xl:hidden text-xs text-ink-3">{r.category}</div>
                 </td>
-                <td className="px-3 py-2 text-ink-3">{r.category}</td>
-                <td className="px-3 py-2 text-right mono-num">{r.totalQuantity}</td>
-                <td className="px-3 py-2 text-right mono-num">{r.bookingsCount}</td>
-                <td className="px-3 py-2 text-right mono-num">{r.qtyShifts}</td>
-                <td className="px-3 py-2 text-right mono-num">{formatRub(r.revenueRub)}</td>
-                <td className="px-3 py-2 text-right mono-num">{formatRub(r.revenuePerStorageUnit)}</td>
-                <td className="px-3 py-2 text-right mono-num">{r.repairCount}</td>
-                <td className="px-3 py-2 text-right mono-num">{r.problemCount}</td>
+                <td className="hidden xl:table-cell px-3 py-2 text-ink-3">{r.category}</td>
+                <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{r.totalQuantity}</td>
+                <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{r.bookingsCount}</td>
+                <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{r.qtyShifts}</td>
+                <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{formatRub(r.revenueRub)}</td>
+                <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{formatRub(r.revenuePerStorageUnit)}</td>
+                <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{r.repairCount}</td>
+                <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{r.problemCount}</td>
               </tr>
             ))}
             {visible.length === 0 ? (
@@ -159,7 +169,7 @@ function ChipButton({
       type="button"
       onClick={onClick}
       className={
-        "text-xs px-3 py-1.5 rounded-full border transition-colors " +
+        "inline-flex min-h-8 items-center text-xs px-3 py-1.5 rounded-full border transition-colors " +
         (active
           ? "bg-accent text-surface border-accent"
           : "bg-surface text-ink-3 border-border hover:text-ink")

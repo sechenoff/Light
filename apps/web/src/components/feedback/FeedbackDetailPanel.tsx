@@ -268,14 +268,14 @@ export function FeedbackDetailPanel({ feedbackId, onClose, onChanged }: Feedback
                       }
                     }}
                     placeholder="Написать комментарий… (⌘/Ctrl+Enter)"
-                    className="flex-1 px-3 py-2 rounded-md border border-border bg-surface text-sm resize-y min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
+                    className="flex-1 min-w-0 px-3 py-2 rounded-md border border-border bg-surface text-sm resize-y min-h-[44px] focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
                   />
                   <button
                     type="submit"
                     disabled={!commentText.trim() || submittingComment}
-                    className="self-end h-10 px-3 rounded-md bg-accent-bright text-surface text-sm font-semibold hover:bg-accent disabled:opacity-50"
+                    className="self-end h-10 shrink-0 px-4 rounded-md bg-accent-bright text-surface text-sm font-semibold hover:bg-accent disabled:opacity-50"
                   >
-                    Отпр.
+                    Отправить
                   </button>
                 </form>
               </div>

@@ -32,6 +32,7 @@ import { StatusPill, type StatusPillVariant } from "../StatusPill";
 import { ResolveProblemModal, type ResolveOutcome } from "./ResolveProblemModal";
 import { AddProblemItemModal } from "./AddProblemItemModal";
 import { WarehouseSubnav } from "./WarehouseSubnav";
+import { PageHead } from "../inventory/InventoryHeader";
 import type {
   ProblemItemReason,
   ProblemItemStatus,
@@ -369,7 +370,10 @@ function ProblemCard({
       </div>
 
       {item.comment && (
-        <p className="text-[13px] text-ink-2 break-words">{item.comment}</p>
+        <p className="text-[13px] text-ink-2 break-words">
+          <span className="text-xs text-ink-3">Комментарий: </span>
+          {item.comment}
+        </p>
       )}
 
       <ItemActions item={item} onResolve={onResolve} />
@@ -624,164 +628,167 @@ export function ProblemItemsPage() {
   const isFiltered = Boolean(statusFilter || sourceFilter);
 
   return (
-    <div className="p-4 lg:p-6 space-y-4 w-full">
-      {/* Заголовок + подменю склада */}
-      <div>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="eyebrow">Склад</p>
-            <h1 className="text-[22px] font-semibold text-ink mt-0.5 tracking-tight">
-              Потеряшки
-            </h1>
-            <p className="text-[13px] text-ink-3 mt-0.5">
-              Реестр пропавших позиций — заявки на поиск и разбор
-            </p>
+    <>
+      {/* Каркас как у вкладок инвентаризации (общий PageHead, ширина 1240, запас
+          снизу под плавающую кнопку «Сообщить») — при переходе по подменю склада
+          шапка и контейнер не прыгают. */}
+      <div className="mx-auto w-full max-w-[1240px] p-4 pb-24 lg:p-6 lg:pb-24 space-y-4">
+        {/* Заголовок + подменю склада */}
+        <div>
+          <PageHead
+            title="Потеряшки"
+            sub="Реестр пропавших позиций — заявки на поиск и разбор"
+            actions={
+              <button
+                type="button"
+                onClick={() => setAddOpen(true)}
+                className="inline-flex h-9 items-center rounded-md border border-accent-bright bg-accent-bright px-3.5 text-[13px] font-semibold text-surface transition-colors hover:border-accent hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright focus-visible:ring-offset-2"
+              >
+                Завести потеряшку
+              </button>
+            }
+          />
+          <div className="mt-3">
+            <WarehouseSubnav active="problems" />
           </div>
-          <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            className="inline-flex h-9 items-center rounded-md border border-accent-bright bg-accent-bright px-3.5 text-[13px] font-semibold text-surface transition-colors hover:border-accent hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright focus-visible:ring-offset-2"
-          >
-            Завести потеряшку
-          </button>
         </div>
-        <div className="mt-3">
-          <WarehouseSubnav active="problems" />
-        </div>
-      </div>
 
-      {bookingId && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent-border bg-accent-soft p-3 text-sm">
-          <span>Показаны потеряшки выбранного проекта</span>
-          <Link href={`/bookings/${encodeURIComponent(bookingId)}`} className="text-accent underline">Открыть бронь</Link>
-          <Link href="/warehouse/problems" className="text-accent underline">Все потеряшки</Link>
-        </div>
-      )}
-      {/* Фильтр-пилюли: статус и источник */}
-      <div className="bg-surface border border-border rounded-[10px] px-4 py-3 space-y-2.5">
-        <FilterPills
-          label="Фильтр по статусу"
-          pills={FILTER_PILLS}
-          value={statusFilter}
-          onChange={setStatusFilter}
-        />
-        <FilterPills
-          label="Фильтр по источнику"
-          pills={SOURCE_PILLS}
-          value={sourceFilter}
-          onChange={setSourceFilter}
-        />
-      </div>
-
-      {/* Ошибка */}
-      {error && (
-        <div className="bg-rose-soft border border-rose-border text-rose text-sm rounded-lg p-3">
-          {error}
-        </div>
-      )}
-
-      {/* Скелетон */}
-      {fetching && items.length === 0 && (
-        <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 px-4 py-4 border-b border-border last:border-0"
-            >
-              <div className="flex-1 h-4 bg-surface-muted rounded animate-pulse" />
-              <div className="h-6 w-20 bg-surface-muted rounded animate-pulse" />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Пустое состояние */}
-      {isEmpty && !error && (
-        <div className="bg-surface border border-border rounded-lg p-10 text-center shadow-xs">
-          <p className="text-sm text-ink-2 font-medium">Потеряшек нет</p>
-          <p className="text-[13px] text-ink-3 mt-1">
-            {isFiltered
-              ? "По выбранным фильтрам карточек нет — сбросьте фильтр, чтобы увидеть весь реестр"
-              : "Карточки появляются с приёмки, из инвентаризации или вручную — кнопкой «Завести потеряшку»"}
-          </p>
-        </div>
-      )}
-
-      {/* Список — таблица (desktop) */}
-      {!isEmpty && items.length > 0 && (
-        <>
-          <div className="hidden md:block bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-surface-muted border-b border-border">
-                  <tr>
-                    <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
-                      Оборудование
-                    </th>
-                    <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
-                      Бронь
-                    </th>
-                    <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
-                      Причина
-                    </th>
-                    <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
-                      Комментарий
-                    </th>
-                    <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
-                      Ожидается
-                    </th>
-                    <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
-                      Статус
-                    </th>
-                    <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
-                      Заведено
-                    </th>
-                    <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
-                      Действия
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <ProblemRow
-                      key={item.id}
-                      item={item}
-                      onResolve={openResolve}
-                      onOpenBooking={openBooking}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        {bookingId && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent-border bg-accent-soft p-3 text-sm">
+            <span>Показаны потеряшки выбранного проекта</span>
+            <Link href={`/bookings/${encodeURIComponent(bookingId)}`} className="text-accent underline">Открыть бронь</Link>
+            <Link href="/warehouse/problems" className="text-accent underline">Все потеряшки</Link>
           </div>
+        )}
+        {/* Фильтр-пилюли: статус и источник */}
+        <div className="bg-surface border border-border rounded-lg px-4 py-3 space-y-2.5">
+          <FilterPills
+            label="Фильтр по статусу"
+            pills={FILTER_PILLS}
+            value={statusFilter}
+            onChange={setStatusFilter}
+          />
+          {/* Разделитель: на узком экране две группы пилюль иначе сливаются в одну */}
+          <div className="border-t border-border pt-2.5">
+            <FilterPills
+              label="Фильтр по источнику"
+              pills={SOURCE_PILLS}
+              value={sourceFilter}
+              onChange={setSourceFilter}
+            />
+          </div>
+        </div>
 
-          {/* Список — карточки (mobile) */}
-          <div className="md:hidden space-y-3">
-            {items.map((item) => (
-              <ProblemCard
-                key={item.id}
-                item={item}
-                onResolve={openResolve}
-                onOpenBooking={openBooking}
-              />
+        {/* Ошибка */}
+        {error && (
+          <div className="bg-rose-soft border border-rose-border text-rose text-sm rounded-lg p-3">
+            {error}
+          </div>
+        )}
+
+        {/* Скелетон */}
+        {fetching && items.length === 0 && (
+          <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 px-4 py-4 border-b border-border last:border-0"
+              >
+                <div className="flex-1 h-4 bg-surface-muted rounded animate-pulse" />
+                <div className="h-6 w-20 bg-surface-muted rounded animate-pulse" />
+              </div>
             ))}
           </div>
-        </>
-      )}
+        )}
 
-      {/* Пагинация */}
-      {nextCursor && (
-        <button
-          type="button"
-          onClick={() => load(nextCursor)}
-          disabled={fetching}
-          className="w-full py-2 text-sm text-accent-bright hover:underline disabled:opacity-60"
-        >
-          {fetching ? "Загрузка…" : "Загрузить ещё"}
-        </button>
-      )}
+        {/* Пустое состояние */}
+        {isEmpty && !error && (
+          <div className="bg-surface border border-border rounded-lg p-10 text-center shadow-xs">
+            <p className="text-sm text-ink-2 font-medium">Потеряшек нет</p>
+            <p className="text-[13px] text-ink-3 mt-1">
+              {isFiltered
+                ? "По выбранным фильтрам карточек нет — сбросьте фильтр, чтобы увидеть весь реестр"
+                : "Карточки появляются с приёмки, из инвентаризации или вручную — кнопкой «Завести потеряшку»"}
+            </p>
+          </div>
+        )}
 
-      {/* «Завести потеряшку» */}
+        {/* Список — таблица (от xl: восемь колонок уже вмещаются без прокрутки) */}
+        {!isEmpty && items.length > 0 && (
+          <>
+            <div className="hidden xl:block bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-surface-muted border-b border-border">
+                    <tr>
+                      <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
+                        Оборудование
+                      </th>
+                      <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
+                        Бронь
+                      </th>
+                      <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
+                        Причина
+                      </th>
+                      <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
+                        Комментарий
+                      </th>
+                      <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
+                        Ожидается
+                      </th>
+                      <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
+                        Статус
+                      </th>
+                      <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
+                        Заведено
+                      </th>
+                      <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">
+                        Действия
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item) => (
+                      <ProblemRow
+                        key={item.id}
+                        item={item}
+                        onResolve={openResolve}
+                        onOpenBooking={openBooking}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Список — карточки (телефон — столбцом, планшет — в две колонки) */}
+            <div className="grid gap-3 md:grid-cols-2 xl:hidden">
+              {items.map((item) => (
+                <ProblemCard
+                  key={item.id}
+                  item={item}
+                  onResolve={openResolve}
+                  onOpenBooking={openBooking}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Пагинация */}
+        {nextCursor && (
+          <button
+            type="button"
+            onClick={() => load(nextCursor)}
+            disabled={fetching}
+            className="w-full py-2 text-sm text-accent-bright hover:underline disabled:opacity-60"
+          >
+            {fetching ? "Загрузка…" : "Загрузить ещё"}
+          </button>
+        )}
+      </div>
+
+      {/* Модалки — вне space-y-контейнера: иначе fixed-корень получает margin-top 16 px */}
       <AddProblemItemModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
@@ -790,7 +797,6 @@ export function ProblemItemsPage() {
         }}
       />
 
-      {/* Resolve-модалка */}
       {resolveTarget && (
         <ResolveProblemModal
           open
@@ -801,6 +807,6 @@ export function ProblemItemsPage() {
           onSubmit={submitResolve}
         />
       )}
-    </div>
+    </>
   );
 }

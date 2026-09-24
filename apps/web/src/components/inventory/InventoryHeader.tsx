@@ -45,6 +45,7 @@ export function InventoryHeader({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const isOpen = detail.status === "OPEN";
+  const status = <StatusPill variant={STATUS_VARIANT[detail.status]} label={STATUS_LABEL[detail.status]} />;
 
   const cancel = async () => {
     setBusy(true);
@@ -84,8 +85,16 @@ export function InventoryHeader({
                 Отменить
               </button>
             )}
-            {extraAction}
-            <StatusPill variant={STATUS_VARIANT[detail.status]} label={STATUS_LABEL[detail.status]} />
+            {extraAction ? (
+              // На телефоне главное действие и статус — отдельной первой строкой, над
+              // ссылками на акт и «Отменить»; с sm обёртка растворяется и порядок как в мокапе.
+              <span className="order-first flex w-full items-center gap-2.5 sm:order-none sm:contents">
+                {extraAction}
+                {status}
+              </span>
+            ) : (
+              status
+            )}
           </>
         }
       />
