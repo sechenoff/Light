@@ -51,6 +51,7 @@ import type {
   IssuanceAdjustment,
 } from "./types";
 import { formatRub } from "../../lib/format";
+import { groupByCategory } from "../../lib/groupByCategory";
 import { scanApi } from "./api";
 import { isScanApiError } from "./types";
 import type { CompleteResult } from "./types";
@@ -62,30 +63,7 @@ function displayNo(id: string): string {
   return "#" + id.slice(-6).toUpperCase();
 }
 
-interface CategoryGroup {
-  category: string;
-  items: ChecklistItem[];
-}
-
 type IssuePhase = "checklist" | "submitting" | "result";
-
-/** Stable category grouping in first-seen order (server already sorts items). */
-function groupByCategory(items: ChecklistItem[]): CategoryGroup[] {
-  const order: string[] = [];
-  const map = new Map<string, ChecklistItem[]>();
-  for (const item of items) {
-    const key = item.category || "Без категории";
-    if (!map.has(key)) {
-      map.set(key, []);
-      order.push(key);
-    }
-    map.get(key)!.push(item);
-  }
-  return order.map((category) => ({
-    category,
-    items: map.get(category)!,
-  }));
-}
 
 // ── Live finance ────────────────────────────────────────────────────────────
 
@@ -504,8 +482,9 @@ export function IssueChecklist({
     };
   }, [sessionId, openSession]);
 
+  // Группы категорий в порядке первого появления: порядок строк задаёт сервер.
   const groups = useMemo(
-    () => (state ? groupByCategory(state.items) : []),
+    () => (state ? groupByCategory(state.items, (item) => item.category) : []),
     [state],
   );
 

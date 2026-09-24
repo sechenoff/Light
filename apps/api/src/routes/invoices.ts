@@ -11,6 +11,7 @@ import {
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { renderInvoicePdf, coalesceWithEnv, type InvoiceLine } from "../services/documentExport/invoice/renderInvoicePdf";
+import { bookingDocumentLines } from "../services/documentExport/bookingPdf";
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { getSettings } from "../services/organizationService";
 
@@ -354,8 +355,9 @@ router.get("/:id/pdf", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res
       ? invoice.issuedAt.toLocaleDateString("ru-RU")
       : new Date().toLocaleDateString("ru-RU");
 
-    // Строки из estimate.lines или booking.items
-    let lines: InvoiceLine[];
+    // Строки из estimate.lines или booking.items — в порядке каталога, № после
+    // сортировки (общий хелпер с `/api/bookings/:id/{invoice,act}.pdf` и ЛК).
+    const lines: InvoiceLine[] = await bookingDocumentLines(booking);
     let subtotal: string;
     let discountPercent: string | null = null;
     let discountAmount: string | null = null;
@@ -363,13 +365,6 @@ router.get("/:id/pdf", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res
 
     const mainEstimate = booking.estimates?.find((e) => e.kind === "MAIN");
     if (mainEstimate) {
-      lines = mainEstimate.lines.map((l, i) => ({
-        index: i + 1,
-        name: l.nameSnapshot,
-        quantity: l.quantity,
-        unitPrice: l.unitPrice.toString(),
-        lineSum: l.lineSum.toString(),
-      }));
       subtotal = mainEstimate.subtotal.toString();
       if (mainEstimate.discountPercent && new Decimal(mainEstimate.discountPercent.toString()).greaterThan(0)) {
         discountPercent = mainEstimate.discountPercent.toString();
@@ -377,17 +372,6 @@ router.get("/:id/pdf", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res
       }
       totalAfterDiscount = mainEstimate.totalAfterDiscount.toString();
     } else {
-      lines = booking.items.map((item, i) => {
-        const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
-        const lineSum = new Decimal(rate.toString()).mul(item.quantity);
-        return {
-          index: i + 1,
-          name: item.equipment?.name ?? item.customName ?? "—",
-          quantity: item.quantity,
-          unitPrice: rate.toString(),
-          lineSum: lineSum.toString(),
-        };
-      });
       subtotal = invoice.total.toString();
       totalAfterDiscount = invoice.total.toString();
     }

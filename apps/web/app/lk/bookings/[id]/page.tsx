@@ -1,10 +1,12 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { lkApi } from "../../../../src/lib/lkApi";
 import { LK_STATUS_LABEL, type LkBookingDetail, type LkBookingStatus } from "../../../../src/lib/lkTypes";
 import { formatRub, pluralize } from "../../../../src/lib/format";
+import { groupByCategory } from "../../../../src/lib/groupByCategory";
+import { CategoryBandHeading, CategoryBandRow } from "../../../../src/components/bookings/CategoryBand";
 
 // Общий словарь подписей статусов (дубль удалён, lk-dashboard-raw-status).
 const STATUS_LABEL = LK_STATUS_LABEL;
@@ -77,6 +79,13 @@ export default function LkBookingDetailPage() {
   // Транспорт — необязательная пятая карточка сводки: сетка под неё перестраивается,
   // чтобы «Остаток» не повисал один во втором ряду.
   const hasTransport = Number(b.transportSubtotal) > 0;
+  // Позиции сметы идут группами категорий (порядок строк — серверный, по каталогу).
+  // В режиме проекта в categorySnapshot лежит период строки, а не категория —
+  // там одна группа без полосы, а период остаётся колонкой/подписью.
+  const isProject = b.mode === "PROJECT";
+  const groups: Array<{ category: string | null; items: LkBookingDetailExt["items"] }> = isProject
+    ? [{ category: null, items: b.items }]
+    : groupByCategory(b.items, (it) => it.categorySnapshot);
 
   return (
     <div className="space-y-6">
@@ -109,55 +118,64 @@ export default function LkBookingDetailPage() {
         <div className="px-4 py-3 border-b border-border">
           <p className="eyebrow">{b.mode === "PROJECT" ? "Прогноз состава и стоимости проекта" : "Позиции"}</p>
         </div>
-        {/* До sm — список: пять колонок в 340 px не помещаются. Сумма строки =
+        {/* До sm — список: колонки в 340 px не помещаются. Сумма строки =
             цена × количество, поэтому подпись «N × цена» сходится с суммой.
             В режиме проекта цена — ставка за смену, а сумма — за весь период
             строки, поэтому к подписи дописано «/ смена».
-            До xl категория (в режиме проекта — период) идёт подписью под названием:
-            отдельной колонкой длинные категории рвались на 2–3 строки. */}
-        <ul className="sm:hidden divide-y divide-border">
-          {b.items.map((it, i) => (
-            <li key={i} className="px-4 py-3 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm">{it.nameSnapshot}</p>
-                <p className="text-xs text-ink-3 mt-0.5">{it.categorySnapshot}</p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="mono-num text-sm whitespace-nowrap">{formatRub(Number(it.lineSum))}</p>
-                <p className="mono-num text-xs text-ink-2 whitespace-nowrap">
-                  {it.quantity} × {formatRub(Number(it.unitPrice))}{b.mode === "PROJECT" ? " / смена" : ""}
-                </p>
-              </div>
-            </li>
+            Категорию говорит полоса над группой; период строки в режиме проекта
+            до xl идёт подписью под названием — отдельной колонкой длинные
+            значения рвались на 2–3 строки. */}
+        <div className="sm:hidden">
+          {groups.map((group) => (
+            <Fragment key={group.category ?? "project"}>
+              {group.category !== null && <CategoryBandHeading category={group.category} />}
+              <ul className="divide-y divide-border">
+                {group.items.map((it, i) => (
+                  <li key={i} className="px-4 py-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm">{it.nameSnapshot}</p>
+                      {isProject && <p className="text-xs text-ink-3 mt-0.5">{it.categorySnapshot}</p>}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="mono-num text-sm whitespace-nowrap">{formatRub(Number(it.lineSum))}</p>
+                      <p className="mono-num text-xs text-ink-2 whitespace-nowrap">
+                        {it.quantity} × {formatRub(Number(it.unitPrice))}{isProject ? " / смена" : ""}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Fragment>
           ))}
-        </ul>
+        </div>
         <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-surface-subtle border-b border-border text-left text-ink-2">
               <tr>
-                <th className="px-4 py-2 font-medium whitespace-nowrap hidden xl:table-cell">
-                  {b.mode === "PROJECT" ? "Период" : "Категория"}
-                </th>
+                {isProject && <th className="px-4 py-2 font-medium whitespace-nowrap hidden xl:table-cell">Период</th>}
                 <th className="px-4 py-2 font-medium whitespace-nowrap">Название</th>
                 <th className="px-4 py-2 font-medium whitespace-nowrap text-right">Кол-во</th>
                 <th className="px-4 py-2 font-medium whitespace-nowrap text-right">Цена / смена</th>
                 <th className="px-4 py-2 font-medium whitespace-nowrap text-right">Сумма</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {b.items.map((it, i) => (
-                <tr key={i} className="hover:bg-surface transition-colors">
-                  <td className="px-4 py-2 text-ink-2 hidden xl:table-cell">{it.categorySnapshot}</td>
-                  <td className="px-4 py-2">
-                    {it.nameSnapshot}
-                    <span className="block text-xs text-ink-3 xl:hidden">{it.categorySnapshot}</span>
-                  </td>
-                  <td className="px-4 py-2 text-right mono-num whitespace-nowrap">{it.quantity}</td>
-                  <td className="px-4 py-2 text-right mono-num whitespace-nowrap">{formatRub(Number(it.unitPrice))}</td>
-                  <td className="px-4 py-2 text-right mono-num whitespace-nowrap">{formatRub(Number(it.lineSum))}</td>
-                </tr>
-              ))}
-            </tbody>
+            {groups.map((group) => (
+              <tbody key={group.category ?? "project"} className="divide-y divide-border">
+                {group.category !== null && <CategoryBandRow category={group.category} colSpan={4} />}
+                {group.items.map((it, i) => (
+                  <tr key={i} className="hover:bg-surface transition-colors">
+                    {isProject && <td className="px-4 py-2 text-ink-2 hidden xl:table-cell">{it.categorySnapshot}</td>}
+                    <td className="px-4 py-2">
+                      {it.nameSnapshot}
+                      {isProject && <span className="block text-xs text-ink-3 xl:hidden">{it.categorySnapshot}</span>}
+                    </td>
+                    <td className="px-4 py-2 text-right mono-num whitespace-nowrap">{it.quantity}</td>
+                    <td className="px-4 py-2 text-right mono-num whitespace-nowrap">{formatRub(Number(it.unitPrice))}</td>
+                    <td className="px-4 py-2 text-right mono-num whitespace-nowrap">{formatRub(Number(it.lineSum))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            ))}
           </table>
         </div>
       </section>

@@ -1,7 +1,8 @@
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { EquipmentCartZone } from "../EquipmentCartZone";
-import type { CatalogSelectedItem, CustomItem } from "../types";
+import { buildCatalogOrder } from "../cartOrder";
+import type { CatalogSelectedItem, CustomItem, OffCatalogItem } from "../types";
 
 const toastInfo = vi.fn();
 vi.mock("../../../ToastProvider", () => ({
@@ -36,10 +37,46 @@ const handlers = {
   onOpenCustomModal: vi.fn(),
 };
 
-/** Первая строка данных десктопной таблицы. */
+/** Строка данных десктопной таблицы — полосы категорий пропускаем. */
 function tableRow(container: HTMLElement, index = 0): HTMLElement {
-  const rows = container.querySelectorAll("tbody tr");
+  const rows = container.querySelectorAll("tbody tr:not([data-cart-band])");
   return rows[index] as HTMLElement;
+}
+
+/**
+ * Порядок таблицы как текст: полоса — «# КАТЕГОРИЯ · N», строка — название.
+ * Названия берём из первой ячейки: рядом в ней стоят метки «своя» и т.п.
+ */
+function tableOutline(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll("tbody tr")).map((tr) =>
+    tr.hasAttribute("data-cart-band")
+      ? `# ${tr.textContent}`
+      : (tr.querySelector("td .font-medium")?.textContent ?? ""),
+  );
+}
+
+function sel(equipmentId: string, category: string, name: string): CatalogSelectedItem {
+  return { equipmentId, category, name, quantity: 1, dailyPrice: "1000", availableQuantity: 5 };
+}
+
+// Ответ /api/availability: сервер уже отдал его в порядке каталога.
+const CATALOG = [
+  { equipmentId: "sky", category: "Свет" },
+  { equipmentId: "m18", category: "Свет" },
+  { equipmentId: "stand", category: "Штативы" },
+  { equipmentId: "flag", category: "Штативы" },
+];
+
+/** Добавляли вперемешку: штатив, свет, флаг, ещё свет. */
+function mixedSelection(): Map<string, CatalogSelectedItem> {
+  return new Map(
+    [
+      sel("stand", "Штативы", "C-Stand"),
+      sel("m18", "Свет", "ARRI M18"),
+      sel("flag", "Штативы", "Флаг 18×24"),
+      sel("sky", "Свет", "ARRI SkyPanel S60"),
+    ].map((it) => [it.equipmentId, it]),
+  );
 }
 
 describe("EquipmentCartZone", () => {
@@ -425,5 +462,104 @@ describe("EquipmentCartZone", () => {
     const mobile = container.querySelector(".md\\:hidden") as HTMLElement;
     expect(within(mobile).getAllByText("Скотч армированный").length).toBeGreaterThan(0);
     expect(mobile.textContent).not.toContain("/см");
+  });
+
+  describe("группы по категориям", () => {
+    it("позиции, добавленные вперемешку, идут группами в порядке каталога", () => {
+      const { container } = render(
+        <EquipmentCartZone
+          selected={mixedSelection()}
+          customItems={[]}
+          {...handlers}
+          catalogOrder={buildCatalogOrder(CATALOG)}
+        />,
+      );
+      expect(tableOutline(container)).toEqual([
+        "# Свет· 2",
+        "ARRI SkyPanel S60",
+        "ARRI M18",
+        "# Штативы· 2",
+        "C-Stand",
+        "Флаг 18×24",
+      ]);
+    });
+
+    it("свои и «вне каталога» позиции — последней группой, в порядке добавления", () => {
+      const offCatalog: OffCatalogItem[] = [{ tempId: "o1", name: "Дым-машина", quantity: 1 }];
+      const { container } = render(
+        <EquipmentCartZone
+          selected={mixedSelection()}
+          customItems={CUSTOM}
+          offCatalogItems={offCatalog}
+          {...handlers}
+          catalogOrder={buildCatalogOrder(CATALOG)}
+        />,
+      );
+      const outline = tableOutline(container);
+      expect(outline.slice(-3)).toEqual(["# Произвольные позиции· 2", "Скотч армированный", "Дым-машина"]);
+      // Счётчик в шапке — по позициям, полосы в него не входят.
+      expect(screen.getByText("Состав заявки").textContent).toContain("· 6");
+    });
+
+    it("полоса таблицы — заголовок группы строк на всю ширину", () => {
+      const { container } = render(
+        <EquipmentCartZone
+          selected={mixedSelection()}
+          customItems={[]}
+          {...handlers}
+          catalogOrder={buildCatalogOrder(CATALOG)}
+        />,
+      );
+      const bands = container.querySelectorAll("tbody tr[data-cart-band]");
+      expect(bands).toHaveLength(2);
+      // Своя <tbody> на группу: rowgroup-заголовок относится к её строкам.
+      expect(container.querySelectorAll("tbody")).toHaveLength(2);
+      const th = bands[0].querySelector("th")!;
+      expect(th.getAttribute("scope")).toBe("rowgroup");
+      expect(th.getAttribute("colspan")).toBe("6");
+      expect(bands[0].className).toContain("bg-surface-subtle");
+    });
+
+    it("на телефоне те же полосы — заголовками групп", () => {
+      const { container } = render(
+        <EquipmentCartZone
+          selected={mixedSelection()}
+          customItems={CUSTOM}
+          {...handlers}
+          catalogOrder={buildCatalogOrder(CATALOG)}
+        />,
+      );
+      const mobile = container.querySelector(".md\\:hidden") as HTMLElement;
+      const headings = within(mobile).getAllByRole("heading").map((h) => h.textContent);
+      expect(headings).toEqual(["Свет· 2", "Штативы· 2", "Произвольные позиции· 1"]);
+    });
+
+    it("без каталога категории идут по первому добавлению, строки не переставляются", () => {
+      // Правка брони до ответа /availability: ранга ещё нет.
+      const { container } = render(
+        <EquipmentCartZone selected={mixedSelection()} customItems={[]} {...handlers} />,
+      );
+      expect(tableOutline(container)).toEqual([
+        "# Штативы· 2",
+        "C-Stand",
+        "Флаг 18×24",
+        "# Свет· 2",
+        "ARRI M18",
+        "ARRI SkyPanel S60",
+      ]);
+    });
+
+    it("порядок Map состава не меняется — от него зависят черновик и подпись формы", () => {
+      const selected = mixedSelection();
+      render(
+        <EquipmentCartZone
+          selected={selected}
+          customItems={[]}
+          {...handlers}
+          catalogOrder={buildCatalogOrder(CATALOG)}
+        />,
+      );
+      expect(Array.from(selected.keys())).toEqual(["stand", "m18", "flag", "sky"]);
+    });
   });
 });

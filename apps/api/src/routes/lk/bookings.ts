@@ -7,12 +7,18 @@ import { prisma } from "../../prisma";
 import { lkAuth } from "../../middleware/lkAuth";
 import { lkClientId } from "../../services/clientPortal/tenant";
 import { HttpError } from "../../utils/errors";
-import { buildBookingEstimatePdf, buildBookingActPdf } from "../../services/documentExport/bookingPdf";
+import {
+  bookingDocumentLines,
+  buildBookingEstimatePdf,
+  buildBookingActPdf,
+} from "../../services/documentExport/bookingPdf";
 import {
   buildFullSmeta,
+  loadSmetaLineOrdering,
   renderSmetaPdfToBuffer,
   smetaOrgFromSettings,
 } from "../../services/smetaExport";
+import { estimateLineKey, sortLinesByCatalogAsync } from "../../services/lineOrder";
 import {
   renderInvoicePdf,
   coalesceWithEnv,
@@ -171,6 +177,8 @@ router.get("/:id", lkAuth, async (req, res, next) => {
             totalAfterDiscount: true,
             lines: {
               select: {
+                // Только для порядка строк — клиенту не отдаётся.
+                equipmentId: true,
                 categorySnapshot: true,
                 nameSnapshot: true,
                 quantity: true,
@@ -213,7 +221,9 @@ router.get("/:id", lkAuth, async (req, res, next) => {
     const snapshot = booking.estimates.find((e) => e.kind === "MAIN") ?? null;
     const hasConfirmedEstimate = Boolean(snapshot);
 
-    const lines = snapshot?.lines ?? [];
+    // Строки сметы — в порядке каталога (категории как на /equipment/manage),
+    // а не в порядке добавления: так же, как в PDF сметы.
+    const lines = await sortLinesByCatalogAsync(snapshot?.lines ?? [], estimateLineKey);
     const shifts = snapshot?.shifts ?? null;
 
     res.json({
@@ -277,6 +287,7 @@ router.get("/:id/estimate.pdf", lkAuth, async (req, res, next) => {
     if (main) {
       const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
       const org = smetaOrgFromSettings(await getSettings());
+      const ordering = await loadSmetaLineOrdering(main, addon);
       // Договорной итог обязателен и здесь — этот PDF клиент качает сам.
       // Без него портал показывал расчётную сумму, а счёт на ту же бронь —
       // согласованную: заказчик видел два разных числа за один заказ.
@@ -290,6 +301,7 @@ router.get("/:id/estimate.pdf", lkAuth, async (req, res, next) => {
           paymentForm: booking.paymentForm,
           cashlessSurchargePercent: booking.cashlessSurchargePercent,
         }),
+        ordering,
       });
       const sections = full.addon ? [full.main, full.addon] : [full.main];
       pdfBuf = await renderSmetaPdfToBuffer(
@@ -374,7 +386,8 @@ router.get("/:id/invoice.pdf", lkAuth, async (req, res, next) => {
       ? invoice.issuedAt.toLocaleDateString("ru-RU")
       : new Date().toLocaleDateString("ru-RU");
 
-    let lines: InvoiceLine[];
+    // Строки — в порядке каталога, № после сортировки (общий хелпер с admin-счётом).
+    const lines: InvoiceLine[] = await bookingDocumentLines(booking);
     let subtotal: string;
     let discountPercent: string | null = null;
     let discountAmount: string | null = null;
@@ -382,13 +395,6 @@ router.get("/:id/invoice.pdf", lkAuth, async (req, res, next) => {
 
     const mainEstimate = booking.estimates.find((e) => e.kind === "MAIN");
     if (mainEstimate) {
-      lines = mainEstimate.lines.map((l, i) => ({
-        index: i + 1,
-        name: l.nameSnapshot,
-        quantity: l.quantity,
-        unitPrice: l.unitPrice.toString(),
-        lineSum: l.lineSum.toString(),
-      }));
       subtotal = mainEstimate.subtotal.toString();
       if (mainEstimate.discountPercent && new Decimal(mainEstimate.discountPercent.toString()).greaterThan(0)) {
         discountPercent = mainEstimate.discountPercent.toString();
@@ -396,17 +402,6 @@ router.get("/:id/invoice.pdf", lkAuth, async (req, res, next) => {
       }
       totalAfterDiscount = mainEstimate.totalAfterDiscount.toString();
     } else {
-      lines = booking.items.map((item, i) => {
-        const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
-        const lineSum = new Decimal(rate.toString()).mul(item.quantity);
-        return {
-          index: i + 1,
-          name: item.equipment?.name ?? item.customName ?? "—",
-          quantity: item.quantity,
-          unitPrice: rate.toString(),
-          lineSum: lineSum.toString(),
-        };
-      });
       subtotal = invoice.total.toString();
       totalAfterDiscount = invoice.total.toString();
     }

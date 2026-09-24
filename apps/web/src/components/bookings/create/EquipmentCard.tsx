@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AiRequestModal } from "./AiRequestModal";
 import { AiResultBanner } from "./AiResultBanner";
+import { buildCatalogOrder } from "./cartOrder";
 import { CatalogBrowser } from "./CatalogBrowser";
 import { EquipmentCartZone, computeCartTotal } from "./EquipmentCartZone";
 import { ReviewPanel } from "./ReviewPanel";
@@ -146,6 +147,11 @@ export function EquipmentCard({
     () => computeCartTotal(selected, customItems, shifts),
     [selected, shifts, customItems],
   );
+  // Состав группируется по категориям в порядке каталога: ответ
+  // /api/availability сервер уже отсортировал по канону. `?? []` — ответ без
+  // `rows` на один рендер кладёт в состояние undefined (BookingForm затем
+  // откатывает его в []), и порядок отображения не должен ронять форму.
+  const catalogOrder = useMemo(() => buildCatalogOrder(catalog ?? []), [catalog]);
 
   function handleSearchPaste(e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData("text");
@@ -294,6 +300,7 @@ export function EquipmentCard({
           onChangeOffCatalogQty={onChangeOffCatalogQty}
           onRemoveOffCatalog={onRemoveOffCatalog}
           onOpenCustomModal={onOpenCustomModal}
+          catalogOrder={catalogOrder}
         />
       </div>
     </div>

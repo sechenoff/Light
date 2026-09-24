@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { AddonEstimateSection } from "../AddonEstimateSection";
 
 const apiFetchMock = vi.fn();
@@ -39,6 +39,24 @@ describe("AddonEstimateSection", () => {
     expect(screen.getByText(/PDF доб-сметы/)).toBeInTheDocument();
     expect(screen.getByText(/PDF общая смета/)).toBeInTheDocument();
     expect(screen.getByText(/XLSX доб-сметы/)).toBeInTheDocument();
+  });
+
+  it("groups lines under category bands in the order they came from the server", () => {
+    const lines = [
+      { id: "l1", equipmentId: "a", nameSnapshot: "Aputure 600d", categorySnapshot: "Свет", quantity: 1, unitPrice: "9000", lineSum: "9000" },
+      { id: "l2", equipmentId: "a2", nameSnapshot: "SkyPanel S60", categorySnapshot: "Свет", quantity: 2, unitPrice: "5000", lineSum: "10000" },
+      { id: "l3", equipmentId: "v", nameSnapshot: "Vmount", categorySnapshot: "Электрика", quantity: 5, unitPrice: "2000", lineSum: "10000" },
+    ];
+    render(
+      <AddonEstimateSection booking={{ id: "b1", status: "ISSUED", addonEstimate: { ...ADDON, lines } }} userRole="WAREHOUSE" />,
+    );
+    const groups = within(screen.getByRole("table"))
+      .getAllByRole("rowgroup")
+      .filter((g) => g.tagName === "TBODY")
+      .map((g) => within(g).getAllByRole("row").map((r) => r.textContent ?? ""));
+    expect(groups.map((g) => g[0])).toEqual(["Свет", "Электрика"]);
+    expect(groups[0].slice(1).map((r) => r.split("×")[0])).toEqual(["Aputure 600d", "SkyPanel S60"]);
+    expect(groups[1][1]).toMatch(/^Vmount/);
   });
 
   it("hides «Влить в основную смету» for technician and archived bookings", () => {

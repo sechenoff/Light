@@ -5,7 +5,9 @@ import { useState } from "react";
 import { apiFetch } from "../../lib/api";
 import type { UserRole } from "../../lib/auth";
 import { formatRub, pluralize } from "../../lib/format";
+import { groupByCategory } from "../../lib/groupByCategory";
 import { toast } from "../ToastProvider";
+import { CATEGORY_BAND_TEXT } from "./CategoryBand";
 import { ConfirmActionModal } from "./ConfirmActionModal";
 
 /**
@@ -18,6 +20,9 @@ import { ConfirmActionModal } from "./ConfirmActionModal";
  * «Влить в основную смету» — обратный переключатель режима: добор, оформленный
  * отдельным документом, становится частью согласованной сметы; сумма к оплате
  * не меняется, меняется только раскладка по документам.
+ *
+ * Строки приходят с сервера в порядке каталога и выводятся группами категорий —
+ * как таблица «Позиции брони».
  */
 
 export type AddonEstimateLineView = {
@@ -88,6 +93,7 @@ export function AddonEstimateSection({
   }
 
   const linkClass = "rounded border border-border px-3 py-1.5 hover:bg-surface-muted";
+  const groups = groupByCategory(addon.lines, (l) => l.categorySnapshot);
 
   return (
     <section className="rounded-lg border border-border bg-surface p-4">
@@ -108,15 +114,25 @@ export function AddonEstimateSection({
             <th className="py-2 text-right">Сумма</th>
           </tr>
         </thead>
-        <tbody>
-          {addon.lines.map((l, i) => (
-            <tr key={l.id ?? `${l.equipmentId ?? "line"}-${i}`} className="border-b border-border last:border-0">
-              <td className="py-1.5">{l.nameSnapshot}</td>
-              <td className="py-1.5 text-right mono-num">×{l.quantity}</td>
-              <td className="py-1.5 text-right mono-num">{formatRub(l.lineSum)}</td>
+        {groups.map((group) => (
+          <tbody key={group.category}>
+            <tr>
+              <th scope="rowgroup" colSpan={3} className="p-0 text-left">
+                {/* У ячеек таблицы нет боковых отступов (их даёт p-4 секции), поэтому
+                    полоса выносится в эти поля (-mx-4) — на всю ширину карточки,
+                    как полосы в «Позициях брони», а текст остаётся по левому краю строк. */}
+                <div className={`-mx-4 bg-surface-subtle px-4 py-1 ${CATEGORY_BAND_TEXT}`}>{group.category}</div>
+              </th>
             </tr>
-          ))}
-        </tbody>
+            {group.items.map((l, i) => (
+              <tr key={l.id ?? `${l.equipmentId ?? "line"}-${i}`} className="border-b border-border last:border-0">
+                <td className="py-1.5">{l.nameSnapshot}</td>
+                <td className="py-1.5 text-right mono-num">×{l.quantity}</td>
+                <td className="py-1.5 text-right mono-num">{formatRub(l.lineSum)}</td>
+              </tr>
+            ))}
+          </tbody>
+        ))}
         <tfoot className="text-[12px]">
           <tr>
             <td colSpan={2} className="pt-2 text-right">Итого:</td>

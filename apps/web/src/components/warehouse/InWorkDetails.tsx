@@ -7,7 +7,8 @@
  *  - Header (displayNo · project · client + issued/expected dates).
  *  - Items list (no checkboxes, no scanning — this is a peek, not the
  *    checklist; the operator must explicitly «← Принять обратно» to enter
- *    the RETURN flow).
+ *    the RETURN flow). Позиции сгруппированы по категориям — eyebrow над
+ *    группой, как в чек-листах выдачи/приёмки; порядок задаёт сервер.
  *  - Finance panel mirroring `InWorkDetails.finance` byte-for-byte: the
  *    backend currently surfaces the SAME `finalAmount` for both «Согласовано»
  *    and «К оплате» — there's no separate pre-addon breakdown on this
@@ -25,6 +26,7 @@ import { useEffect, useState } from "react";
 import { scanApi } from "./api";
 import { isScanApiError } from "./types";
 import { formatRub } from "../../lib/format";
+import { groupByCategory } from "../../lib/groupByCategory";
 import type { InWorkDetails as InWorkDetailsT } from "./types";
 
 interface Props {
@@ -103,6 +105,7 @@ export function InWorkDetails({ bookingId, onAcceptBack }: Props) {
   const addon = Number(data.finance.addonAmount);
   const outstanding = Number(data.finance.outstanding);
   const itemsCount = data.items.length;
+  const groups = groupByCategory(data.items, (it) => it.category);
 
   return (
     <div className="mx-3 my-3 space-y-4 lg:mx-4">
@@ -122,21 +125,26 @@ export function InWorkDetails({ bookingId, onAcceptBack }: Props) {
         <h3 className="mb-2 text-[13px] font-semibold text-ink">
           Оборудование ({itemsCount})
         </h3>
-        <ul className="space-y-1">
-          {data.items.map((it) => (
-            <li
-              key={it.bookingItemId}
-              className="flex items-baseline justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2 text-[13px]"
-            >
-              <span className="min-w-0 flex-1 truncate text-ink">
-                {it.equipmentName}
-              </span>
-              <span className="mono-num shrink-0 text-ink-3">
-                ×{it.quantity}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {groups.map((group) => (
+          <div key={group.category} className="mb-1">
+            <p className="eyebrow px-1.5 pb-1 pt-2">{group.category}</p>
+            <ul className="space-y-1">
+              {group.items.map((it) => (
+                <li
+                  key={it.bookingItemId}
+                  className="flex items-baseline justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2 text-[13px]"
+                >
+                  <span className="min-w-0 flex-1 truncate text-ink">
+                    {it.equipmentName}
+                  </span>
+                  <span className="mono-num shrink-0 text-ink-3">
+                    ×{it.quantity}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </section>
 
       <section

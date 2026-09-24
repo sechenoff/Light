@@ -2,6 +2,7 @@ import Decimal from "decimal.js";
 import type { Decimal as PrismaDecimal } from "@prisma/client/runtime/library";
 
 import type { QuoteLine } from "../bookings";
+import { estimateLineKey, loadLineOrdering, sortLinesByCatalog, type LineOrdering } from "../lineOrder";
 import type { SmetaExportDocument, SmetaExportLine, SmetaOrgInfo } from "./types";
 
 function fmtRuDate(d: Date): string {
@@ -67,6 +68,34 @@ export function clientSafeComment(raw: string | null | undefined): string | null
   return text;
 }
 
+/** Порядок каталога для строк одной или нескольких смет — один запрос на документ. */
+export function loadSmetaLineOrdering(
+  ...estimates: Array<{ lines: ReadonlyArray<{ equipmentId?: string | null }> } | null | undefined>
+): Promise<LineOrdering> {
+  return loadLineOrdering(estimates.flatMap((e) => e?.lines.map((l) => l.equipmentId) ?? []));
+}
+
+/** Ключ группы на листе — тот же, по которому режут на категории рендереры. */
+function printedCategoryKey(category: string | null | undefined): string {
+  return category?.trim() || "Прочее";
+}
+
+/**
+ * Строки подряд по категориям, в порядке первого появления категории — ровно
+ * так их печатают renderPdf/renderXlsx. Номер строки присваивается ПОСЛЕ этого
+ * шага, поэтому № совпадает с порядком печати в обоих форматах.
+ */
+function contiguousByCategory<T extends { categorySnapshot: string }>(lines: ReadonlyArray<T>): T[] {
+  const groups = new Map<string, T[]>();
+  for (const line of lines) {
+    const key = printedCategoryKey(line.categorySnapshot);
+    const group = groups.get(key);
+    if (group) group.push(line);
+    else groups.set(key, [line]);
+  }
+  return Array.from(groups.values()).flat();
+}
+
 export function buildSmetaExportDocument(args: {
   startDate: Date;
   endDate: Date;
@@ -87,9 +116,16 @@ export function buildSmetaExportDocument(args: {
   /** Дата составления документа; по умолчанию — сегодня (превью из формы). */
   issuedAt?: Date | null;
   paymentDueDate?: Date | null;
+  /**
+   * Порядок каталога (lineOrder.ts): категории как на /equipment/manage, внутри —
+   * sortOrder и имя, произвольные позиции — в конце. Без него остаётся порядок
+   * добавления (строки лишь собираются подряд по категориям).
+   */
+  ordering?: LineOrdering | null;
 }): SmetaExportDocument {
   const shiftDec = new Decimal(Math.max(1, args.shifts));
-  const rows: SmetaExportLine[] = args.lines.map((l, i) => {
+  const sorted = args.ordering ? sortLinesByCatalog(args.lines, estimateLineKey, args.ordering) : args.lines;
+  const rows: SmetaExportLine[] = contiguousByCategory(sorted).map((l, i) => {
     const unit = new Decimal(l.unitPrice.toString());
     const perShift = shiftDec.gt(0) ? unit.div(shiftDec) : unit;
     // Прайсовую цену тоже приводим к «за смену» — обе цифры в одной единице,
@@ -150,6 +186,8 @@ export function buildSmetaExportDocument(args: {
 type MoneyField = string | number | { toString(): string };
 
 type PersistedLine = {
+  /** null — произвольная позиция; нужен, чтобы расставить строки по каталогу. */
+  equipmentId?: string | null;
   categorySnapshot: string;
   nameSnapshot: string;
   quantity: number;
@@ -185,9 +223,11 @@ export function buildSmetaFromPersistedEstimate(args: {
     lines: PersistedLine[];
   };
   org?: SmetaOrgInfo | null;
+  /** Порядок каталога — см. buildSmetaExportDocument. */
+  ordering?: LineOrdering | null;
 }): SmetaExportDocument {
   const quoteLikeLines: QuoteLine[] = args.estimate.lines.map((l) => ({
-    equipmentId: null,
+    equipmentId: l.equipmentId ?? null,
     categorySnapshot: l.categorySnapshot,
     nameSnapshot: l.nameSnapshot,
     brandSnapshot: null,
@@ -227,6 +267,7 @@ export function buildSmetaFromPersistedEstimate(args: {
     // августом. Бронь создаётся один раз — там же живёт и номер.
     issuedAt: args.booking.createdAt ?? args.estimate.createdAt ?? null,
     paymentDueDate: args.booking.expectedPaymentDate ?? null,
+    ordering: args.ordering ?? null,
   });
 
   if (args.estimate.kind === "ADDON") {

@@ -20,7 +20,8 @@ import {
   formatRentalDurationDetails,
   parseBookingRangeBound,
 } from "../utils/dates";
-import { serializeBookingForApi } from "../utils/serializeDecimal";
+import { serializeBookingForApi, type BookingWithItemsEquipment } from "../utils/serializeDecimal";
+import { bookingItemKey, estimateLineKey, loadLineOrdering, sortLinesByCatalog } from "../services/lineOrder";
 import { buildQuoteXml } from "../services/quoteExport";
 import {
   buildSmetaExportDocument,
@@ -31,6 +32,7 @@ import {
   writeFullSmetaXlsx,
   smetaOrgFromSettings,
   writeSmetaPdfMulti,
+  loadSmetaLineOrdering,
 } from "../services/smetaExport";
 import { getSettings } from "../services/organizationService";
 import { formatExportHourCalculationLine } from "../utils/dates";
@@ -51,6 +53,30 @@ import {
 } from "../services/bookingAddon";
 
 const router = express.Router();
+
+/**
+ * Полная бронь для ответа API: позиции и строки смет (MAIN и ADDON) — в порядке
+ * каталога (lineOrder.ts), один запрос порядка на все equipmentId брони. Через
+ * него идут ВСЕ ответы с полной бронью: карточка кладёт ответ действия
+ * (согласование, добор, правка) прямо в state, и без этого состав до
+ * перезагрузки показывался бы в порядке добавления.
+ */
+async function serializeBookingOrdered(b: BookingWithItemsEquipment) {
+  const items = b.items ?? [];
+  const ordering = await loadLineOrdering([
+    ...items.map((it) => it.equipmentId),
+    ...(b.estimates ?? []).flatMap((e) => (e.lines ?? []).map((l) => l.equipmentId)),
+  ]);
+  return serializeBookingForApi({
+    ...b,
+    items: sortLinesByCatalog(items, bookingItemKey, ordering),
+    estimates: b.estimates?.map((e) => ({
+      ...e,
+      lines: e.lines ? sortLinesByCatalog(e.lines, estimateLineKey, ordering) : e.lines,
+    })),
+  });
+}
+
 // Проекты меняются через операции: обычная правка/приёмка потеряла бы историю.
 router.use("/:id", async (req, res, next) => {
   try {
@@ -692,7 +718,7 @@ router.get("/:id", async (req, res, next) => {
     });
     if (!booking) return res.status(404).json({ message: "Booking not found" });
     const { financeEvents, scanSessions, payments, ...bookingCore } = booking as any;
-    const serialized = serializeBookingForApi(bookingCore);
+    const serialized = await serializeBookingOrdered(bookingCore);
     const displayName = buildBookingHumanName({
       startDate: booking.startDate,
       clientName: booking.client.name,
@@ -1397,7 +1423,7 @@ router.patch("/:id", async (req, res, next) => {
       }
     }
 
-    res.json({ booking: serializeBookingForApi(freshBooking as any), warning });
+    res.json({ booking: await serializeBookingOrdered(freshBooking as any), warning });
   } catch (err) {
     next(err);
   }
@@ -1565,7 +1591,7 @@ router.post("/:id/status", async (req, res, next) => {
       // eslint-disable-next-line no-console
       console.error("Finance side-effects failed after status change:", financeErr);
     }
-    res.json({ booking: serializeBookingForApi(updated as any), warning });
+    res.json({ booking: await serializeBookingOrdered(updated as any), warning });
   } catch (err) {
     next(err);
   }
@@ -1764,6 +1790,14 @@ router.post("/quote/export", async (req, res, next) => {
       cashlessSurchargePercent: body.cashlessSurchargePercent ?? null,
     });
 
+    // Строки документа — в порядке каталога (как в смете брони), не в порядке
+    // добавления в форме; нумерация строится уже по отсортированным.
+    const orderedLines = sortLinesByCatalog(
+      estimate.lines,
+      estimateLineKey,
+      await loadLineOrdering(estimate.lines.map((l) => l.equipmentId)),
+    );
+
     const duration = formatRentalDurationDetails(start, end, body.skipPartialDay ?? false);
     const payload = {
       clientName: body.client.name.trim(),
@@ -1777,7 +1811,7 @@ router.post("/quote/export", async (req, res, next) => {
       discountAmount: estimate.discountAmount.toDecimalPlaces(2).toString(),
       totalAfterDiscount: estimate.totalAfterDiscount.toDecimalPlaces(2).toString(),
       comment: body.comment ?? null,
-      lines: estimate.lines,
+      lines: orderedLines,
     };
 
     const human = buildBookingHumanName({
@@ -1805,7 +1839,7 @@ router.post("/quote/export", async (req, res, next) => {
       subtotal: estimate.subtotal.toDecimalPlaces(2).toString(),
       discountAmount: estimate.discountAmount.toDecimalPlaces(2).toString(),
       totalAfterDiscount: estimate.totalAfterDiscount.toDecimalPlaces(2).toString(),
-      lines: estimate.lines,
+      lines: orderedLines,
     });
 
     // Надбавка за безнал в превью-экспорте печатается тем же общим блоком, что и
@@ -1995,7 +2029,7 @@ router.post("/draft", async (req, res, next) => {
     // подтверждает). Раньше автоподтверждение стояло прямо здесь, и кнопка
     // «Сохранить черновик» публиковала бронь — резервировала склад и уводила
     // заявку из-под правок ещё до того, как её дособрали.
-    res.json({ booking: serializeBookingForApi(booking as any) });
+    res.json({ booking: await serializeBookingOrdered(booking as any) });
   } catch (err) {
     if (isSchemaOutOfSyncError(err)) {
       next(
@@ -2095,7 +2129,7 @@ router.post("/quick", async (req, res, next) => {
     });
 
     res.status(201).json({
-      booking: serializeBookingForApi((fresh ?? booking) as any),
+      booking: await serializeBookingOrdered((fresh ?? booking) as any),
       ...(financeWarning ? { warning: financeWarning } : {}),
     });
   } catch (err) {
@@ -2215,7 +2249,7 @@ router.post("/:id/confirm", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) 
       // eslint-disable-next-line no-console
       console.error("Finance side-effects failed in /confirm:", financeErr);
     }
-    res.json({ booking: serializeBookingForApi(confirmed as any), warning });
+    res.json({ booking: await serializeBookingOrdered(confirmed as any), warning });
   } catch (err) {
     next(err);
   }
@@ -2333,7 +2367,7 @@ router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req
       return booking;
     });
 
-    res.json({ booking: serializeBookingForApi(updated as any) });
+    res.json({ booking: await serializeBookingOrdered(updated as any) });
   } catch (err) {
     next(err);
   }
@@ -2535,7 +2569,7 @@ router.post(
           vehicles: { include: { vehicle: true }, orderBy: { createdAt: "asc" } },
         },
       });
-      res.json({ booking: serializeBookingForApi(fresh as any) });
+      res.json({ booking: await serializeBookingOrdered(fresh as any) });
     } catch (err) {
       next(err);
     }
@@ -2596,7 +2630,7 @@ router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
       return updatedBooking;
     });
 
-    res.json({ booking: serializeBookingForApi(updated as any) });
+    res.json({ booking: await serializeBookingOrdered(updated as any) });
   } catch (err) {
     next(err);
   }
@@ -2671,7 +2705,7 @@ router.post(
         return updatedBooking;
       });
 
-      res.json({ booking: serializeBookingForApi(updated as any) });
+      res.json({ booking: await serializeBookingOrdered(updated as any) });
     } catch (err) {
       next(err);
     }
@@ -2706,14 +2740,14 @@ router.post(
           console.error("Finance side-effects failed after auto-confirm:", financeErr);
         }
         res.json({
-          booking: serializeBookingForApi(confirmed as any),
+          booking: await serializeBookingOrdered(confirmed as any),
           ...(warning ? { warning } : {}),
         });
         return;
       }
 
       const updated = await submitForApproval(req.params.id, req.adminUser.userId);
-      res.json({ booking: serializeBookingForApi(updated as any) });
+      res.json({ booking: await serializeBookingOrdered(updated as any) });
     } catch (err) {
       next(err);
     }
@@ -2745,7 +2779,7 @@ router.post(
         console.error("Finance side-effects failed after approve:", financeErr);
       }
 
-      res.json({ booking: serializeBookingForApi(updated as any), warning });
+      res.json({ booking: await serializeBookingOrdered(updated as any), warning });
     } catch (err) {
       next(err);
     }
@@ -2762,7 +2796,7 @@ router.post(
       const body = rejectSchema.parse(req.body);
       await assertBookingNotArchived(req.params.id);
       const updated = await rejectBooking(req.params.id, req.adminUser.userId, body.reason);
-      res.json({ booking: serializeBookingForApi(updated as any) });
+      res.json({ booking: await serializeBookingOrdered(updated as any) });
     } catch (err) {
       next(err);
     }
@@ -2950,7 +2984,7 @@ router.post(
       });
       if (!result) throw new HttpError(404, "Бронь не найдена после отмены", "BOOKING_NOT_FOUND");
 
-      res.json({ booking: serializeBookingForApi(result as any) });
+      res.json({ booking: await serializeBookingOrdered(result as any) });
     } catch (err) {
       next(err);
     }
@@ -3089,6 +3123,7 @@ router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
         paymentForm: booking.paymentForm,
         cashlessSurchargePercent: booking.cashlessSurchargePercent,
       }),
+      ordering: await loadSmetaLineOrdering(main, addon),
     });
     // Сумма в имени файла обязана совпадать с тем, что документ печатает как
     // «К оплате» (renderPdf: agreedTotal ?? grandTotal). Раньше сюда шёл
@@ -3142,6 +3177,7 @@ router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
         paymentForm: booking.paymentForm,
         cashlessSurchargePercent: booking.cashlessSurchargePercent,
       }),
+      ordering: await loadSmetaLineOrdering(main, addon),
     });
     // Сумма в имени файла обязана совпадать с тем, что документ печатает как
     // «К оплате» (renderPdf: agreedTotal ?? grandTotal). Раньше сюда шёл
@@ -3231,7 +3267,7 @@ async function loadBookingAfterAddon(id: string) {
       vehicles: { include: { vehicle: true }, orderBy: { createdAt: "asc" } },
     },
   });
-  return fresh ? serializeBookingForApi(fresh as any) : null;
+  return fresh ? await serializeBookingOrdered(fresh as any) : null;
 }
 
 /** GET /:id/addon-search?q= — каталог с доступностью на даты брони и потолком добора. */

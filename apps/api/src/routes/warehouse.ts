@@ -27,6 +27,7 @@ import {
   addExtraItem,
 } from "../services/checklistService";
 import { searchAddonCandidates } from "../services/bookingAddon";
+import { bookingItemKey, sortLinesByCatalogAsync } from "../services/lineOrder";
 import {
   getActiveStockCount,
   listStockCountLines,
@@ -1176,7 +1177,10 @@ warehouseScanRouter.get("/in-work/:bookingId/details", warehouseAuth, async (req
       throw new HttpError(404, "Бронь не найдена или не активна", "NOT_FOUND");
     }
 
-    const items = booking.items.map((bi) => ({
+    // Позиции — в порядке каталога, как в чек-листе: киоск группирует их по
+    // category в порядке появления и сам ничего не пересортировывает.
+    const orderedItems = await sortLinesByCatalogAsync(booking.items, bookingItemKey);
+    const items = orderedItems.map((bi) => ({
       bookingItemId: bi.id,
       equipmentId: bi.equipmentId,
       equipmentName: bi.equipment?.name ?? bi.customName ?? "Без названия",
