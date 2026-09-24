@@ -116,6 +116,29 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* iOS Safari рисует date/time-поля нативным виджетом: ширина у него — по
+     отформатированному значению («24 сент. 2026 г.»), w-full и min-w-0 он не
+     слушает и выпирает из колонки на телефоне; текст при этом центрирован.
+     appearance:none снимает эту ширину (выбор даты по тапу остаётся нативным),
+     значение прижимаем влево, как у остальных полей. Пустое поле без виджета
+     схлопнулось бы по высоте — держим строку min-height. Только iOS
+     (-webkit-touch-callout есть лишь там): десктопные поля не трогаем. */
+  @supports (-webkit-touch-callout: none) {
+    input[type="date"],
+    input[type="time"],
+    input[type="datetime-local"],
+    input[type="month"] {
+      -webkit-appearance: none;
+      appearance: none;
+      min-width: 0;
+      max-width: 100%;
+    }
+    input::-webkit-date-and-time-value {
+      text-align: left;
+      min-height: 1.25em;
+    }
+  }
 }
 
 @layer components {
