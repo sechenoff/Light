@@ -24,17 +24,19 @@ export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = f
   const isClampedDown = adjustment?.kind === "clampedDown";
   const isHardUnavail = adjustment?.kind === "unavailable";
 
+  // Левая полоса 3 px есть у каждой строки (в «пустых» состояниях прозрачная),
+  // иначе выбранная строка сдвигала бы текст на ширину полосы.
   const containerCls = isHardUnavail
-    ? "border-l-[3px] border-l-rose bg-rose-soft"
+    ? "border-l-rose bg-rose-soft"
     : isSelected
-      ? "border-l-[3px] border-l-emerald bg-emerald-soft/40"
+      ? "border-l-emerald bg-emerald-soft/40"
       : isUnavailable
-        ? "opacity-40"
-        : "bg-surface";
+        ? "border-l-transparent opacity-40"
+        : "border-l-transparent bg-surface";
 
   return (
     <div
-      className={`flex items-center gap-3 px-5 py-2.5 transition-colors ${containerCls} hover:bg-surface-muted`}
+      className={`flex items-center gap-3 border-l-[3px] py-2.5 pl-[17px] pr-5 transition-colors ${containerCls} hover:bg-surface-muted`}
       data-testid={`catalog-row-${row.equipmentId}`}
     >
       <div className="min-w-0 flex-1">
@@ -46,12 +48,12 @@ export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = f
             </span>
           )}
         </div>
-        <div className="mt-0.5 flex items-center gap-2 text-[11.5px] text-ink-3">
-          <span className="font-mono">{formatMoneyRub(Number(row.rentalRatePerShift))} ₽/день</span>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-ink-3">
+          <span className="whitespace-nowrap font-mono">{formatMoneyRub(Number(row.rentalRatePerShift))} ₽/день</span>
           {isUnavailable ? (
-            <span className="text-rose">нет в наличии</span>
+            <span className="whitespace-nowrap text-rose">нет в наличии</span>
           ) : (
-            <span className={row.availableQuantity <= 1 ? "text-amber" : "text-emerald"}>
+            <span className={`whitespace-nowrap ${row.availableQuantity <= 1 ? "text-amber" : "text-emerald"}`}>
               {row.availableQuantity} доступно
             </span>
           )}
@@ -71,7 +73,7 @@ export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = f
               type="button"
               aria-label="Удалить позицию"
               onClick={() => onRemove(row.equipmentId)}
-              className="rounded border border-rose-border bg-surface px-3 py-1 text-[12px] text-rose hover:bg-rose-soft"
+              className="rounded border border-rose-border bg-surface px-3 py-2 text-[12px] text-rose hover:bg-rose-soft md:py-1"
             >
               Убрать
             </button>
@@ -83,11 +85,11 @@ export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = f
                 onClick={() =>
                   selectedQty - 1 <= 0 ? onRemove(row.equipmentId) : onChangeQty(row.equipmentId, selectedQty - 1)
                 }
-                className="flex h-7 w-7 items-center justify-center text-ink-2 hover:bg-emerald-soft"
+                className="flex h-9 w-9 items-center justify-center text-ink-2 hover:bg-emerald-soft md:h-7 md:w-7"
               >
                 −
               </button>
-              <div className="flex h-7 w-8 items-center justify-center border-x border-emerald-border bg-emerald-soft/30 font-mono text-[12px] font-semibold text-emerald">
+              <div className="flex h-9 w-8 items-center justify-center border-x border-emerald-border bg-emerald-soft/30 font-mono text-[12px] font-semibold text-emerald md:h-7">
                 {selectedQty}
               </div>
               {/* Упёршийся «+» не блокируем: с disabled-кнопки браузер не
@@ -101,7 +103,7 @@ export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = f
                 onClick={() =>
                   isAtMax ? toast.info(maxReason) : onChangeQty(row.equipmentId, selectedQty + 1)
                 }
-                className={`flex h-7 w-7 items-center justify-center text-ink-2 hover:bg-emerald-soft ${isAtMax ? "cursor-help opacity-40" : ""}`}
+                className={`flex h-9 w-9 items-center justify-center text-ink-2 hover:bg-emerald-soft md:h-7 md:w-7 ${isAtMax ? "cursor-help opacity-40" : ""}`}
               >
                 +
               </button>
@@ -111,7 +113,7 @@ export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = f
           <button
             type="button"
             onClick={() => onAdd(row)}
-            className="rounded border border-accent-border bg-surface px-3 py-1 text-[12px] font-medium text-accent-bright hover:bg-accent-soft"
+            className="rounded border border-accent-border bg-surface px-3 py-2 text-[12px] font-medium text-accent-bright hover:bg-accent-soft md:py-1"
           >
             + Добавить
           </button>

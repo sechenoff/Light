@@ -52,16 +52,16 @@ const TRAIL_ROWS = 5;
 export const COMMENT_MIN = 3;
 export const NO_BOOKING = "none";
 
-// ── Стили (канон AddRepairModal) ──────────────────────────────────────────────
+// ── Стили (канон AddRepairModal; до lg — телефон и планшет — крупнее, под палец) ─
 
 export const CHIP =
-  "rounded-xl border px-2.5 py-px text-[11px] font-semibold leading-[1.6] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright";
+  "rounded-xl border px-3 py-1.5 text-[12px] lg:px-2.5 lg:py-px lg:text-[11px] font-semibold leading-[1.6] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright";
 export const CHIP_OFF =
   "border-border bg-surface text-ink-2 hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright";
 export const FIELD =
   "w-full rounded border border-border bg-surface px-2 py-1.5 text-[12.5px] text-ink placeholder:text-ink-3 focus:border-accent-bright focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright/30";
 export const MINI =
-  "inline-flex items-center justify-center gap-1 rounded border border-border bg-surface px-2 py-0.5 text-[11px] font-semibold leading-[1.55] text-ink-2 transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright disabled:opacity-50";
+  "inline-flex items-center justify-center gap-1 rounded border border-border bg-surface min-h-10 px-4 py-0.5 text-[11px] lg:min-h-0 lg:px-2 font-semibold leading-[1.55] text-ink-2 transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright disabled:opacity-50";
 const CHIP_BLOCKED = "cursor-not-allowed border-dashed border-border bg-surface-muted text-ink-3";
 const STEP_BTN =
   "flex h-8 w-8 items-center justify-center bg-surface-subtle text-[15px] text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-bright disabled:cursor-not-allowed disabled:opacity-40";
@@ -236,10 +236,13 @@ export function PositionSearch({
               <button
                 type="button"
                 onClick={() => onPick(e)}
-                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12.5px] hover:bg-accent-soft focus-visible:bg-accent-soft focus-visible:outline-none"
+                className="flex w-full flex-wrap items-baseline gap-x-2 gap-y-0.5 px-2.5 py-2.5 lg:py-1.5 text-left text-[12.5px] hover:bg-accent-soft focus-visible:bg-accent-soft focus-visible:outline-none"
               >
-                <span className="min-w-0 truncate font-semibold text-ink">{e.name}</span>
-                <span className="ml-auto whitespace-nowrap text-[11px] text-ink-3">
+                {/* Название не сжимается; если рядом с ним категории не хватает
+                    места, она целиком переносится второй строкой вправо, а не
+                    схлопывается до «Н..» */}
+                <span className="max-w-full shrink-0 truncate font-semibold text-ink">{e.name}</span>
+                <span className="ml-auto max-w-full truncate text-right text-[11px] text-ink-3">
                   {e.category}
                   {e.stockTrackingMode === "UNIT" ? " · штучный учёт" : ""}
                 </span>

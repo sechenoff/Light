@@ -44,7 +44,7 @@ export function PaymentFormCard({
   }, [effective]);
 
   return (
-    <div className="rounded-lg border border-border bg-surface px-4 py-3 shadow-xs">
+    <div className="rounded-lg border border-border bg-surface px-5 py-3.5 shadow-xs">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="text-[13px] font-medium text-ink">Форма оплаты</label>
         <div
@@ -61,7 +61,7 @@ export function PaymentFormCard({
                 role="radio"
                 aria-checked={active}
                 onClick={() => onChange(form)}
-                className={`rounded px-3 py-1 font-medium transition-colors ${
+                className={`rounded px-3 py-2 font-medium transition-colors md:py-1 ${
                   active ? "bg-surface text-ink shadow-xs" : "text-ink-2 hover:text-ink"
                 }`}
               >
@@ -108,7 +108,7 @@ export function PaymentFormCard({
                 if (Number.isFinite(n)) onChangeSurchargePercent(Math.min(100, Math.max(0, n)));
               }}
               onBlur={() => setDraft(effective != null ? String(effective) : "")}
-              className="w-16 rounded border border-border px-2 py-1 text-right font-mono text-[13px] focus:border-accent-bright focus:outline-none disabled:opacity-60"
+              className="w-16 rounded border border-border px-2 py-2 text-right font-mono text-[13px] focus:border-accent-bright focus:outline-none disabled:opacity-60 md:py-1"
             />
             <span className="text-[13px] text-ink-2">%</span>
             {surchargePercent != null && canEditPercent && (

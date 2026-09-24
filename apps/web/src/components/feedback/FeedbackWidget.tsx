@@ -8,18 +8,22 @@ import { FeedbackComposer } from "./FeedbackComposer";
 // Маршруты, где плавающую кнопку не показываем (kiosk / unauth).
 const HIDE_ON_PREFIXES = [
   "/login",
+  "/lk", // клиентский портал: своя оболочка LkShell, форма обратной связи внутренняя
   "/warehouse/scan",
+  "/admin/scanner", // полноэкранный инструмент, как /warehouse/scan: кнопка легла бы на шторку
   "/gaffer", // у gaffer-CRM свой контур
 ];
 
-function shouldHide(pathname: string | null): boolean {
+/** Скрыта ли кнопка «Сообщить» на маршруте. AppShell по нему решает,
+ *  нужен ли под контентом запас, чтобы кнопка не закрывала конец страницы. */
+export function isFeedbackWidgetHidden(pathname: string | null): boolean {
   if (!pathname) return true;
-  return HIDE_ON_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`) || pathname === p);
+  return HIDE_ON_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 /**
  * Глобальный плавающий виджет «Сообщить» — fixed bottom-right, доступен на
- * всех аутентифицированных страницах (кроме kiosk и login). Открывает
+ * всех служебных страницах (кроме kiosk, login и клиентского портала /lk). Открывает
  * slide-over с формой обратной связи.
  *
  * Чтобы виджет не блокировал sticky-нижние панели на мобильных
@@ -33,7 +37,7 @@ export function FeedbackWidget() {
   useEffect(() => { setMounted(true); }, []);
 
   if (!mounted) return null;
-  if (shouldHide(pathname)) return null;
+  if (isFeedbackWidgetHidden(pathname)) return null;
 
   return (
     <>
@@ -44,8 +48,8 @@ export function FeedbackWidget() {
         className="
           group fixed z-40
           bottom-4 right-4 lg:bottom-5 lg:right-5
-          h-11 lg:h-12
-          pl-3 pr-4 lg:pl-3.5 lg:pr-5
+          h-11 w-11 justify-center lg:h-12
+          sm:w-auto sm:justify-start sm:pl-3 sm:pr-4 lg:pl-3.5 lg:pr-5
           rounded-full
           bg-inverse text-on-inverse
           shadow-[0_4px_12px_rgba(9,9,11,0.18),0_2px_4px_rgba(9,9,11,0.12)]

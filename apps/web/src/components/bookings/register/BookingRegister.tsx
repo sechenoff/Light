@@ -22,7 +22,8 @@ import { QuickBookingModal } from "../QuickBookingModal";
 import { rememberBookingsListQuery } from "../bookingsListNav";
 import { BookingIssuesPanel } from "../issues/BookingIssuesPanel";
 import { useRegisterActions } from "./useRegisterActions";
-import { RegisterFilters, control, button } from "./RegisterFilters";
+import { pluralBookings } from "../bulkActions";
+import { RegisterFilters, control, button, primaryButton } from "./RegisterFilters";
 import {
   DueDate,
   PaymentState,
@@ -204,6 +205,20 @@ export function BookingRegister() {
     disabled: !!moreError || view === "day",
     onLoadMore: () => void more(),
   });
+  // Активная вкладка состояния должна быть видна в ленте. Без scrollIntoView:
+  // на телефоне он при загрузке прокрутил бы к ленте всю страницу.
+  const tabsRef = useRef<HTMLElement>(null);
+  const hasData = !!data;
+  useEffect(() => {
+    const nav = tabsRef.current,
+      el = nav?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!nav || !el) return;
+    if (
+      el.offsetLeft < nav.scrollLeft ||
+      el.offsetLeft + el.offsetWidth > nav.scrollLeft + nav.clientWidth
+    )
+      nav.scrollLeft = el.offsetLeft - 16;
+  }, [authorized, scope, view, hasData]);
   const today = toMoscowDateString(new Date());
   const filterEntries = FILTER_KEYS.filter(
     (k) => p.get(k) && !["dateField", "amountField"].includes(k),
@@ -247,7 +262,7 @@ export function BookingRegister() {
       >
         {r.client.name}
       </button>
-      <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-ink-3 ${centered ? "justify-center" : "justify-start"}`}>
+      <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-3 ${centered ? "justify-center" : "justify-start"}`}>
         <span>{r.docNumber ?? r.id.slice(-6)}</span>
         {r.mode === "PROJECT" && (
           <span className="rounded bg-indigo-soft px-1.5 py-0.5 text-indigo">
@@ -262,19 +277,22 @@ export function BookingRegister() {
     return (
       <article
         key={r.id}
-        className="min-w-0 rounded-lg border border-border bg-surface p-4 text-center shadow-xs"
+        className="flex min-w-0 flex-col rounded-lg border border-border bg-surface p-4 text-center shadow-xs"
         data-booking-card={r.id}
       >
         <div className="relative px-6">
           {selectable && r.mode !== "PROJECT" && (
-            <input
-              className="absolute left-0 top-1 h-4 w-4 accent-accent"
-              type="checkbox"
-              aria-label={`Выбрать ${r.projectName}`}
-              checked={actions.selection.selected.has(r.id)}
-              onChange={() => actions.selection.toggle(r.id)}
-              disabled={actions.busy}
-            />
+            // Зона нажатия 40×40 вокруг чекбокса 16 px; центр — там же, где был сам чекбокс.
+            <label className="absolute -left-3 -top-2 flex h-10 w-10 cursor-pointer items-center justify-center">
+              <input
+                className="h-4 w-4 accent-accent"
+                type="checkbox"
+                aria-label={`Выбрать ${r.projectName}`}
+                checked={actions.selection.selected.has(r.id)}
+                onChange={() => actions.selection.toggle(r.id)}
+                disabled={actions.busy}
+              />
+            </label>
           )}
           {identity(r)}
         </div>
@@ -284,11 +302,11 @@ export function BookingRegister() {
         </div>
         <div className="my-3 grid justify-items-center gap-2 border-y border-border py-3">
           {money(r)}
-          <DueDate row={r} />
+          <DueDate row={r} label />
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+        <div className="mt-auto flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
           {rowActions(r)}
-          <Link className="py-2 text-xs text-accent" href={`/bookings/${r.id}`}>
+          <Link className="inline-flex min-h-10 items-center text-xs text-accent" href={`/bookings/${r.id}`}>
             Карточка →
           </Link>
         </div>
@@ -302,8 +320,12 @@ export function BookingRegister() {
       </div>
     );
   return (
+    <>
+    {/* Оверлеи (шторки, модалки) живут ВНЕ этого контейнера: space-y-4 задаёт
+        margin-top всем соседям со специфичностью 0,3,0 и сдвигал fixed-оверлеи
+        и <dialog> на 16 px вниз. */}
     <div
-      className="min-w-0 space-y-4 p-4 pb-32 lg:p-6 lg:pb-32"
+      className="min-w-0 space-y-4 p-4 pb-12 lg:p-6 lg:pb-8"
       data-booking-register
     >
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -321,7 +343,7 @@ export function BookingRegister() {
             Быстрая бронь
           </button>
           <Link
-            className={`${button} !bg-accent !text-white`}
+            className={primaryButton}
             href="/bookings/new"
           >
             + Создать бронь
@@ -379,15 +401,19 @@ export function BookingRegister() {
                   scroll: false,
                 });
               }}
-              className={`min-w-0 rounded-lg border bg-surface p-3 text-center transition hover:border-accent xl:p-4 ${s.scope === "overdue" && Number(data?.summary.overdue) > 0 ? "border-rose-border" : "border-border"}`}
+              // flex-col + justify-start: кнопка растянута рядом сетки, и без этого
+              // браузер центрировал бы содержимое по вертикали — подписи соседних
+              // плашек вставали на разную высоту.
+              className={`flex min-w-0 flex-col justify-start rounded-lg border bg-surface p-3 text-center transition hover:border-accent xl:p-4 ${s.scope === "overdue" && Number(data?.summary.overdue) > 0 ? "border-rose-border" : "border-border"}`}
             >
               <span className="text-xs text-ink-2">{s.label}</span>
+              {/* Mono — с 640 px; на телефоне Sans, иначе десятки миллионов с копейками переносятся. */}
               <strong
-                className={`mt-1 block break-words text-lg font-semibold tabular-nums sm:text-xl ${s.scope === "overdue" && Number(data?.summary.overdue) > 0 ? "text-rose" : s.label === "Получено" ? "text-emerald" : "text-ink"}`}
+                className={`mt-1 block break-words text-lg font-semibold tabular-nums sm:mono-num sm:text-xl ${s.scope === "overdue" && Number(data?.summary.overdue) > 0 ? "text-rose" : s.label === "Получено" ? "text-emerald" : "text-ink"}`}
               >
                 {s.value ?? "—"}
               </strong>
-              <span className="mt-1 block text-[10px] text-ink-3 sm:text-xs">
+              <span className="mt-1 block text-[11px] text-ink-3 sm:text-xs">
                 {s.hint}
               </span>
             </button>
@@ -580,7 +606,7 @@ export function BookingRegister() {
           ].map(([label, from, to]) => (
             <button
               key={label}
-              className={`min-h-8 rounded border px-2 ${p.get("from") === from && p.get("to") === to && p.get("dateField") === "rental" ? "border-accent-border bg-accent-soft text-accent" : "border-border text-ink-2"}`}
+              className={`min-h-10 rounded border px-2 sm:min-h-8 ${p.get("from") === from && p.get("to") === to && p.get("dateField") === "rental" ? "border-accent-border bg-accent-soft text-accent" : "border-border text-ink-2"}`}
               onClick={() => update({ from, to, dateField: "rental" })}
             >
               {label}
@@ -588,7 +614,7 @@ export function BookingRegister() {
           ))}
           {filterEntries.length > 0 && (
             <button
-              className="min-h-8 px-2 text-accent underline underline-offset-2"
+              className="min-h-10 px-2 text-accent underline underline-offset-2 sm:min-h-8"
               onClick={reset}
             >
               Сбросить фильтры
@@ -660,16 +686,19 @@ export function BookingRegister() {
       </section>
       {view !== "day" ? (
         <>
+          {/* Лента прокручивается по горизонтали до xl: правый край гаснет маской —
+              намёк, что вкладки продолжаются; pr-6 даёт последней вкладке выйти из-под маски. */}
           <nav
+            ref={tabsRef}
             aria-label="Состояние бронирований"
-            className="flex gap-1 overflow-x-auto border-b border-border pb-1"
+            className="relative flex gap-1 overflow-x-auto border-b border-border pr-6 [mask-image:linear-gradient(to_right,black_calc(100%_-_24px),transparent)] [scrollbar-width:none] xl:pr-0 xl:[mask-image:none] [&::-webkit-scrollbar]:hidden"
           >
             {(["all", ...REGISTER_SCOPES.filter((s) => s !== "all")] as const).map((s) => (
               <button
                 key={s}
                 aria-pressed={scope === s}
                 onClick={() => update({ scope: s })}
-                className={`min-h-10 shrink-0 rounded-t px-3 text-sm ${scope === s ? "border-b-2 border-accent bg-accent-soft font-semibold text-accent" : "text-ink-2 hover:bg-surface-subtle"}`}
+                className={`min-h-10 shrink-0 rounded-t border-b-2 px-3 text-sm ${scope === s ? "border-accent bg-accent-soft font-semibold text-accent" : "border-transparent text-ink-2 hover:bg-surface-subtle"}`}
               >
                 {scopeLabels[s]}{" "}
                 <span className="ml-1 text-xs opacity-70">
@@ -715,10 +744,11 @@ export function BookingRegister() {
                   ? "↑ По возрастанию"
                   : "↓ По убыванию"}
               </button>
-              <label className="flex min-h-10 items-center gap-2 text-xs text-ink-2">
+              {/* Флаг меняет только колонки xl-таблицы — на карточках ему нечего делать. */}
+              <label className="hidden min-h-10 items-center gap-2 text-xs text-ink-2 xl:flex">
                 <input
                   type="checkbox"
-                  className="accent-accent"
+                  className="h-4 w-4 accent-accent"
                   checked={expanded}
                   onChange={(e) =>
                     update({ columns: e.target.checked ? "expanded" : "" })
@@ -767,7 +797,7 @@ export function BookingRegister() {
           aria-busy={loading}
           className={loading ? "pointer-events-none opacity-50" : ""}
         >
-          {view === "registry" && (
+          {view === "registry" && rows.length > 0 && (
             <>
               <div className="hidden overflow-x-auto rounded-lg border border-border bg-surface xl:block">
                 <table className="w-full min-w-[980px] text-center">
@@ -800,9 +830,9 @@ export function BookingRegister() {
                           <th className="px-3 py-3">Получено</th>
                         </>
                       )}
-                      <th className="min-w-[280px] px-3 py-3">Сумма / оплата</th>
+                      <th className={`${expanded ? "min-w-[170px]" : "min-w-[280px]"} px-3 py-3`}>Сумма / оплата</th>
                       <th className="px-3 py-3">Срок оплаты</th>
-                      <th className="px-3 py-3">Действия</th>
+                      <th className={`px-3 py-3 ${expanded ? "sticky right-0 bg-surface-subtle shadow-[inset_1px_0_0] shadow-border" : ""}`}>Действия</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -810,11 +840,11 @@ export function BookingRegister() {
                       <tr
                         key={r.id}
                         data-booking-row={r.id}
-                        className={
+                        className={`group ${
                           actions.selection.selected.has(r.id)
                             ? "bg-accent-soft/40"
                             : "hover:bg-surface-subtle/50"
-                        }
+                        }`}
                       >
                         <td className="px-3 py-4 align-middle">
                           <input
@@ -845,16 +875,49 @@ export function BookingRegister() {
                             </td>
                           </>
                         )}
-                        <td className="min-w-[280px] px-3 py-4 align-middle">{money(r)}</td>
+                        <td className={`${expanded ? "min-w-[170px]" : "min-w-[280px]"} px-3 py-4 align-middle`}>{money(r)}</td>
                         <td className="min-w-[130px] px-3 py-4 align-middle">
                           <DueDate row={r} />
                         </td>
-                        <td className="px-3 py-4 align-middle">{rowActions(r)}</td>
+                        {/* С «Начислено и получено» таблица шире экрана: «Действия» закреплены
+                            справа. Фон непрозрачный (surface + тон строки градиентом), чтобы
+                            под ячейкой не просвечивал прокручиваемый контент. Разделитель —
+                            inset-тенью: схлопнутую границу таблицы фон sticky-ячейки перекрывает. */}
+                        <td
+                          className={`px-3 py-4 align-middle ${
+                            expanded
+                              ? `sticky right-0 bg-surface bg-gradient-to-r shadow-[inset_1px_0_0] shadow-border ${
+                                  actions.selection.selected.has(r.id)
+                                    ? "from-accent-soft/40 to-accent-soft/40"
+                                    : "group-hover:from-surface-subtle/50 group-hover:to-surface-subtle/50"
+                                }`
+                              : ""
+                          }`}
+                        >
+                          {rowActions(r)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {/* Дубль «Выбрать все» для карточек: в таблице он живёт в шапке, скрытой до xl. */}
+              <label className="mb-2 flex min-h-10 w-fit cursor-pointer items-center gap-2 text-sm text-ink-2 xl:hidden">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-accent"
+                  checked={actions.selection.allSelected}
+                  ref={(el) => {
+                    if (el)
+                      el.indeterminate =
+                        actions.selection.someSelected &&
+                        !actions.selection.allSelected;
+                  }}
+                  onChange={actions.selection.toggleAll}
+                  disabled={actions.busy || !actions.selection.selectableCount}
+                />
+                Выбрать все загруженные
+              </label>
               <div className="grid gap-3 md:grid-cols-2 xl:hidden">
                 {rows.map((r) => card(r))}
               </div>
@@ -990,24 +1053,26 @@ export function BookingRegister() {
         <>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-subtle p-4 text-sm">
             <span className="text-ink-2">
-              Итого по выборке · {data.totals.count} броней
+              Итого по выборке · {data.totals.count}{" "}
+              {pluralBookings(data.totals.count)}
             </span>
-            <div className="flex flex-wrap gap-x-5 gap-y-2">
-              <span className="text-ink-2">
+            {/* На телефоне — столбик «подпись … сумма» с суммами на общей оси, с sm — в строку. */}
+            <div className="grid w-full gap-1 sm:flex sm:w-auto sm:flex-wrap sm:gap-x-5 sm:gap-y-2">
+              <span className="flex items-baseline justify-between gap-3 text-ink-2 sm:block">
                 Сумма проектов{" "}
                 <strong className="font-mono text-ink">{formatRub(data.totals.total)}</strong>
               </span>
-              <span className="text-ink-2">
+              <span className="flex items-baseline justify-between gap-3 text-ink-2 sm:block">
                 Получено{" "}
                 <strong className="font-mono text-emerald">{formatRub(data.totals.paid)}</strong>
               </span>
-              <span className="text-ink-2">
+              <span className="flex items-baseline justify-between gap-3 text-ink-2 sm:block">
                 Осталось получить{" "}
                 <strong className="font-mono text-ink">
                   {formatRub(data.totals.outstanding)}
                 </strong>
               </span>
-              <span className="text-ink-2">
+              <span className="flex items-baseline justify-between gap-3 text-ink-2 sm:block">
                 Просрочено{" "}
                 <strong className={`font-mono ${Number(data.totals.overdue) > 0 ? "text-rose" : "text-ink"}`}>
                   {formatRub(data.totals.overdue)}
@@ -1017,7 +1082,7 @@ export function BookingRegister() {
           </div>
           <div className="text-center">
             <div ref={autoLoad.sentinelRef} aria-hidden="true" />
-            {!data.nextCursor && (
+            {!data.nextCursor && rows.length > 0 && (
               <p className="text-xs text-ink-3">Показаны все брони</p>
             )}
             {moreError && (
@@ -1057,6 +1122,7 @@ export function BookingRegister() {
           </p>
         )}
       </footer>
+    </div>
       {detail && (
         <RegisterDetail
           row={detail}
@@ -1087,6 +1153,6 @@ export function BookingRegister() {
         }}
       />
       {actions.modals}
-    </div>
+    </>
   );
 }

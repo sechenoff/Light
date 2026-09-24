@@ -28,7 +28,7 @@ export function ContactChips({ phone, email, clientName, outstanding }: ContactC
           href={`tel:${phone}`}
           aria-label="Позвонить клиенту"
           title={`Позвонить: ${phone}`}
-          className="inline-flex items-center justify-center w-[28px] h-[28px] rounded border border-border bg-surface-subtle text-sm hover:bg-surface text-ink-2"
+          className="inline-flex items-center justify-center w-9 h-9 text-sm md:w-6 md:h-6 md:text-xs rounded border border-border bg-surface-subtle hover:bg-surface text-ink-2"
         >
           📞
         </a>
@@ -38,7 +38,7 @@ export function ContactChips({ phone, email, clientName, outstanding }: ContactC
           href={`mailto:${email}?subject=${subject}&body=${body}`}
           aria-label="Написать клиенту"
           title={`Написать: ${email}`}
-          className="inline-flex items-center justify-center w-[28px] h-[28px] rounded border border-border bg-surface-subtle text-sm hover:bg-surface text-ink-2"
+          className="inline-flex items-center justify-center w-9 h-9 text-sm md:w-6 md:h-6 md:text-xs rounded border border-border bg-surface-subtle hover:bg-surface text-ink-2"
         >
           ✉️
         </a>

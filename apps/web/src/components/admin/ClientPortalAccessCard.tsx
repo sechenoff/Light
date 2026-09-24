@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "../ToastProvider";
 
 type PortalAccount = {
@@ -22,6 +22,20 @@ interface ClientPortalAccessCardProps {
  * это логин, а не почтовый ящик.
  */
 const PLACEHOLDER_PORTAL_DOMAIN = "svetobazarent.lk";
+
+// Каркас как у соседних секций карточки брони («Данные заказа»): белая
+// карточка с полосой-шапкой. Сплошной bg-surface-muted сливался с фоном
+// страницы — в ночной теме это цвет body, и карточка выглядела дырой.
+function PortalCardShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+      <div className="px-4 py-3 border-b border-border bg-surface-subtle">
+        <p className="eyebrow">Доступ в кабинет</p>
+      </div>
+      <div className="p-4 space-y-3">{children}</div>
+    </div>
+  );
+}
 
 export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalAccessCardProps) {
   const [account, setAccount] = useState<PortalAccount | null>(null);
@@ -172,14 +186,14 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
   const inviteResultBlock = (
     <>
       {emailFailed && (
-        <p className="text-sm text-amber bg-amber-soft border border-amber-border rounded-md px-3 py-2">
+        <p className="text-sm text-amber bg-amber-soft border border-amber-border rounded px-3 py-2">
           Письмо не отправлено — отправьте ссылку вручную
         </p>
       )}
       {inviteUrl && (
         <button
           onClick={copyInviteUrl}
-          className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors"
+          className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-subtle transition-colors"
         >
           Скопировать ссылку
         </button>
@@ -189,35 +203,33 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-border bg-surface-muted p-4">
-        <p className="eyebrow mb-2">Доступ в кабинет</p>
+      <PortalCardShell>
         <p className="text-sm text-ink-2">Загрузка…</p>
-      </div>
+      </PortalCardShell>
     );
   }
 
   if (!account) {
     return (
-      <div className="rounded-lg border border-border bg-surface-muted p-4 space-y-3">
-        <p className="eyebrow">Доступ в кабинет</p>
+      <PortalCardShell>
         <p className="text-sm text-ink-2">Кабинет не создан. Введите email для отправки приглашения.</p>
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="email@example.ru"
-          className="w-full px-3 py-2 text-sm border border-border rounded-md bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full px-3 py-2 text-sm border border-border rounded bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <button
           onClick={invite}
           disabled={busy || !email.trim()}
-          className="px-4 py-2 text-sm bg-accent-bright text-surface rounded-md disabled:opacity-50 hover:opacity-90 transition-opacity"
+          className="px-4 py-2 text-sm bg-accent-bright text-surface rounded disabled:opacity-50 hover:opacity-90 transition-opacity"
         >
           {busy ? "Отправка…" : "Дать доступ в кабинет"}
         </button>
         {inviteResultBlock}
         {msg && <p className="text-sm text-ink-2">{msg}</p>}
-      </div>
+      </PortalCardShell>
     );
   }
 
@@ -234,9 +246,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
   };
 
   return (
-    <div className="rounded-lg border border-border bg-surface-muted p-4 space-y-3">
-      <p className="eyebrow">Доступ в кабинет</p>
-
+    <PortalCardShell>
       <div className="text-sm space-y-1">
         <p className="font-medium text-ink">{account.email}</p>
 
@@ -270,7 +280,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
             <button
               onClick={() => resend()}
               disabled={busy}
-              className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-subtle transition-colors disabled:opacity-50"
             >
               Переслать ссылку
             </button>
@@ -281,7 +291,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
                 setMsg(null);
               }}
               disabled={busy}
-              className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-subtle transition-colors disabled:opacity-50"
             >
               На другой адрес…
             </button>
@@ -291,7 +301,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
           <button
             onClick={() => action("disable", "Доступ отключён")}
             disabled={busy}
-            className="px-3 py-1.5 text-sm border border-rose-border text-rose rounded-md hover:bg-rose-soft transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-sm border border-rose-border text-rose rounded hover:bg-rose-soft transition-colors disabled:opacity-50"
           >
             Отключить
           </button>
@@ -300,7 +310,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
           <button
             onClick={() => action("reenable", "Доступ восстановлен")}
             disabled={busy}
-            className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-subtle transition-colors disabled:opacity-50"
           >
             Восстановить
           </button>
@@ -317,12 +327,12 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
               onChange={(e) => setNewEmail(e.target.value)}
               placeholder="email@example.ru"
               aria-label="Новый email для доступа в кабинет"
-              className="flex-1 min-w-[200px] px-3 py-2 text-sm border border-border rounded-md bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+              className="flex-1 min-w-[200px] px-3 py-2 text-sm border border-border rounded bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent"
             />
             <button
               onClick={() => resend(newEmail.trim().toLowerCase())}
               disabled={busy || !newEmail.trim()}
-              className="px-3 py-1.5 text-sm bg-accent-bright text-surface rounded-md disabled:opacity-50 hover:opacity-90 transition-opacity"
+              className="px-3 py-1.5 text-sm bg-accent-bright text-surface rounded disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {busy ? "Отправка…" : "Отправить"}
             </button>
@@ -332,7 +342,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
                 setNewEmail("");
               }}
               disabled={busy}
-              className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-subtle transition-colors disabled:opacity-50"
             >
               Отмена
             </button>
@@ -342,6 +352,6 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
 
       {inviteResultBlock}
       {msg && <p className="text-sm text-ink-2">{msg}</p>}
-    </div>
+    </PortalCardShell>
   );
 }

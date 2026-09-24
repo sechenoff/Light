@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { StatusPill } from "@/components/StatusPill";
+import { SectionHeader } from "@/components/SectionHeader";
 import { formatMoneyRub } from "@/lib/format";
 import { toast } from "@/components/ToastProvider";
 
@@ -99,19 +100,19 @@ function VehicleEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/30"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/30 p-4"
       onClick={handleBackdrop}
       aria-modal="true"
       role="dialog"
       aria-labelledby="vehicle-edit-title"
     >
-      <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl">
+      <div className="w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-lg border border-border bg-surface p-5 sm:p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 id="vehicle-edit-title" className="font-semibold text-ink">Редактировать: {vehicle.name}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-ink-3 hover:text-ink"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-surface-muted hover:text-ink"
             aria-label="Закрыть"
           >
             ✕
@@ -247,7 +248,7 @@ export default function AdminVehiclesPage() {
   if (authLoading) {
     return (
       <AdminShell>
-        <div className="h-40 animate-pulse rounded-lg bg-surface-muted" />
+        <div className="h-40 animate-pulse rounded-lg bg-surface-subtle" />
       </AdminShell>
     );
   }
@@ -258,24 +259,26 @@ export default function AdminVehiclesPage() {
     <AdminShell>
       <div className="space-y-6">
 
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="eyebrow mb-1">Транспорт</p>
-          <h1 className="text-lg font-semibold text-ink">Управление машинами</h1>
-          <p className="mt-1 text-xs text-ink-3">
-            Здесь можно изменить ставку смены, стоимость генератора и другие параметры.
-          </p>
-        </div>
-        <Link
-          href="/vehicles"
-          className="shrink-0 text-xs text-accent-bright hover:text-accent font-medium"
-        >
-          Автопарк и журнал →
-        </Link>
+      <div>
+        <SectionHeader
+          eyebrow="Транспорт"
+          title="Управление машинами"
+          actions={
+            <Link
+              href="/vehicles"
+              className="inline-flex min-h-8 items-center text-xs font-medium text-accent-bright hover:text-accent"
+            >
+              Автопарк и журнал →
+            </Link>
+          }
+        />
+        <p className="mt-1 text-sm text-ink-2">
+          Здесь можно изменить ставку смены, стоимость генератора и другие параметры.
+        </p>
       </div>
 
       {loadingVehicles ? (
-        <div className="h-40 animate-pulse rounded-lg bg-surface-muted" />
+        <div className="h-40 animate-pulse rounded-lg bg-surface-subtle" />
       ) : loadError ? (
         <div className="rounded-lg border border-rose-border bg-rose-soft px-6 py-10 text-center">
           <p className="text-sm font-semibold text-rose">Не удалось загрузить список машин</p>
@@ -291,17 +294,42 @@ export default function AdminVehiclesPage() {
       ) : !vehicles || vehicles.length === 0 ? (
         <p className="text-sm text-ink-3">Машины пока не добавлены.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface shadow-xs">
-          <table className="w-full min-w-[640px] text-sm">
+        <>
+        {/* Телефон: список вместо таблицы — все параметры и «Изменить» без прокрутки вбок */}
+        <ul className="divide-y divide-border rounded-lg border border-border bg-surface shadow-xs md:hidden">
+          {vehicles.map((vehicle) => (
+            <li key={vehicle.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-ink">{vehicle.name}</p>
+                <p className="mt-0.5 text-xs tabular-nums text-ink-2">
+                  {formatMoneyRub(Number(vehicle.shiftPriceRub))}&nbsp;₽ · {vehicle.shiftHours}&nbsp;ч.
+                  {vehicle.hasGeneratorOption && vehicle.generatorPriceRub
+                    ? ` · ген. +${formatMoneyRub(Number(vehicle.generatorPriceRub))}\u00a0₽`
+                    : ""}
+                </p>
+              </div>
+              <StatusPill variant={vehicle.active ? "ok" : "none"} label={vehicle.active ? "Активна" : "Скрыта"} />
+              <button
+                type="button"
+                onClick={() => setEditingVehicle(vehicle)}
+                className="h-10 shrink-0 rounded border border-border px-3 text-xs text-ink-2 hover:border-accent hover:text-accent"
+              >
+                Изменить
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="hidden md:block overflow-x-auto rounded-lg border border-border bg-surface shadow-xs">
+          <table className="w-full text-sm">
             <thead className="border-b border-border bg-surface-muted">
               <tr>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-ink-3">Порядок</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-ink-3">Машина</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-ink-3">Ставка смены</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-ink-3">Генератор</th>
-                <th className="px-4 py-2.5 text-center text-xs font-medium text-ink-3">Часы смены</th>
-                <th className="px-4 py-2.5 text-center text-xs font-medium text-ink-3">Активна</th>
-                <th className="px-4 py-2.5" />
+                <th className="hidden xl:table-cell px-3 xl:px-4 py-2.5 text-left eyebrow whitespace-nowrap">Порядок</th>
+                <th className="px-3 xl:px-4 py-2.5 text-left eyebrow whitespace-nowrap">Машина</th>
+                <th className="px-3 xl:px-4 py-2.5 text-right eyebrow whitespace-nowrap">Ставка смены</th>
+                <th className="px-3 xl:px-4 py-2.5 text-right eyebrow whitespace-nowrap">Генератор</th>
+                <th className="px-3 xl:px-4 py-2.5 text-center eyebrow whitespace-nowrap">Часы смены</th>
+                <th className="px-3 xl:px-4 py-2.5 text-center eyebrow whitespace-nowrap">Активна</th>
+                <th className="px-3 xl:px-4 py-2.5" />
               </tr>
             </thead>
             <tbody>
@@ -310,31 +338,32 @@ export default function AdminVehiclesPage() {
                   key={vehicle.id}
                   className={idx % 2 === 0 ? "bg-surface" : "bg-surface-muted/30"}
                 >
-                  <td className="px-4 py-3 text-ink-3">{vehicle.displayOrder}</td>
-                  <td className="px-4 py-3 font-medium text-ink">{vehicle.name}</td>
-                  <td className="px-4 py-3 text-right mono-num text-ink">
-                    {formatMoneyRub(Number(vehicle.shiftPriceRub))} ₽
+                  <td className="hidden xl:table-cell px-3 xl:px-4 py-3 text-ink-3">{vehicle.displayOrder}</td>
+                  <td className="px-3 xl:px-4 py-3 font-medium text-ink">{vehicle.name}</td>
+                  <td className="px-3 xl:px-4 py-3 text-right mono-num text-ink whitespace-nowrap">
+                    {formatMoneyRub(Number(vehicle.shiftPriceRub))}&nbsp;₽
                   </td>
-                  <td className="px-4 py-3 text-right mono-num text-ink-2">
+                  <td className="px-3 xl:px-4 py-3 text-right mono-num text-ink-2 whitespace-nowrap">
                     {vehicle.hasGeneratorOption && vehicle.generatorPriceRub
-                      ? `+${formatMoneyRub(Number(vehicle.generatorPriceRub))} ₽`
+                      ? `+${formatMoneyRub(Number(vehicle.generatorPriceRub))}\u00a0₽`
                       : "—"}
                   </td>
-                  <td className="px-4 py-3 text-center text-ink-2 mono-num">{vehicle.shiftHours} ч.</td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-3 xl:px-4 py-3 text-center text-ink-2 mono-num whitespace-nowrap">{vehicle.shiftHours}&nbsp;ч.</td>
+                  <td className="px-3 xl:px-4 py-3 text-center">
                     {vehicle.active ? (
                       <StatusPill variant="ok" label="Да" />
                     ) : (
                       <StatusPill variant="none" label="Нет" />
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 xl:px-4 py-3 text-right">
                     <button
                       type="button"
                       onClick={() => setEditingVehicle(vehicle)}
-                      className="rounded border border-border px-3 py-1.5 text-xs text-ink-2 hover:border-accent hover:text-accent"
+                      aria-label={`Изменить: ${vehicle.name}`}
+                      className="whitespace-nowrap rounded border border-border px-3 py-1.5 text-xs text-ink-2 hover:border-accent hover:text-accent"
                     >
-                      Редактировать
+                      Изменить
                     </button>
                   </td>
                 </tr>
@@ -342,8 +371,12 @@ export default function AdminVehiclesPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
+      </div>
 
+      {/* Модалка — вне space-y-6: иначе fixed-подложка получает margin-top и сверху
+          остаётся незатемнённая полоса. */}
       {editingVehicle && (
         <VehicleEditModal
           vehicle={editingVehicle}
@@ -351,7 +384,6 @@ export default function AdminVehiclesPage() {
           onSaved={handleSaved}
         />
       )}
-      </div>
     </AdminShell>
   );
 }

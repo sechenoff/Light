@@ -19,6 +19,7 @@ import {
 import { BulkResultModal, type BulkFailure } from "../../../src/components/bookings/BulkResultModal";
 import { pluralBookings } from "../../../src/components/bookings/bulkActions";
 import { BULK_MAX_IDS } from "../../../src/components/bookings/bulkLimits";
+import { control } from "../../../src/components/bookings/register/RegisterFilters";
 
 interface ArchivedBooking {
   id: string;
@@ -39,11 +40,15 @@ type BulkApiResult = {
   counts: { total: number; ok: number; failed: number };
 };
 
+/** Название проекта или null, если его нет (пусто или заглушка «Проект»). */
+function projectTitle(r: ArchivedBooking): string | null {
+  const name = r.projectName?.trim();
+  return name && name !== "Проект" ? name : null;
+}
+
 /** Заголовок для модалок и отчёта: дата · клиент · проект. */
 function archivedTitle(r: ArchivedBooking): string {
-  const project =
-    r.projectName?.trim() && r.projectName.trim() !== "Проект" ? r.projectName.trim() : null;
-  return [formatShiftDate(r.startDate), r.client.name, project].filter(Boolean).join(" · ");
+  return [formatShiftDate(r.startDate), r.client.name, projectTitle(r)].filter(Boolean).join(" · ");
 }
 
 function formatShiftDate(iso: string): string {
@@ -301,14 +306,14 @@ export default function BookingsArchivePage() {
   const anyBusy = bulkBusy !== null || busyId !== null;
 
   return (
-    <div className={`p-4 lg:p-6 ${selection.selected.size > 0 ? "pb-24" : ""}`}>
+    <div className={`p-4 lg:p-6 ${selection.selected.size > 0 ? "pb-32" : ""}`}>
       <SectionHeader
         eyebrow="Архив броней"
         title="Удалённые брони"
         actions={
           <Link
             href="/bookings"
-            className="rounded border border-border bg-surface px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors"
+            className="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
           >
             ← К списку броней
           </Link>
@@ -331,10 +336,11 @@ export default function BookingsArchivePage() {
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Поиск по клиенту или проекту"
             aria-label="Поиск по клиенту или проекту"
-            className="rounded border border-border px-2 py-1 text-xs bg-surface w-56 max-w-full"
+            className={`${control} sm:w-64`}
           />
           <select
-            className="rounded border border-border px-2 py-1 text-xs bg-surface"
+            aria-label="Статус брони"
+            className={`${control} sm:w-auto`}
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -350,136 +356,213 @@ export default function BookingsArchivePage() {
             <button
               type="button"
               onClick={() => { setSearchInput(""); setSearchQuery(""); setStatusFilter(""); }}
-              className="text-xs text-accent hover:underline"
+              className="inline-flex min-h-10 items-center text-xs text-accent hover:underline"
             >
               Сбросить
             </button>
           )}
         </div>
-        <div className="overflow-auto">
-          <table className="min-w-[960px] w-full text-sm">
-            <thead className="bg-slate--soft text-ink-2 border-b border-border">
-              <tr>
-                <th className="w-10 px-3 py-2">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 cursor-pointer accent-accent-bright align-middle"
-                    checked={selection.allSelected}
-                    ref={(el) => {
-                      // indeterminate ставится только из JS, атрибута нет.
-                      if (el) el.indeterminate = selection.someSelected;
-                    }}
-                    onChange={selection.toggleAll}
-                    aria-label="Выбрать все архивные брони на странице"
-                  />
-                </th>
-                <th className="text-left px-3 py-2 font-medium">Дата смены</th>
-                <th className="text-left px-3 py-2 font-medium">Клиент</th>
-                <th className="text-left px-3 py-2 font-medium">Проект</th>
-                <th className="text-left px-3 py-2 font-medium">Статус</th>
-                <th className="text-right px-3 py-2 font-medium">Сумма</th>
-                <th className="text-left px-3 py-2 font-medium">Архивировано</th>
-                <th className="px-3 py-2 font-medium">Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows === null && !error && (
-                <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-ink-3">
-                    Загрузка...
-                  </td>
-                </tr>
-              )}
-              {error && (
-                <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-rose">
-                    {error}
-                  </td>
-                </tr>
-              )}
-              {rows && rows.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="px-3 py-10 text-center text-ink-3">
-                    {searchQuery || statusFilter
-                      ? "Ничего не найдено под текущими фильтрами."
-                      : "В архиве пока пусто."}
-                  </td>
-                </tr>
-              )}
-              {rows?.map((r) => (
-                <tr
-                  key={r.id}
-                  className={`border-t border-border transition-colors ${
-                    selection.selected.has(r.id) ? "bg-accent-soft/40" : "hover:bg-surface-muted"
-                  }`}
-                >
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 cursor-pointer accent-accent-bright align-middle"
-                      checked={selection.selected.has(r.id)}
-                      onChange={() => selection.toggle(r.id)}
-                      aria-label={`Выбрать бронь: ${archivedTitle(r)}`}
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num">
-                    {formatShiftDate(r.startDate)}
-                  </td>
-                  <td className="px-3 py-2 text-ink-2">{r.client.name}</td>
-                  <td className="px-3 py-2">
-                    {r.projectName?.trim() === "Проект" || !r.projectName?.trim() ? (
-                      <span className="text-ink-3">Без названия</span>
-                    ) : (
-                      <span className="text-ink-2">{r.projectName}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <StatusPill variant="view" label={STATUS_LABEL[r.status]} />
-                  </td>
-                  <td className="px-3 py-2 text-right mono-num text-ink">
-                    {formatRub(r.finalAmount ?? "0")}
-                  </td>
-                  <td className="px-3 py-2 text-ink-3 mono-num text-xs whitespace-nowrap">
-                    <div>{formatArchivedAt(r.deletedAt)}</div>
-                    {r.deletedByName && (
-                      <div className="text-ink-3">кто: {r.deletedByName}</div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href={`/bookings/${r.id}`}
-                        className="text-xs text-accent-bright hover:text-accent font-medium"
-                      >
-                        Открыть
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => setRestoreRow(r)}
-                        disabled={anyBusy}
-                        className="text-xs rounded border border-emerald-border bg-emerald-soft text-emerald px-2 py-1 hover:bg-emerald hover:text-surface transition-colors disabled:opacity-50"
-                        title="Вернуть бронь в основной список"
-                      >
-                        ↺ Восстановить
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPurgeRow(r)}
-                        disabled={anyBusy}
-                        className="text-xs rounded border border-rose-border bg-rose-soft text-rose px-2 py-1 hover:bg-rose hover:text-surface transition-colors disabled:opacity-50"
-                        title="Удалить из БД навсегда"
-                      >
-                        🗑 Удалить навсегда
-                      </button>
+        {/* Загрузка, ошибка и пустое состояние — вне таблицы: ячейка с colSpan
+            центрировалась бы по ширине таблицы (960 px), а не по видимой
+            карточке, и на узком экране текст уезжал за край. */}
+        {rows === null && !error && (
+          <p className="px-3 py-6 text-center text-sm text-ink-3">Загрузка...</p>
+        )}
+        {error && <p className="px-3 py-6 text-center text-sm text-rose">{error}</p>}
+        {rows && rows.length === 0 && (
+          <p className="px-3 py-10 text-center text-sm text-ink-3">
+            {searchQuery || statusFilter
+              ? "Ничего не найдено под текущими фильтрами."
+              : "В архиве пока пусто."}
+          </p>
+        )}
+        {rows && rows.length > 0 && (
+          <>
+            {/* До 1280 — карточки; таблица 960 px — с xl, как в реестре броней:
+                на 768–1279 с сайдбаром она не помещалась, и «Действия» уезжали
+                за край. «Выбрать все» продублирован здесь: в таблице он живёт
+                в скрытой шапке. */}
+            <label className="flex min-h-10 items-center gap-3 border-b border-border px-3 text-xs text-ink-2 xl:hidden">
+              <input
+                type="checkbox"
+                className="h-4 w-4 cursor-pointer accent-accent-bright"
+                checked={selection.allSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = selection.someSelected;
+                }}
+                onChange={selection.toggleAll}
+              />
+              Выбрать все на странице
+            </label>
+            <ul className="divide-y divide-border xl:hidden">
+              {rows.map((r) => {
+                const project = projectTitle(r);
+                return (
+                  <li
+                    key={r.id}
+                    className={`flex gap-3 p-3 transition-colors ${
+                      selection.selected.has(r.id) ? "bg-accent-soft/40" : ""
+                    }`}
+                  >
+                    <label className="-ml-2 -mt-2.5 flex h-10 w-10 shrink-0 items-center justify-center">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 cursor-pointer accent-accent-bright"
+                        checked={selection.selected.has(r.id)}
+                        onChange={() => selection.toggle(r.id)}
+                        aria-label={`Выбрать бронь: ${archivedTitle(r)}`}
+                      />
+                    </label>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="text-sm font-semibold text-ink">{r.client.name}</div>
+                      <div className={`text-xs ${project ? "text-ink-2" : "text-ink-3"}`}>
+                        {project ?? "Без названия"}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        <span className="mono-num text-ink-2">{formatShiftDate(r.startDate)}</span>
+                        <StatusPill variant="view" label={STATUS_LABEL[r.status]} />
+                        <span className="mono-num text-ink">{formatRub(r.finalAmount ?? "0")}</span>
+                      </div>
+                      <div className="text-xs text-ink-3">
+                        Архивировано <span className="mono-num">{formatArchivedAt(r.deletedAt)}</span>
+                        {r.deletedByName && <>, кто: {r.deletedByName}</>}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Link
+                          href={`/bookings/${r.id}`}
+                          className="inline-flex min-h-10 items-center text-xs text-accent-bright hover:text-accent font-medium"
+                        >
+                          Открыть
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setRestoreRow(r)}
+                          disabled={anyBusy}
+                          className="inline-flex min-h-10 items-center text-xs rounded border border-emerald-border bg-emerald-soft text-emerald px-3 hover:bg-emerald hover:text-surface transition-colors disabled:opacity-50"
+                        >
+                          ↺ Восстановить
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPurgeRow(r)}
+                          disabled={anyBusy}
+                          className="inline-flex min-h-10 items-center text-xs rounded border border-rose-border bg-rose-soft text-rose px-3 hover:bg-rose hover:text-surface transition-colors disabled:opacity-50"
+                        >
+                          🗑 Удалить навсегда
+                        </button>
+                      </div>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="hidden overflow-auto xl:block">
+              <table className="min-w-[960px] w-full text-sm">
+                <thead className="bg-surface-subtle text-ink-2 border-b border-border">
+                  <tr>
+                    <th className="w-10 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 cursor-pointer accent-accent-bright align-middle"
+                        checked={selection.allSelected}
+                        ref={(el) => {
+                          // indeterminate ставится только из JS, атрибута нет.
+                          if (el) el.indeterminate = selection.someSelected;
+                        }}
+                        onChange={selection.toggleAll}
+                        aria-label="Выбрать все архивные брони на странице"
+                      />
+                    </th>
+                    <th className="text-left px-3 py-2 font-medium">Дата смены</th>
+                    <th className="text-left px-3 py-2 font-medium">Клиент</th>
+                    <th className="text-left px-3 py-2 font-medium">Проект</th>
+                    <th className="text-left px-3 py-2 font-medium">Статус</th>
+                    <th className="text-right px-3 py-2 font-medium">Сумма</th>
+                    <th className="text-left px-3 py-2 font-medium">Архивировано</th>
+                    {/* Ширина — под три кнопки в ряд. На 1280 таблице её не
+                        хватает, и кнопки переносятся (flex-wrap ниже), а не
+                        уезжают за край под горизонтальную прокрутку. */}
+                    <th className="w-[22rem] px-3 py-2 font-medium">Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.id}
+                      className={`border-t border-border transition-colors ${
+                        selection.selected.has(r.id) ? "bg-accent-soft/40" : "hover:bg-surface-muted"
+                      }`}
+                    >
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 cursor-pointer accent-accent-bright align-middle"
+                          checked={selection.selected.has(r.id)}
+                          onChange={() => selection.toggle(r.id)}
+                          aria-label={`Выбрать бронь: ${archivedTitle(r)}`}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num">
+                        {formatShiftDate(r.startDate)}
+                      </td>
+                      <td className="px-3 py-2 text-ink-2">{r.client.name}</td>
+                      <td className="px-3 py-2">
+                        {projectTitle(r) === null ? (
+                          <span className="text-ink-3">Без названия</span>
+                        ) : (
+                          <span className="text-ink-2">{r.projectName}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <StatusPill variant="view" label={STATUS_LABEL[r.status]} />
+                      </td>
+                      <td className="px-3 py-2 text-right mono-num text-ink">
+                        {formatRub(r.finalAmount ?? "0")}
+                      </td>
+                      <td className="px-3 py-2 text-ink-3 mono-num text-xs whitespace-nowrap">
+                        <div>{formatArchivedAt(r.deletedAt)}</div>
+                        {r.deletedByName && (
+                          <div className="text-ink-3">кто: {r.deletedByName}</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/bookings/${r.id}`}
+                            className="whitespace-nowrap text-xs text-accent-bright hover:text-accent font-medium"
+                          >
+                            Открыть
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setRestoreRow(r)}
+                            disabled={anyBusy}
+                            className="whitespace-nowrap text-xs rounded border border-emerald-border bg-emerald-soft text-emerald px-2 py-1 hover:bg-emerald hover:text-surface transition-colors disabled:opacity-50"
+                            title="Вернуть бронь в основной список"
+                          >
+                            ↺ Восстановить
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPurgeRow(r)}
+                            disabled={anyBusy}
+                            className="whitespace-nowrap text-xs rounded border border-rose-border bg-rose-soft text-rose px-2 py-1 hover:bg-rose hover:text-surface transition-colors disabled:opacity-50"
+                            title="Удалить из БД навсегда"
+                          >
+                            🗑 Удалить навсегда
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
         {nextCursor && (
-          <div className="mt-4 text-center">
+          <div className="py-4 text-center">
             <button
               type="button"
               onClick={loadMore}

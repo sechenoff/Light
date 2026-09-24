@@ -8,7 +8,7 @@ function availabilityPill(status: AvailabilityStatus) {
   const variant = status === "AVAILABLE" ? "full" : status === "PARTIAL" ? "limited" : "none";
   const label =
     status === "AVAILABLE" ? "Доступно" : status === "PARTIAL" ? "Частично" : "Занято";
-  return <StatusPill variant={variant} label={label} />;
+  return <StatusPill variant={variant} label={label} className="w-20 justify-center" />;
 }
 
 export interface AvailabilityCheckProps {
@@ -70,20 +70,25 @@ export function AvailabilityCheck({
     <ul className="space-y-1.5">
       {items.map((item) => (
         <li key={item.equipmentId} className="flex items-center justify-between gap-2 text-xs">
-          <span className="text-ink-2 truncate">{item.name}</span>
+          <span title={item.name} className="min-w-0 text-ink-2 line-clamp-2 break-words">{item.name}</span>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-ink-3 mono-num">
+            <span className="min-w-10 text-right text-ink-3 mono-num">
               {item.occupiedQuantity}/{item.totalQuantity}
             </span>
             {availabilityPill(item.availability)}
-            {buildBookingHref && item.availability !== "UNAVAILABLE" && (
-              <Link
-                href={buildBookingHref(item)}
-                className="text-accent-bright hover:text-accent underline whitespace-nowrap"
-              >
-                + Бронь
-              </Link>
-            )}
+            {/* Пустой слот у занятой позиции держит колонки счётчика и
+                статуса на одной вертикали со строками, где «+ Бронь» есть. */}
+            {buildBookingHref &&
+              (item.availability !== "UNAVAILABLE" ? (
+                <Link
+                  href={buildBookingHref(item)}
+                  className="w-12 text-right text-accent-bright hover:text-accent underline whitespace-nowrap"
+                >
+                  + Бронь
+                </Link>
+              ) : (
+                <span aria-hidden className="w-12" />
+              ))}
           </div>
         </li>
       ))}

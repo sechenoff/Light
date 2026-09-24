@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { UserRole } from "@/lib/auth";
 import type { BookingStatus } from "@/lib/bookingConstants";
 import { readBookingsListHref } from "./bookingsListNav";
@@ -34,7 +34,13 @@ export interface BookingHeaderProps {
   onChangeExtendDate: (value: string) => void;
   onSubmitExtend: () => void;
   onCancelExtend: () => void;
+  /** Действия, которые страница ставит первыми в группу (кнопки черновика). */
+  leadingActions?: ReactNode;
 }
+
+// На телефоне кнопки группы — 40 px по высоте (цель нажатия), с sm — как было.
+// inline-flex нужен и Link: у inline-элемента min-height не работает.
+const ACTION_BTN = "inline-flex items-center justify-center min-h-10 sm:min-h-0";
 
 export function BookingHeader({
   bookingId,
@@ -57,6 +63,7 @@ export function BookingHeader({
   onChangeExtendDate,
   onSubmitExtend,
   onCancelExtend,
+  leadingActions,
 }: BookingHeaderProps) {
   // «← К списку» возвращает на список с теми же фильтрами, что были активны
   // (sessionStorage). Читаем после маунта — на SSR sessionStorage нет, поэтому
@@ -70,12 +77,13 @@ export function BookingHeader({
     <div className="flex items-center justify-between flex-wrap gap-3 no-print">
       <Link
         href={backHref}
-        className="text-xs text-ink-3 hover:text-ink transition-colors"
+        className="inline-flex items-center min-h-10 sm:min-h-0 text-xs text-ink-3 hover:text-ink transition-colors"
       >
         ← К списку броней
       </Link>
       <div className="flex items-center gap-2 flex-wrap">
-        <Link href="/bookings/new" className="rounded bg-accent-bright text-surface px-3 py-1.5 text-sm hover:bg-accent transition-colors">
+        {leadingActions}
+        <Link href="/bookings/new" className={`${ACTION_BTN} rounded border border-accent-bright bg-accent-bright text-surface px-3 py-1.5 text-sm hover:border-accent hover:bg-accent transition-colors`}>
           + Новая бронь
         </Link>
         {/* BD-1: основные действия жизненного цикла — раньше были только в
@@ -86,7 +94,7 @@ export function BookingHeader({
               (booking.status === "PENDING_APPROVAL" && userRole === "SUPER_ADMIN")) && (
               <Link
                 href={`/bookings/${bookingId}/edit`}
-                className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors"
+                className={`${ACTION_BTN} rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors`}
               >
                 ✎ Изменить
               </Link>
@@ -96,7 +104,7 @@ export function BookingHeader({
                 type="button"
                 disabled={lifecycleBusy}
                 onClick={() => onLifecycleAction("issue")}
-                className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
+                className={`${ACTION_BTN} rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40`}
               >
                 Выдать
               </button>
@@ -106,7 +114,7 @@ export function BookingHeader({
                 type="button"
                 disabled={lifecycleBusy}
                 onClick={() => onLifecycleAction("return")}
-                className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
+                className={`${ACTION_BTN} rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40`}
               >
                 Вернуть
               </button>
@@ -118,7 +126,7 @@ export function BookingHeader({
                 type="button"
                 disabled={lifecycleBusy}
                 onClick={onOpenAddon}
-                className="rounded border border-accent-border bg-accent-soft text-accent px-3 py-1.5 text-sm hover:bg-accent hover:text-surface transition-colors disabled:opacity-40"
+                className={`${ACTION_BTN} rounded border border-accent-border bg-accent-soft text-accent px-3 py-1.5 text-sm hover:bg-accent hover:text-surface transition-colors disabled:opacity-40`}
                 title="Довезти клиенту ещё оборудование — отдельной доп-сметой или в основную смету"
               >
                 + Добор
@@ -130,7 +138,7 @@ export function BookingHeader({
               (booking.status === "CONFIRMED" || booking.status === "ISSUED" || booking.status === "RETURNED") && (
                 <Link
                   href={`/finance/bills/new?bookingId=${bookingId}`}
-                  className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors"
+                  className={`${ACTION_BTN} rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors`}
                   title="Выставить контрагенту счёт на оплату по этой брони"
                 >
                   Счёт на оплату
@@ -144,7 +152,7 @@ export function BookingHeader({
                 type="button"
                 disabled={lifecycleBusy}
                 onClick={onOpenExtend}
-                className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
+                className={`${ACTION_BTN} rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40`}
               >
                 Продлить аренду
               </button>
@@ -156,7 +164,7 @@ export function BookingHeader({
                 type="button"
                 disabled={resubmitBusy}
                 onClick={onResubmit}
-                className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-surface transition-colors disabled:opacity-40"
+                className={`${ACTION_BTN} rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-surface transition-colors disabled:opacity-40`}
                 title="Отправить изменённую бронь на повторное согласование"
               >
                 {resubmitBusy ? "Отправляю…" : "На согласование"}
@@ -171,7 +179,7 @@ export function BookingHeader({
                 type="button"
                 disabled={lifecycleBusy}
                 onClick={() => onLifecycleAction("cancel")}
-                className="rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors disabled:opacity-40"
+                className={`${ACTION_BTN} rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors disabled:opacity-40`}
               >
                 Отменить
               </button>
@@ -187,7 +195,7 @@ export function BookingHeader({
           <button
             type="button"
             onClick={onEnterRetroEdit}
-            className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-surface transition-colors"
+            className={`${ACTION_BTN} rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-surface transition-colors`}
             title="Изменить уже закрытую бронь — попадёт в аудит-лог"
           >
             ✎ Редактировать задним числом
@@ -199,7 +207,7 @@ export function BookingHeader({
           <button
             type="button"
             onClick={onArchive}
-            className="rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors"
+            className={`${ACTION_BTN} rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors`}
             title="Отправить в архив (можно восстановить из /bookings/archive)"
           >
             В архив

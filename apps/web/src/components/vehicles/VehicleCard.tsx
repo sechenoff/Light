@@ -33,12 +33,16 @@ function formatShortDate(iso: string): string {
   });
 }
 
-/** Цветной рельс слева — светофор состояния. Цветом кричат только проблемы. */
+/**
+ * Цветной рельс слева — светофор состояния. Цветом кричат только проблемы.
+ * Это левая рамка карточки, а не наложенная полоса: так шапка и зоны начинаются
+ * с одного отступа (как у строк очереди ремонтов).
+ */
 const STRIPE_CLASS: Record<string, string> = {
-  ok: "bg-border",
-  warn: "bg-amber",
-  alert: "bg-rose",
-  none: "bg-border-strong",
+  ok: "border-l-border",
+  warn: "border-l-amber",
+  alert: "border-l-rose",
+  none: "border-l-border-strong",
 };
 
 /** Зона карточки с надстрочником. */
@@ -186,18 +190,17 @@ export function VehicleCard({
             : null;
 
   return (
-    <article className="relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
-      <span
-        className={`absolute inset-y-0 left-0 w-1 ${STRIPE_CLASS[health.tone]}`}
-        aria-hidden="true"
-      />
-
+    <article
+      className={`flex flex-col overflow-hidden rounded-lg border border-l-[3px] border-border bg-surface shadow-xs ${STRIPE_CLASS[health.tone]}`}
+    >
       {/* Шапка: имя, номер, статус занятости, тариф */}
-      <div className="pl-5 pr-4 pt-3 pb-2.5">
+      <div className="px-4 pt-3 pb-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-[15px] font-semibold text-ink leading-tight">{vehicle.name}</h3>
+              <h3 className="font-cond text-[19px] font-bold leading-tight tracking-[-0.005em] text-ink">
+                {vehicle.name}
+              </h3>
               {vehicle.licensePlate?.trim() && (
                 <span className="mono-num rounded border border-border bg-surface-subtle px-1.5 py-0.5 text-[11px] text-ink-2">
                   {vehicle.licensePlate}
@@ -209,7 +212,7 @@ export function VehicleCard({
               <span className="text-ink-3">
                 {" / смена"}
                 {vehicle.bookable &&
-                  ` · ${vehicle.shiftHours} ч · переработка +${Number(vehicle.overtimePercent)} %`}
+                  ` · ${vehicle.shiftHours}\u00a0ч · переработка +${Number(vehicle.overtimePercent)}\u00a0%`}
               </span>
               {vehicle.hasGeneratorOption && vehicle.generatorPriceRub && (
                 <span className="text-ink-3">
@@ -219,7 +222,11 @@ export function VehicleCard({
               )}
             </p>
           </div>
-          <StatusPill variant={occupancyPill.variant} label={occupancyPill.label} />
+          <StatusPill
+            variant={occupancyPill.variant}
+            label={occupancyPill.label}
+            className="shrink-0 whitespace-nowrap"
+          />
         </div>
         {vehicle.notes?.trim() && (
           <p className="mt-1.5 line-clamp-2 text-xs text-ink-3">{vehicle.notes}</p>
@@ -229,7 +236,9 @@ export function VehicleCard({
       {flag && (
         <div
           className={
-            "flex items-start gap-2 border-y px-4 py-2 text-xs " +
+            // Только верхняя линия: за плашкой всегда идёт зона со своей
+            // border-t, и border-y давал двойную черту.
+            "flex items-start gap-2 border-t px-4 py-2 text-xs " +
             (flag.tone === "rose"
               ? "border-rose-border bg-rose-soft text-rose"
               : flag.tone === "amber"
@@ -286,14 +295,18 @@ export function VehicleCard({
       )}
 
       {/* Счётчик наработки + обслуживание */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 border-t border-border divide-y sm:divide-y-0 sm:divide-x divide-border">
+      {/* Без экономики свободную высоту в двухколоночной сетке забирает эта зона —
+          иначе между ней и кнопками остаётся пустой провал. */}
+      <div
+        className={`grid grid-cols-1 sm:grid-cols-2 border-t border-border divide-y sm:divide-y-0 sm:divide-x divide-border ${canSeeMoney ? "" : "flex-1"}`}
+      >
         <Zone label={unitMeta.counterLabel}>
           <p className="mono-num text-lg font-semibold text-ink leading-none">
             {formatUsage(vehicle.currentMileage, unit)}
           </p>
           {stats.mileageDelta != null ? (
             <p className="mt-1.5 text-xs text-ink-2">
-              <span className="mono-num">
+              <span className="whitespace-nowrap">
                 +{formatUsage(stats.mileageDelta, unit)}
               </span>{" "}
               <span className="text-ink-3">{FLEET_PERIOD_LABEL[period]}</span>
@@ -369,10 +382,14 @@ export function VehicleCard({
       {canSeeMoney && (
         <Zone
           label={`Экономика ${FLEET_PERIOD_LABEL[period]}`}
-          className="border-t border-border bg-surface-muted"
+          // flex-1: у техники без зоны «Занятость» (генератор) карточка в сетке
+          // тянется до соседней, и свободную высоту забирает экономика.
+          className="flex-1 border-t border-border bg-surface-muted"
         >
-          <div className="grid grid-cols-3 gap-2">
-            <div>
+          {/* На телефоне — строки «подпись — сумма»: три колонки по ~97 px не
+              вмещают сумму с копейками. С 640 px — снова три колонки. */}
+          <div className="grid grid-cols-1 gap-1 sm:grid-cols-3 sm:gap-2">
+            <div className="flex items-baseline justify-between gap-2 sm:block">
               <p className="text-[11px] text-ink-3">Заработала</p>
               {/* Прочерк, когда броней не было вовсе: «0 ₽» читалось бы как
                   «поработала и не заработала», а это разные вещи. */}
@@ -380,13 +397,13 @@ export function VehicleCard({
                 {stats.bookingsCount > 0 ? formatRub(stats.revenue) : "—"}
               </p>
             </div>
-            <div>
+            <div className="flex items-baseline justify-between gap-2 sm:block">
               <p className="text-[11px] text-ink-3">Обслуживание</p>
               <p className="mono-num text-sm font-semibold text-ink-2">
                 {stats.serviceCount > 0 ? formatRub(stats.serviceCost) : "—"}
               </p>
             </div>
-            <div>
+            <div className="flex items-baseline justify-between gap-2 sm:block">
               <p className="text-[11px] text-ink-3">Итог</p>
               <p
                 className={
@@ -413,7 +430,8 @@ export function VehicleCard({
             {stats.bookingsCount > 0 ? (
               <>
                 {stats.rentedDays} {pluralize(stats.rentedDays, "день", "дня", "дней")} аренды ·
-                загрузка <span className="mono-num">{stats.utilizationPct} %</span>
+                загрузка <span className="mono-num">{stats.utilizationPct}</span>
+                {"\u00a0%"}
               </>
             ) : (
               <>За период машина ни разу не выезжала на бронь</>

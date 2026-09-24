@@ -34,6 +34,8 @@ type CatalogRow = {
 /** Подложка колонок, которые считаются по выбранному периоду. */
 const PERIOD_COL_HEAD = "bg-accent-soft/70";
 const PERIOD_COL_CELL = "bg-accent-soft/30";
+/** Типографика заголовков колонок — как `thead th` в мокапе compact-single-row. */
+const TH_TEXT = "font-cond text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-3 whitespace-nowrap";
 
 // Called only from a post-mount effect (never during render) so the
 // new Date() here is the client clock — no SSR/CSR hydration mismatch.
@@ -234,24 +236,28 @@ export default function EquipmentPage() {
           <>
           {/* Desktop table */}
           <div className="hidden md:block overflow-x-auto">
-            <table className="min-w-[980px] w-full text-sm">
+            <table className="min-w-[720px] w-full text-sm">
               <thead className="bg-surface text-ink-2">
                 {/* Три правые колонки зависят от периода в тулбаре — они
                     подписаны и затонированы, иначе цифра выглядит свойством
                     позиции, а не среза на выбранные даты. */}
                 <tr>
-                  <th rowSpan={2} className="border-b border-border-strong px-3 py-2 text-left align-bottom font-medium">Оборудование</th>
-                  <th rowSpan={2} className="border-b border-border-strong px-3 py-2 text-left align-bottom font-medium w-[100px]">Всего</th>
-                  <th rowSpan={2} className="border-b border-border-strong px-3 py-2 text-right align-bottom font-medium w-[130px]">Стоимость</th>
-                  <th rowSpan={2} className="border-b border-border-strong px-3 py-2 text-left align-bottom font-medium">Категория</th>
+                  {/* Крайние ячейки — с отступом тулбара (px-4 / lg:px-6), чтобы края
+                      таблицы стояли по одной вертикали с периодом и «Создать бронь». */}
+                  <th rowSpan={2} className={`border-b border-border-strong py-2 pl-4 pr-3 text-left align-bottom lg:pl-6 ${TH_TEXT}`}>Оборудование</th>
+                  <th rowSpan={2} className={`border-b border-border-strong px-3 py-2 text-right align-bottom w-20 ${TH_TEXT}`}>Всего</th>
+                  <th rowSpan={2} className={`border-b border-border-strong px-3 py-2 text-right align-bottom w-[130px] ${TH_TEXT}`}>Стоимость</th>
+                  {/* Ниже xl категория уходит подписью под название — иначе
+                      «Доступно» и «Статус» уезжают за горизонтальный скролл. */}
+                  <th rowSpan={2} className={`hidden border-b border-border-strong px-3 py-2 text-left align-bottom xl:table-cell ${TH_TEXT}`}>Категория</th>
                   <th colSpan={3} className={`${PERIOD_COL_HEAD} border-b border-accent-border px-3 pt-1.5 pb-0.5 text-center`}>
                     <span className="eyebrow !text-accent">За выбранный период</span>
                   </th>
                 </tr>
                 <tr>
-                  <th className={`${PERIOD_COL_HEAD} border-b border-border-strong px-3 pb-2 text-right font-medium w-[90px]`}>Занято</th>
-                  <th className={`${PERIOD_COL_HEAD} border-b border-border-strong px-3 pb-2 text-right font-medium w-[100px]`}>Доступно</th>
-                  <th className={`${PERIOD_COL_HEAD} border-b border-border-strong px-3 pb-2 font-medium`}>Статус</th>
+                  <th className={`${PERIOD_COL_HEAD} border-b border-border-strong px-3 pb-2 text-right w-[90px] ${TH_TEXT}`}>Занято</th>
+                  <th className={`${PERIOD_COL_HEAD} border-b border-border-strong px-3 pb-2 text-right w-[100px] ${TH_TEXT}`}>Доступно</th>
+                  <th className={`${PERIOD_COL_HEAD} border-b border-border-strong pb-2 pl-3 pr-4 text-left lg:pr-6 ${TH_TEXT}`}>Статус</th>
                 </tr>
               </thead>
               <tbody>
@@ -286,8 +292,10 @@ export default function EquipmentPage() {
                         key={r.id}
                         className={`border-t border-border hover:bg-surface-muted transition-colors ${isFullyUnavailable ? "opacity-60" : ""}`}
                       >
-                        <td className="px-3 py-2">
-                          <div className="font-medium text-ink flex items-center gap-1.5">
+                        <td className="py-2 pl-4 pr-3 lg:pl-6">
+                          {/* Строчная разметка, не flex: в узкой колонке «· модель» иначе
+                              становится отдельной колонкой и ломается по слогам. */}
+                          <div className="font-medium text-ink">
                             {r.name}
                             {r.model ? (
                               <span className="text-ink-2 font-normal"> · {r.model}</span>
@@ -297,7 +305,7 @@ export default function EquipmentPage() {
                                 href={`/equipment/${r.id}/units`}
                                 title="Управление единицами"
                                 aria-label={`Управление единицами: ${r.name}`}
-                                className="text-ink-2 hover:text-ink flex-shrink-0"
+                                className="ml-1.5 inline-flex align-middle text-ink-2 hover:text-ink"
                               >
                                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -306,17 +314,17 @@ export default function EquipmentPage() {
                               </Link>
                             ) : null}
                           </div>
-                          {r.brand ? (
-                            <div className="text-xs text-ink-2 font-mono">{r.brand}</div>
-                          ) : (
-                            <div className="text-xs">&nbsp;</div>
-                          )}
+                          <div className="text-xs text-ink-3 xl:hidden">
+                            {r.category}
+                            {r.brand ? ` · ${r.brand}` : ""}
+                          </div>
+                          {r.brand ? <div className="hidden text-xs text-ink-3 xl:block">{r.brand}</div> : null}
                         </td>
-                        <td className="px-3 py-2 font-medium mono-num">
+                        <td className="px-3 py-2 text-right font-medium mono-num">
                           {r.stockTrackingMode === "UNIT" && r.unitStatusCounts ? (
                             <div>
                               <div>{r.totalQuantity}</div>
-                              <div className="text-xs font-normal text-ink-2 whitespace-nowrap">
+                              <div className="text-xs font-normal text-ink-2">
                                 {unitStatusSummary(r.unitStatusCounts, r.totalQuantity)}
                               </div>
                             </div>
@@ -330,14 +338,14 @@ export default function EquipmentPage() {
                             <div className="text-[11px] font-normal text-ink-2 whitespace-nowrap">{secondaryRates(r)}</div>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-ink-2">{r.category}</td>
+                        <td className="hidden whitespace-nowrap px-3 py-2 text-ink-2 xl:table-cell">{r.category}</td>
                         <td className={`${PERIOD_COL_CELL} px-3 py-2 text-right mono-num text-ink-2`}>
                           {avail ? avail.occupiedQuantity : <span className="text-ink-2">—</span>}
                         </td>
                         <td className={`${PERIOD_COL_CELL} px-3 py-2 text-right mono-num font-medium`}>
                           {avail ? avail.availableQuantity : <span className="text-ink-2">—</span>}
                         </td>
-                        <td className={`${PERIOD_COL_CELL} px-3 py-2`}>{statusBadge(avail, r.totalQuantity)}</td>
+                        <td className={`${PERIOD_COL_CELL} py-2 pl-3 pr-4 lg:pr-6`}>{statusBadge(avail, r.totalQuantity)}</td>
                       </tr>
                     );
                   })

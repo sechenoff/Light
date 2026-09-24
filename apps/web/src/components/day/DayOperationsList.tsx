@@ -46,17 +46,25 @@ export function DayOperationsList({
               href={`/bookings/${op.id}`}
               className="text-sm text-ink hover:text-accent flex flex-wrap items-baseline gap-x-2"
             >
-              <span className="mono-num text-ink-2">{time}</span>
-              <span className="text-ink-3">·</span>
-              <span className="text-ink-3">{kindLabel}</span>
-              <span className="text-ink-3">·</span>
-              <span className="font-medium truncate">{op.clientName || op.projectName}</span>
+              {/* Разделители склеены с соседями в неразрывные группы: иначе
+                  перенос строки ложится между «—» и количеством позиций. */}
+              <span className="whitespace-nowrap">
+                <span className="mono-num text-ink-2">{time}</span>
+                <span className="text-ink-3">
+                  <span className="mx-2">·</span>
+                  {kindLabel}
+                  <span className="ml-2">·</span>
+                </span>
+              </span>
+              <span className="min-w-0 font-medium truncate">{op.clientName || op.projectName}</span>
               {showAmount && op.finalAmount && (
-                <span className="mono-num text-ink-2">({formatRub(op.finalAmount)})</span>
+                <span className="whitespace-nowrap mono-num text-ink-2">({formatRub(op.finalAmount)})</span>
               )}
-              <span className="text-ink-3">—</span>
-              <span className="text-xs text-ink-3">
-                {op.itemCount} {pluralize(op.itemCount, "позиция", "позиции", "позиций")}
+              <span className="whitespace-nowrap text-ink-3">
+                <span className="mr-2">—</span>
+                <span className="text-xs">
+                  {op.itemCount} {pluralize(op.itemCount, "позиция", "позиции", "позиций")}
+                </span>
               </span>
             </Link>
           </li>

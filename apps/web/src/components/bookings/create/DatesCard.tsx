@@ -19,7 +19,7 @@ function combine(date: string, time: string): string {
 }
 
 const INPUT_CLS =
-  "w-full rounded border border-border-strong px-3 py-2 text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft";
+  "w-full min-w-0 rounded border border-border-strong px-3 py-2 text-base leading-5 sm:text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft";
 
 export function DatesCard({
   pickupLocal,
@@ -36,19 +36,23 @@ export function DatesCard({
   const [returnDate, returnTime] = returnLocal ? returnLocal.split("T") : ["", ""];
 
   return (
-    <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden mb-3.5">
+    <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden">
       <div className="px-5 py-3 border-b border-border bg-surface-muted">
         <h3 className="eyebrow text-ink">2. Когда</h3>
       </div>
       <div className="p-5">
-        <div className="grid grid-cols-[72px_1fr_1fr] gap-x-3 gap-y-2 items-center">
+        {/* На телефоне подпись «Выдача»/«Возврат» уходит строкой выше полей:
+            третья колонка не даёт нативным date/time-полям уместиться в 375 px.
+            Уже 375 px и две колонки тесны (≈117 px на поле при нужных ≈136) —
+            там дата и время идут друг под другом, заголовки колонок прячем. */}
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-3 gap-y-2 items-center min-[375px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:grid-cols-[72px_minmax(0,1fr)_minmax(0,1fr)]">
           {/* Column headers */}
-          <div />
-          <span className="eyebrow text-ink-3">Дата</span>
-          <span className="eyebrow text-ink-3">Время</span>
+          <div className="hidden sm:block" />
+          <span className="hidden min-[375px]:block eyebrow text-ink-3">Дата</span>
+          <span className="hidden min-[375px]:block eyebrow text-ink-3">Время</span>
 
           {/* Выдача row */}
-          <span className="text-[12.5px] text-ink-2">Выдача</span>
+          <span className="text-[12.5px] text-ink-2 min-[375px]:col-span-2 sm:col-span-1">Выдача</span>
           <input
             type="date"
             className={INPUT_CLS}
@@ -63,7 +67,7 @@ export function DatesCard({
           />
 
           {/* Возврат row */}
-          <span className="text-[12.5px] text-ink-2">Возврат</span>
+          <span className="text-[12.5px] text-ink-2 min-[375px]:col-span-2 sm:col-span-1">Возврат</span>
           <input
             type="date"
             className={INPUT_CLS}
@@ -105,7 +109,8 @@ export function DatesCard({
           <span className="text-[12.5px] text-ink-2 leading-snug">
             Не считать вторые сутки
             <span className="block text-[11px] text-ink-3">
-              Прощать переработку до 4 ч сверх целых суток (25–28 ч → 1 смена)
+              Прощать переработку до 4 ч сверх целых суток{" "}
+              <span className="whitespace-nowrap">(25–28 ч → 1 смена)</span>
             </span>
           </span>
         </label>

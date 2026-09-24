@@ -197,7 +197,7 @@ export function RegisterBreakageScreen({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:max-w-[560px] lg:px-5 lg:py-4">
+    <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:max-w-[560px] lg:px-6 lg:py-4">
       {/* Шаг 1: цель */}
       {target == null ? (
         <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
@@ -375,7 +375,7 @@ export function RegisterBreakageScreen({ onDone }: { onDone: () => void }) {
                           on
                             ? o.value === "URGENT"
                               ? "border-rose bg-rose text-surface"
-                              : "border-ink bg-ink text-white"
+                              : "border-inverse bg-inverse text-on-inverse"
                             : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
                         }`}
                       >

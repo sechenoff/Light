@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -104,8 +105,40 @@ const ICONS = {
   ),
 };
 
+// Запас в px, после которого лента считается «докрученной до конца».
+const SCROLL_END_TOLERANCE = 4;
+
 export function AdminTabNav({ counts }: AdminTabNavProps) {
   const pathname = usePathname();
+  const navRef = useRef<HTMLElement>(null);
+  const [hasMoreLeft, setHasMoreLeft] = useState(false);
+  const [hasMoreRight, setHasMoreRight] = useState(false);
+
+  const updateFade = useCallback(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    setHasMoreLeft(nav.scrollLeft > SCROLL_END_TOLERANCE);
+    setHasMoreRight(nav.scrollLeft + nav.clientWidth < nav.scrollWidth - SCROLL_END_TOLERANCE);
+  }, []);
+
+  // Активная вкладка может оказаться за краем ленты (на телефоне — почти всегда):
+  // докручиваем саму ленту, пока вкладка не встанет по центру. Не scrollIntoView —
+  // тот сдвинул бы и страницу по вертикали.
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const active = nav.querySelector<HTMLElement>('[aria-current="page"]');
+    if (active) {
+      const n = nav.getBoundingClientRect();
+      const a = active.getBoundingClientRect();
+      if (a.left < n.left || a.right > n.right) {
+        nav.scrollLeft += a.left + a.width / 2 - (n.left + n.width / 2);
+      }
+    }
+    updateFade();
+    window.addEventListener("resize", updateFade);
+    return () => window.removeEventListener("resize", updateFade);
+  }, [pathname, counts?.users, counts?.slang, counts?.imports, updateFade]);
 
   // admin-03: /admin/audit и /admin/roles были рабочими, но недостижимыми из UI
   // (ни в меню, ни в табах). Аудит — ключевой инструмент руководителя. Добавлены.
@@ -126,9 +159,23 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
   return (
     // overflow-x-auto: вкладки не помещаются на 375px — скроллится сам таб-бар,
     // а не вся страница (иначе горизонтальный overflow всех /admin-страниц).
+    // Линию под табами рисует обёртка в AdminShell (на всю ширину полосы);
+    // -mb-px кладёт ленту на неё, и подчёркивание активной вкладки её перекрывает.
+    // Затухание — с той стороны, где есть ещё вкладки: после автопрокрутки к
+    // активной слева тоже остаются скрытые, и без маски там торчал обрубок подписи.
     <nav
+      ref={navRef}
+      onScroll={updateFade}
       aria-label="Разделы админки"
-      className="flex gap-0.5 border-b border-border overflow-x-auto"
+      className={`-mb-px flex overflow-x-auto ${
+        hasMoreLeft && hasMoreRight
+          ? "[mask-image:linear-gradient(to_right,transparent,black_32px,black_calc(100%_-_32px),transparent)]"
+          : hasMoreRight
+            ? "[mask-image:linear-gradient(to_right,black_calc(100%_-_32px),transparent)]"
+            : hasMoreLeft
+              ? "[mask-image:linear-gradient(to_right,transparent,black_32px)]"
+              : ""
+      }`}
     >
       {tabs.map((tab) => {
         const isActive = pathname === tab.href || pathname.startsWith(tab.href + "/");
@@ -138,7 +185,7 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
             href={tab.href}
             aria-current={isActive ? "page" : undefined}
             className={[
-              "-mb-px px-3.5 py-2.5 text-sm border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap shrink-0",
+              "px-3 py-2.5 text-sm border-b-2 bg-clip-padding transition-colors flex items-center gap-2 lg:gap-1.5 whitespace-nowrap shrink-0",
               isActive
                 ? "text-ink font-medium border-b-2 border-ink bg-surface"
                 : "text-ink-2 border-transparent hover:text-ink hover:bg-surface-muted",
@@ -149,7 +196,9 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
             {tab.count !== undefined && (
               <span
                 className={[
-                  "mono-num text-[10.5px] px-1.5 py-0.5 rounded-full",
+                  // leading-none: без своей высоты строки бейдж наследует 20 px от text-sm
+                  // и делает таб-бар на 4 px выше на вкладках со счётчиком.
+                  "mono-num text-[10.5px] leading-none px-1.5 py-[3px] rounded",
                   isActive
                     ? "bg-accent-soft text-accent"
                     : "bg-surface-muted text-ink-3",

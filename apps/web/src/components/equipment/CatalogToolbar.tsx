@@ -47,9 +47,9 @@ const GHOST =
  * потому что он определяет колонки «Занято / Доступно / Статус».
  *
  * Полоса липкая: на десктопе к верху вьюпорта, на мобильном — под шапкой
- * AppShell (она сама sticky top-0 z-20 высотой ≈46 px, отсюда top-12 — то же
+ * AppShell (она сама sticky top-0 z-20 высотой ровно 48 px — h-12, отсюда top-12 — то же
  * смещение, что у CatalogBrowser в форме брони). z-10, чтобы не спорить с
- * этой шапкой и не перекрывать скрим мобильного меню (z-40).
+ * этой шапкой и не перекрывать скрим мобильного меню (z-50).
  */
 export function CatalogToolbar(props: CatalogToolbarProps) {
   const {
@@ -175,7 +175,7 @@ export function CatalogToolbar(props: CatalogToolbarProps) {
           </Link>
         </div>
         <div className="flex items-center gap-2 px-4 pb-1.5 pt-2">
-          <SearchField value={search} onChange={onSearchChange} className="h-11 flex-1" />
+          <SearchField value={search} onChange={onSearchChange} className="h-11 flex-1" variant="mobile" />
           <CategoryPopover
             categories={categories}
             counts={categoryCounts}
@@ -196,7 +196,7 @@ export function CatalogToolbar(props: CatalogToolbarProps) {
                 type="button"
                 aria-pressed={isActive}
                 onClick={() => onPeriodChange(getQuickPeriod(p.type))}
-                className={`h-7 rounded border px-3 text-xs transition-colors ${
+                className={`h-9 rounded border px-3 text-xs transition-colors ${
                   isActive
                     ? "border-accent-border bg-accent-soft font-semibold text-accent-bright"
                     : "border-border font-medium text-ink-2"
@@ -274,14 +274,25 @@ function SearchField({
   value,
   onChange,
   className,
+  variant = "bar",
 }: {
   value: string;
   onChange: (v: string) => void;
   className: string;
+  /**
+   * «bar» — призрачное поле десктопной строки 40 px; «mobile» — обведённое
+   * поле 44 px рядом с обведённой кнопкой категории, шрифт 16 px: на меньшем
+   * iOS зумит страницу при фокусе.
+   */
+  variant?: "bar" | "mobile";
 }) {
+  const tone =
+    variant === "mobile"
+      ? "border-border bg-surface-subtle"
+      : "border-transparent hover:bg-surface-subtle";
   return (
     <div
-      className={`flex min-w-0 items-center gap-1.5 rounded border border-transparent px-2 transition-colors hover:bg-surface-subtle focus-within:border-accent-bright focus-within:bg-surface focus-within:ring-4 focus-within:ring-accent-soft ${className}`}
+      className={`flex min-w-0 items-center gap-1.5 rounded border px-2 transition-colors focus-within:border-accent-bright focus-within:bg-surface focus-within:ring-4 focus-within:ring-accent-soft ${tone} ${className}`}
     >
       <SearchIcon />
       <input
@@ -292,7 +303,7 @@ function SearchField({
         // h-full, а не натуральная высота: обёртка на мобильном 44 px, и без
         // растяжения тапабельны только 16 px в её центре — палец в 6 px от
         // края визуального поля попадал по div, и поле не фокусировалось.
-        className="h-full w-full min-w-0 border-0 bg-transparent text-xs text-ink outline-none placeholder:text-ink-2"
+        className={`h-full w-full min-w-0 border-0 bg-transparent text-ink outline-none placeholder:text-ink-2 ${variant === "mobile" ? "text-base" : "text-xs"}`}
       />
       {value && (
         <button

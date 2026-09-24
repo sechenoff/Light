@@ -185,7 +185,7 @@ export function DayTasksWidget({
         <button
           onClick={() => setCreating(true)}
           aria-label="Создать задачу"
-          className="text-accent hover:text-accent-bright text-base leading-none transition-colors"
+          className="-my-2 -mr-2 inline-flex h-8 w-8 items-center justify-center rounded-md text-base leading-none text-accent transition-colors hover:bg-accent-soft hover:text-accent-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           +
         </button>
@@ -227,7 +227,7 @@ export function DayTasksWidget({
       <div className="mt-2 text-right">
         <Link
           href="/tasks?filter=my"
-          className="text-xs text-accent hover:underline"
+          className="inline-flex items-center min-h-8 -my-2 text-xs text-accent hover:underline"
         >
           Все мои →{openCount !== null ? ` (${openCount} открыто)` : ""}
         </Link>

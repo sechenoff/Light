@@ -136,10 +136,16 @@ export function TaskCard({
   const assignee = task.assignedToUser;
   const creator = task.createdByUser;
 
+  // Разделители между строками рисует divide-y родителя (TaskGroupList) — своей
+  // нижней границы у строки нет, иначе под первой задачей группы линия двойная.
+  // На телефоне три колонки: исполнитель, срок и «⋯» уходят во вторую строку.
   const cardClasses = [
-    "grid grid-cols-[28px_1fr_auto_auto_auto] gap-4 items-center py-3.5 px-5 border-b border-border bg-surface",
+    "relative grid grid-cols-[22px_minmax(0,1fr)_32px] gap-x-3 gap-y-1.5 items-center py-3 px-4 bg-surface",
+    "sm:grid-cols-[28px_minmax(0,1fr)_auto_minmax(88px,auto)_32px] sm:gap-4 sm:py-3.5 sm:px-5",
     "hover:bg-surface-muted transition-colors group",
-    task.urgent && !isDone ? "border-l-4 border-rose" : "",
+    // Полоса срочности — поверх левого паддинга: не сдвигает контент и не
+    // перекрашивается divide-border, как это было с border-l-4.
+    task.urgent && !isDone ? "before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-rose" : "",
     isOverdue && !isDone ? "bg-rose-soft/40" : "",
     isDone ? "opacity-55" : "",
   ]
@@ -163,7 +169,7 @@ export function TaskCard({
         >
           {isDone && (
             <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden>
-              <path d="M1 5l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M1 5l3.5 3.5L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           )}
         </button>
@@ -256,30 +262,38 @@ export function TaskCard({
         )}
       </div>
 
-      {/* Исполнитель */}
-      <TaskAssigneePill user={assignee} />
+      {/* Исполнитель + срок: на телефоне одной строкой под названием, на sm+
+          display:contents возвращает их в собственные колонки сетки */}
+      <div className="col-start-2 flex flex-wrap items-center gap-2 sm:contents">
+        <TaskAssigneePill user={assignee} />
 
-      {/* Дата */}
-      <span>
-        {task.dueDate ? (
-          <StatusPill
-            variant={pillVariant}
-            label={formatDueDate(task.dueDate)}
-          />
-        ) : null}
-      </span>
+        {/* Дата */}
+        <span className="sm:justify-self-end">
+          {task.dueDate ? (
+            <StatusPill
+              variant={pillVariant}
+              label={formatDueDate(task.dueDate)}
+            />
+          ) : task.urgent && !isDone ? null : (
+            // Срочная задача без срока стоит в «Сегодня» (groupTasks) — плашка «без даты» там противоречила бы группе.
+            <span className="hidden sm:inline-flex items-center rounded border border-dashed border-border px-2 py-0.5 font-mono text-xs text-ink-3 whitespace-nowrap">
+              без даты
+            </span>
+          )}
+        </span>
+      </div>
 
       {/* Overflow меню */}
       <div className="relative" ref={menuRef}>
         <button
           onClick={() => setMenuOpen((v) => !v)}
           aria-label="Действия с задачей"
-          className="text-ink-3 hover:text-ink transition-colors opacity-0 group-hover:opacity-100 text-base leading-none px-0.5"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-3 hover:text-ink transition-colors text-base leading-none [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100"
         >
           ⋯
         </button>
         {menuOpen && (
-          <div className="absolute right-0 top-6 z-50 bg-surface border border-border rounded-lg shadow-sm min-w-[200px] py-1 text-sm">
+          <div className="absolute right-0 top-full mt-1 z-50 bg-surface border border-border rounded-lg shadow-sm min-w-[200px] py-1 text-sm">
             {onOpenEdit && (
               <button
                 onClick={() => {

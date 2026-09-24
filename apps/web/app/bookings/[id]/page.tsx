@@ -544,7 +544,7 @@ export default function BookingDetailPage() {
   if ((booking as { mode?: string } | null)?.mode === "PROJECT") return <ProjectBookingDetail bookingId={id} />;
 
   return (
-    <div className="p-4 lg:p-6 pb-24 md:pb-6">
+    <div className="p-4 lg:p-6 md:pb-6">
       {/* Parent top-bar — hidden when ApprovalReviewView is rendered; that view brings its own header.
           Сам заголовок брони отрисован ниже в Hero-секции (по мокапу v2) — здесь только
           breadcrumb-style ссылки и action-кнопки, чтобы не было дубля заголовка. */}
@@ -570,6 +570,40 @@ export default function BookingDetailPage() {
           onChangeExtendDate={setExtendEndDate}
           onSubmitExtend={submitExtend}
           onCancelExtend={cancelExtend}
+          leadingActions={
+            booking && !isArchived && booking.status === "DRAFT" ? (
+              <>
+                {(user?.role === "WAREHOUSE" || user?.role === "SUPER_ADMIN") && (
+                  <button
+                    type="button"
+                    onClick={handleSubmitForApproval}
+                    disabled={actionBusy !== null}
+                    className="inline-flex items-center justify-center min-h-10 sm:min-h-0 rounded border border-accent-bright bg-accent-bright px-3 py-1.5 text-sm text-surface hover:border-accent hover:bg-accent transition-colors disabled:opacity-50"
+                  >
+                    {actionBusy === "submit"
+                      ? user?.approvalMode === "auto"
+                        ? "Подтверждаю…"
+                        : "Отправляю…"
+                      : user?.approvalMode === "auto"
+                        ? "Подтвердить бронь"
+                        : "Отправить на согласование"}
+                  </button>
+                )}
+                {/* SA согласует сам с собой: один клик вместо двух экранов.
+                    Для WAREHOUSE кнопки нет — его брони одобряет руководитель. */}
+                {user?.role === "SUPER_ADMIN" && (
+                  <button
+                    type="button"
+                    onClick={handleApproveNow}
+                    disabled={actionBusy !== null}
+                    className="inline-flex items-center justify-center min-h-10 sm:min-h-0 rounded border border-emerald bg-emerald px-3 py-1.5 text-sm text-surface hover:bg-emerald/90 transition-colors disabled:opacity-50"
+                  >
+                    {actionBusy === "instant" ? "Согласовываю…" : "✓ Согласовать сразу"}
+                  </button>
+                )}
+              </>
+            ) : null
+          }
         />
       )}
 
@@ -822,40 +856,16 @@ export default function BookingDetailPage() {
               (конфликты доступности, долг клиента) и кнопки «Одобрить»/
               «Отклонить» живут там, здесь их дублей нет. */}
 
+          {/* empty:hidden — ApprovalTimeline возвращает null, когда истории нет,
+              и тогда отступ над hero не нужен. */}
           {user?.role === "SUPER_ADMIN" && (
-            <ApprovalTimeline bookingId={booking.id} />
+            <div className="mb-4 empty:hidden">
+              <ApprovalTimeline bookingId={booking.id} />
+            </div>
           )}
 
-          <div className="mb-4 flex flex-wrap gap-2">
-            {!isArchived && booking.status === "DRAFT" && (user?.role === "WAREHOUSE" || user?.role === "SUPER_ADMIN") && (
-              <button
-                type="button"
-                onClick={handleSubmitForApproval}
-                disabled={actionBusy !== null}
-                className="rounded bg-accent-bright px-4 py-2 text-sm text-surface hover:bg-accent-bright/90 disabled:opacity-50"
-              >
-                {actionBusy === "submit"
-                  ? user?.approvalMode === "auto"
-                    ? "Подтверждаю…"
-                    : "Отправляю…"
-                  : user?.approvalMode === "auto"
-                    ? "Подтвердить бронь"
-                    : "Отправить на согласование"}
-              </button>
-            )}
-            {/* SA согласует сам с собой: один клик вместо двух экранов.
-                Для WAREHOUSE кнопки нет — его брони одобряет руководитель. */}
-            {!isArchived && booking.status === "DRAFT" && user?.role === "SUPER_ADMIN" && (
-              <button
-                type="button"
-                onClick={handleApproveNow}
-                disabled={actionBusy !== null}
-                className="rounded bg-emerald px-4 py-2 text-sm text-surface hover:bg-emerald/90 disabled:opacity-50"
-              >
-                {actionBusy === "instant" ? "Согласовываю…" : "✓ Согласовать сразу"}
-              </button>
-            )}
-          </div>
+          {/* Кнопки черновика «Подтвердить бронь» / «Согласовать сразу» живут в
+              общей группе действий шапки (BookingHeader → leadingActions). */}
 
           <ChangeClientModal
             open={changeClientOpen}
@@ -902,9 +912,14 @@ export default function BookingDetailPage() {
           {/* Hero + финансовые карточки + печатная шапка — вынесено в BookingHero (фаза 4.10).
               Экранная часть скрыта в retro-режиме, печатная — рендерится всегда. */}
           <BookingHero booking={booking} showHero={!retroEditMode} />
-          <BookingIssuesButton bookingId={booking.id} />
+          <div className="mb-4">
+            <BookingIssuesButton bookingId={booking.id} />
+          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
+          {/* Две колонки — только с xl: на lg (1024 с сайдбаром) таблице
+              доставалось ~500 px, а боковой колонке 240 px. items-start — чтобы
+              карточка позиций не тянулась до высоты боковой колонки. */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 items-start gap-4 print-booking">
           {/* Таблица позиций — вынесена в BookingItemsTable (фаза 4.10). */}
           <BookingItemsTable
             booking={booking}
@@ -915,7 +930,7 @@ export default function BookingDetailPage() {
             onToggleDeleted={toggleRetroItemDeleted}
           />
 
-          <div className="lg:col-span-4 space-y-4">
+          <div className="xl:col-span-4 min-w-0 space-y-4">
             {/* Сводка правок retro-режима — вынесена в RetroDiffSummary (фаза 4.10). */}
             {retroEditMode && <RetroDiffSummary booking={booking} retroEdits={retroEdits} />}
 

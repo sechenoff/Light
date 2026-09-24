@@ -66,14 +66,15 @@ function ForecastBar({ entry, maxValue, barHeight }: BarProps) {
   ].join("\n");
 
   return (
-    <div className="flex flex-col items-center gap-1 min-w-[52px]">
-      {/* Total label */}
-      <span className="mono-num text-[10.5px] text-ink-3 font-medium leading-tight h-[14px] flex items-center">
+    <div className="flex min-w-0 flex-1 flex-col items-center gap-1">
+      {/* Итог месяца — с sm: на телефоне nowrap-сумма распирала бы колонку,
+          а она и так есть в строке итогов и в title бара */}
+      <span className="mono-num text-[10.5px] text-ink-3 font-medium leading-tight h-[14px] hidden sm:flex items-center whitespace-nowrap">
         {total > 0 ? formatRub(total) : ""}
       </span>
       {/* Stacked bar */}
       <div
-        className="w-9 flex flex-col justify-end"
+        className="w-full max-w-9 flex flex-col justify-end"
         style={{ height: `${barHeight}px` }}
         title={tooltipLines}
       >
@@ -164,7 +165,7 @@ export function ForecastWidget({ months = 6 }: { months?: number }) {
         <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
           <h3 className="text-[13.5px] font-semibold text-ink">Прогноз поступлений</h3>
         </div>
-        <div className="px-5 py-4">
+        <div className="px-4 py-4">
           <ForecastSkeleton />
         </div>
       </div>
@@ -195,22 +196,19 @@ export function ForecastWidget({ months = 6 }: { months?: number }) {
       </div>
 
       {(
-        <div className="px-5 pb-4 pt-4">
-          {/* Bars — horizontal scroll on mobile */}
-          <div className="overflow-x-auto">
-            <div
-              className="flex items-end gap-4 pb-2"
-              style={{ minWidth: `${data.months.length * 68}px` }}
-            >
-              {data.months.map((entry) => (
-                <ForecastBar
-                  key={entry.month}
-                  entry={entry}
-                  maxValue={maxValue}
-                  barHeight={BAR_HEIGHT}
-                />
-              ))}
-            </div>
+        <div className="px-4 pb-4 pt-4">
+          {/* Бары делят ширину карточки поровну. items-start: бары у всех колонок
+              одной высоты, а подпись месяца может уйти в две строки — так основания
+              баров остаются на одной линии */}
+          <div className="flex w-full items-start justify-between gap-2 sm:gap-4 pb-2">
+            {data.months.map((entry) => (
+              <ForecastBar
+                key={entry.month}
+                entry={entry}
+                maxValue={maxValue}
+                barHeight={BAR_HEIGHT}
+              />
+            ))}
           </div>
 
           {/* Legend */}

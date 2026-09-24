@@ -9,7 +9,7 @@ export function HowItWorks() {
   ];
 
   return (
-    <details className="bg-surface border border-border rounded-lg px-5 py-4 mt-6">
+    <details className="group bg-surface border border-border rounded-lg px-5 py-4 mt-6">
       <summary className="text-sm font-medium text-ink-2 cursor-pointer list-none flex items-center gap-2 [&::marker]:hidden">
         <span className="text-[11px] transition-transform group-open:rotate-90">▸</span>
         Как работает авто-обучение

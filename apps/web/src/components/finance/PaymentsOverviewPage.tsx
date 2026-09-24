@@ -359,7 +359,7 @@ export function PaymentsOverviewPage() {
   });
 
   return (
-    <div className="pb-10 bg-surface-subtle min-h-screen">
+    <div className="pb-10">
       <FinanceTabNav />
 
       <div className="p-4 lg:p-6">
@@ -367,65 +367,73 @@ export function PaymentsOverviewPage() {
         {/* Page header */}
         <div className="mb-5">
           <p className="eyebrow text-ink-3">Финансы</p>
+          {/* Строка 1 — заголовок и действия; строка 2 — период и вид. В одной
+              строке лента периодов распирала шапку шире экрана на телефоне. */}
           <div className="flex items-center justify-between gap-3 flex-wrap mt-1">
             <h1 className="text-[22px] font-semibold text-ink tracking-tight">Платежи</h1>
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Period selector */}
-              <PeriodSelector value={period} onChange={handlePeriodChange} />
-              {/* FIN-02 (ревизия): эндпоинт экспорта платежей существует —
-                  GET /api/finance/export/payments.xlsx (SA-only), подключаем его. */}
-              {user?.role === "SUPER_ADMIN" && (
+            {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+              <div className="flex w-full gap-2 sm:w-auto">
+                {/* FIN-02 (ревизия): эндпоинт экспорта платежей существует —
+                    GET /api/finance/export/payments.xlsx (SA-only), подключаем его. */}
+                {user?.role === "SUPER_ADMIN" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const range = derivePeriodRange(period);
+                      const q = new URLSearchParams({ from: range.from, to: range.to });
+                      if (includeVoided) q.set("includeVoided", "true");
+                      window.location.href = `/api/finance/export/payments.xlsx?${q}`;
+                    }}
+                    className="inline-flex h-10 flex-1 items-center justify-center whitespace-nowrap rounded border border-border bg-surface px-3.5 text-[12px] font-medium text-ink hover:bg-surface-subtle transition-colors sm:h-9 sm:flex-none"
+                  >
+                    Экспорт XLSX
+                  </button>
+                )}
                 <button
-                  onClick={() => {
-                    const range = derivePeriodRange(period);
-                    const q = new URLSearchParams({ from: range.from, to: range.to });
-                    if (includeVoided) q.set("includeVoided", "true");
-                    window.location.href = `/api/finance/export/payments.xlsx?${q}`;
-                  }}
-                  className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors whitespace-nowrap"
-                >
-                  Экспорт XLSX
-                </button>
-              )}
-              {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
-                <button
+                  type="button"
                   onClick={() => setRecordPaymentOpen(true)}
-                  className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-surface rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+                  className="inline-flex h-10 flex-1 items-center justify-center whitespace-nowrap rounded bg-accent-bright px-3.5 text-[12px] font-semibold text-surface hover:opacity-90 transition-opacity sm:h-9 sm:flex-none"
                 >
                   + Записать платёж
                 </button>
-              )}
-              {/* View tab switcher */}
-              <div className="flex border border-border rounded-lg overflow-hidden bg-surface">
-                <button
-                  onClick={() => setView("payments")}
-                  className={`px-3.5 py-2 text-[12px] font-medium transition-colors ${
-                    view === "payments"
-                      ? "bg-accent-soft text-accent-bright border-r border-accent-border"
-                      : "text-ink-2 hover:text-ink border-r border-border"
-                  }`}
-                >
-                  Транзакции
-                </button>
-                <button
-                  onClick={() => setView("bookings")}
-                  className={`px-3.5 py-2 text-[12px] font-medium transition-colors ${
-                    view === "bookings"
-                      ? "bg-accent-soft text-accent-bright border-r border-accent-border"
-                      : "text-ink-2 hover:text-ink border-r border-border"
-                  }`}
-                >
-                  Брони
-                </button>
-                <button
-                  onClick={() => setView("clients")}
-                  className={`px-3.5 py-2 text-[12px] font-medium transition-colors ${
-                    view === "clients" ? "bg-accent-soft text-accent-bright" : "text-ink-2 hover:text-ink"
-                  }`}
-                >
-                  По клиентам
-                </button>
               </div>
+            )}
+          </div>
+          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+            <PeriodSelector value={period} onChange={handlePeriodChange} />
+            {/* View tab switcher */}
+            <div className="grid h-10 w-full grid-cols-3 overflow-hidden rounded border border-border bg-surface sm:flex sm:h-9 sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setView("payments")}
+                className={`inline-flex items-center justify-center whitespace-nowrap px-3.5 text-[12px] font-medium transition-colors ${
+                  view === "payments"
+                    ? "bg-accent-soft text-accent-bright border-r border-accent-border"
+                    : "text-ink-2 hover:text-ink border-r border-border"
+                }`}
+              >
+                Транзакции
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("bookings")}
+                className={`inline-flex items-center justify-center whitespace-nowrap px-3.5 text-[12px] font-medium transition-colors ${
+                  view === "bookings"
+                    ? "bg-accent-soft text-accent-bright border-r border-accent-border"
+                    : "text-ink-2 hover:text-ink border-r border-border"
+                }`}
+              >
+                Брони
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("clients")}
+                className={`inline-flex items-center justify-center whitespace-nowrap px-3.5 text-[12px] font-medium transition-colors ${
+                  view === "clients" ? "bg-accent-soft text-accent-bright" : "text-ink-2 hover:text-ink"
+                }`}
+              >
+                По клиентам
+              </button>
             </div>
           </div>
         </div>
@@ -434,18 +442,19 @@ export function PaymentsOverviewPage() {
         {view === "payments" && (
           <>
             {/* Method chips */}
-            <div className="flex gap-2 mb-5 flex-wrap">
+            {/* На телефоне — одна прокручиваемая лента от края до края, как в мокапе */}
+            <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
               {/* All chip */}
               <button
                 onClick={() => setMethodFilter(null)}
-                className={`flex flex-col items-start gap-0.5 px-3.5 py-2.5 rounded-lg border text-[12px] transition-colors ${
+                className={`flex shrink-0 flex-col items-start gap-0.5 whitespace-nowrap px-3.5 py-2.5 rounded-lg border text-[12px] transition-colors ${
                   methodFilter === null
-                    ? "bg-accent text-surface border-accent"
+                    ? "bg-accent-soft text-accent-bright border-accent-bright"
                     : "bg-surface border-border text-ink-2 hover:bg-surface-subtle"
                 }`}
               >
                 <span className="text-[11px] font-medium opacity-80">Все</span>
-                <strong className="mono-num text-[14px]">{formatRub(methodTotals.total)}</strong>
+                <strong className="mono-num text-[14px] text-ink">{formatRub(methodTotals.total)}</strong>
               </button>
               {/* Per-method chips */}
               {(["CASH", "CARD", "BANK_TRANSFER", "OTHER"] as PaymentMethod[]).map((m) => {
@@ -459,14 +468,14 @@ export function PaymentsOverviewPage() {
                   <button
                     key={m}
                     onClick={() => setMethodFilter(active ? null : m)}
-                    className={`flex flex-col items-start gap-0.5 px-3.5 py-2.5 rounded-lg border text-[12px] transition-colors ${
+                    className={`flex shrink-0 flex-col items-start gap-0.5 whitespace-nowrap px-3.5 py-2.5 rounded-lg border text-[12px] transition-colors ${
                       active
-                        ? "bg-accent text-surface border-accent"
+                        ? "bg-accent-soft text-accent-bright border-accent-bright"
                         : "bg-surface border-border text-ink-2 hover:bg-surface-subtle"
                     }`}
                   >
                     <span className="text-[11px] font-medium opacity-80">{METHOD_LABELS[m]}</span>
-                    <strong className={`mono-num text-[14px] ${active ? "text-white" : amtColor}`}>
+                    <strong className={`mono-num text-[14px] ${amtColor}`}>
                       {formatRub(amt)}
                     </strong>
                   </button>
@@ -475,7 +484,7 @@ export function PaymentsOverviewPage() {
               {/* Возвраты — информационная карточка (сумма Refund за период);
                   возвраты живут в отдельной таблице и в списке транзакций не строки */}
               {methodTotals.refunds > 0 && (
-                <div className="flex flex-col items-start gap-0.5 px-3.5 py-2.5 rounded-lg border bg-surface border-border text-[12px]">
+                <div className="flex shrink-0 flex-col items-start gap-0.5 whitespace-nowrap px-3.5 py-2.5 rounded-lg border bg-surface border-border text-[12px]">
                   <span className="text-[11px] font-medium text-ink-2">Возвраты</span>
                   <strong className="mono-num text-[14px] text-rose">−{formatRub(methodTotals.refunds)}</strong>
                 </div>
@@ -485,7 +494,7 @@ export function PaymentsOverviewPage() {
             {/* Filter bar */}
             <div className="flex gap-2 mb-3 flex-wrap items-center">
               <input
-                className="border border-border rounded-lg px-3 py-2 text-[13px] bg-surface min-w-[220px]"
+                className="h-10 w-full border border-border rounded-lg px-3 py-0 text-[13px] bg-surface sm:h-9 sm:w-auto sm:min-w-[260px]"
                 placeholder="🔍 клиент, бронь, № счёта"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -518,18 +527,18 @@ export function PaymentsOverviewPage() {
             ) : (
               <>
                 {/* Desktop */}
-                <div className="hidden md:block bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
+                <div className="hidden md:block bg-surface border border-border rounded-lg overflow-x-auto shadow-xs">
                   <table className="w-full text-[12.5px]">
                     <thead className="bg-surface-subtle border-b border-border">
                       <tr>
-                        <th className="px-4 py-3 text-left eyebrow">Дата · время</th>
-                        <th className="px-3 py-3 text-left eyebrow">Клиент</th>
-                        <th className="px-3 py-3 text-left eyebrow">Бронь</th>
-                        <th className="px-3 py-3 text-left eyebrow">Счёт</th>
-                        <th className="px-3 py-3 text-left eyebrow">Метод</th>
-                        <th className="px-3 py-3 text-right eyebrow">Сумма</th>
-                        <th className="px-3 py-3 text-left eyebrow">Кто принял</th>
-                        <th className="px-3 py-3 text-left eyebrow">Статус</th>
+                        <th className="px-4 py-3 text-left eyebrow whitespace-nowrap">Дата · время</th>
+                        <th className="px-3 py-3 text-left eyebrow whitespace-nowrap">Клиент</th>
+                        <th className="px-3 py-3 text-left eyebrow whitespace-nowrap">Бронь</th>
+                        <th className="hidden px-3 py-3 text-left eyebrow whitespace-nowrap xl:table-cell">Счёт</th>
+                        <th className="px-3 py-3 text-left eyebrow whitespace-nowrap">Метод</th>
+                        <th className="px-3 py-3 text-right eyebrow whitespace-nowrap">Сумма</th>
+                        <th className="hidden px-3 py-3 text-left eyebrow whitespace-nowrap xl:table-cell">Кто принял</th>
+                        <th className="px-3 py-3 text-left eyebrow whitespace-nowrap">Статус</th>
                         <th className="w-20 px-3 py-3"></th>
                       </tr>
                     </thead>
@@ -546,7 +555,7 @@ export function PaymentsOverviewPage() {
                               isVoided ? "opacity-50 bg-surface-subtle" : "hover:bg-surface-subtle/40"
                             }`}
                           >
-                            <td className="px-4 py-3 mono-num">
+                            <td className="px-4 py-3 mono-num whitespace-nowrap">
                               {date}
                               <br />
                               <span className="text-ink-3">{time}</span>
@@ -555,6 +564,10 @@ export function PaymentsOverviewPage() {
                               <strong className={isVoided ? "text-ink-3 line-through" : "text-ink"}>
                                 {p.booking?.client.name ?? "—"}
                               </strong>
+                              {/* До xl колонка «Кто принял» скрыта — подпись под клиентом */}
+                              {p.createdByName && (
+                                <div className="text-[11px] text-ink-3 xl:hidden">{p.createdByName}</div>
+                              )}
                             </td>
                             <td className="px-3 py-3">
                               {p.booking ? (
@@ -565,7 +578,7 @@ export function PaymentsOverviewPage() {
                                 <span className="text-ink-3">—</span>
                               )}
                             </td>
-                            <td className="px-3 py-3">
+                            <td className="hidden px-3 py-3 xl:table-cell">
                               {p.invoice?.number ? (
                                 <span className="font-mono text-[11px] bg-surface-subtle border border-border rounded px-1.5 py-0.5">
                                   {p.invoice.number}
@@ -582,7 +595,7 @@ export function PaymentsOverviewPage() {
                                 <span className="text-emerald">+{formatRub(amt)}</span>
                               )}
                             </td>
-                            <td className="px-3 py-3 text-ink-2">
+                            <td className="hidden px-3 py-3 text-ink-2 xl:table-cell">
                               {p.createdByName ? (
                                 <span className="text-[12px]">{p.createdByName}</span>
                               ) : p.createdBy === "_system_" ? (

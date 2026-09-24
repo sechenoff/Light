@@ -91,7 +91,7 @@ export function AddCustomItemModal({ isOpen, onClose, onAdd, initialName, initia
       aria-labelledby="add-custom-item-title"
     >
       <div
-        className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-lg bg-surface p-5 shadow-lg sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="eyebrow mb-2">Произвольная позиция</div>

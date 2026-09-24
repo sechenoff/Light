@@ -108,7 +108,7 @@ export function PricelistTab() {
       {meta === null ? (
         <div className="text-sm text-ink-3 py-4">Загрузка…</div>
       ) : meta.exists ? (
-        <div className="flex items-center justify-between gap-4 p-4 bg-surface rounded-xl border border-border">
+        <div className="flex items-center justify-between gap-4 p-4 bg-surface rounded-lg border border-border">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-lg bg-accent-soft flex items-center justify-center flex-shrink-0">
               <svg className="w-5 h-5 text-accent-bright" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -140,7 +140,7 @@ export function PricelistTab() {
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-3 p-4 bg-amber-soft rounded-xl border border-amber-border">
+        <div className="flex items-center gap-3 p-4 bg-amber-soft rounded-lg border border-amber-border">
           <svg className="w-5 h-5 text-amber flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -152,7 +152,7 @@ export function PricelistTab() {
       )}
 
       <label
-        className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-colors ${
+        className={`inline-flex items-center gap-2 px-5 py-2.5 rounded text-sm font-medium cursor-pointer transition-colors ${
           uploading
             ? "bg-surface-muted text-ink-3 cursor-not-allowed"
             : "bg-accent-bright hover:bg-accent text-surface"

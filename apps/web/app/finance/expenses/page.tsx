@@ -136,14 +136,14 @@ function DonutSVG({ grouped }: { grouped: GroupedData[] }) {
 
   if (grouped.length === 0) {
     return (
-      <svg viewBox="0 0 36 36" className="w-[110px] h-[110px]">
+      <svg viewBox="0 0 36 36" className="w-[110px] h-[110px] shrink-0">
         <circle cx="18" cy="18" r="15.9155" fill="none" stroke="rgb(var(--c-surface-subtle))" strokeWidth="3.5"/>
       </svg>
     );
   }
 
   return (
-    <svg viewBox="0 0 36 36" className="w-[110px] h-[110px]">
+    <svg viewBox="0 0 36 36" className="w-[110px] h-[110px] shrink-0">
       {/* background track */}
       <circle cx="18" cy="18" r="15.9155" fill="none" stroke="rgb(var(--c-surface-subtle))" strokeWidth="3.5"/>
       {segments.map((seg) => (
@@ -420,19 +420,22 @@ function ExpensesPageInner() {
             <p className="eyebrow text-ink-3">Финансы</p>
             <h1 className="text-[22px] font-semibold text-ink tracking-tight">Расходы</h1>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex min-w-0 items-center gap-2 flex-wrap">
             <PeriodSelector value={period} onChange={handlePeriodChange} />
+            {/* На телефоне кнопка одна — полноширинная внизу списка */}
             <button
+              type="button"
               onClick={() => setShowModal(true)}
-              className="px-3.5 py-1.5 text-xs font-medium bg-accent-bright text-surface rounded hover:bg-accent transition-colors"
+              className="hidden md:inline-flex h-9 items-center justify-center whitespace-nowrap rounded px-3.5 text-[12px] font-semibold bg-accent-bright text-surface hover:opacity-90 transition-opacity"
             >
               + Записать расход
             </button>
           </div>
         </div>
 
-        {/* Summary grid: Утверждено | Ждут | Доnut */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mb-5">
+        {/* Summary grid: Утверждено | Ждут | Доnut. На телефоне своя сводка ниже.
+            До xl донат на всю ширину: в трети сетки легенда обрезалась. */}
+        <div className="hidden md:grid md:grid-cols-2 xl:grid-cols-[1fr_1fr_320px] gap-3.5 mb-5">
           {/* Approved */}
           <div className="bg-surface border border-border rounded-[8px] p-4 shadow-xs">
             <p className="eyebrow text-ink-3 mb-1">Утверждено за период</p>
@@ -445,7 +448,7 @@ function ExpensesPageInner() {
           {/* Pending */}
           <button
             onClick={() => setShowPendingOnly((v) => !v)}
-            className={`text-left bg-amber-soft border rounded-[8px] p-4 shadow-xs transition-all ${
+            className={`flex h-full flex-col items-start justify-start text-left bg-amber-soft border rounded-[8px] p-4 shadow-xs transition-all ${
               showPendingOnly
                 ? "border-amber ring-1 ring-amber"
                 : "border-amber-border hover:border-amber"
@@ -461,7 +464,7 @@ function ExpensesPageInner() {
           </button>
 
           {/* Distribution donut */}
-          <div className="bg-surface border border-border rounded-[8px] p-4 shadow-xs">
+          <div className="bg-surface border border-border rounded-[8px] p-4 shadow-xs md:col-span-2 xl:col-span-1">
             <p className="eyebrow text-ink-3 mb-3">Распределение</p>
             <div className="flex items-center gap-3">
               <DonutSVG grouped={grouped} />
@@ -470,13 +473,14 @@ function ExpensesPageInner() {
                   <span className="text-ink-3">Нет данных</span>
                 ) : (
                   grouped.map((g) => (
-                    <span key={g.key} className="flex items-center gap-1.5 truncate">
+                    <span key={g.key} className="flex min-w-0 items-center gap-1.5">
                       <span
                         className="inline-block w-2 h-2 rounded-sm shrink-0"
                         style={{ background: GROUP_META[g.key].color }}
                       />
-                      {GROUP_META[g.key].label}{" "}
-                      <span className="mono-num font-medium text-ink">{formatRub(g.total)}</span>
+                      {/* Многоточие только на подписи: сумма не режется никогда */}
+                      <span className="truncate" title={GROUP_META[g.key].label}>{GROUP_META[g.key].label}</span>
+                      <span className="mono-num font-medium text-ink shrink-0 whitespace-nowrap">{formatRub(g.total)}</span>
                     </span>
                   ))
                 )}
@@ -492,9 +496,9 @@ function ExpensesPageInner() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="🔍 описание, привязка…"
-            className="border border-border rounded-lg px-3 py-2 text-[13px] bg-surface text-ink min-w-[200px] focus:outline-none focus:border-accent"
+            className="w-full border border-border rounded-lg px-3 py-2 text-[13px] bg-surface text-ink focus:outline-none focus:border-accent md:w-auto md:min-w-[240px]"
           />
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="hidden md:flex gap-1.5 flex-wrap">
             {FILTER_PILLS.map((f) => (
               <button
                 key={f.key}
@@ -512,18 +516,19 @@ function ExpensesPageInner() {
         </div>
 
         {/* Desktop table */}
-        <div className="hidden md:block bg-surface border border-border rounded-[6px] overflow-hidden shadow-xs">
+        {/* Ширины колонок — по содержимому; всё свободное место уходит описанию */}
+        <div className="hidden md:block bg-surface border border-border rounded-[6px] overflow-x-auto shadow-xs">
           <table className="w-full text-[12.5px] border-collapse">
             <thead>
               <tr className="bg-surface-subtle border-b border-border">
-                <th className="text-left px-3.5 py-2.5 eyebrow" style={{ width: "10%" }}>Дата</th>
-                <th className="text-left px-3.5 py-2.5 eyebrow" style={{ width: "14%" }}>Категория</th>
-                <th className="text-left px-3.5 py-2.5 eyebrow">Описание</th>
-                <th className="text-left px-3.5 py-2.5 eyebrow" style={{ width: "14%" }}>Привязка</th>
-                <th className="text-left px-3.5 py-2.5 eyebrow" style={{ width: "10%" }}>Документ</th>
-                <th className="text-right px-3.5 py-2.5 eyebrow" style={{ width: "11%" }}>Сумма</th>
-                <th className="text-left px-3.5 py-2.5 eyebrow" style={{ width: "10%" }}>Статус</th>
-                <th className="text-right px-3.5 py-2.5 eyebrow" style={{ width: "10%" }}></th>
+                <th className="text-left px-3.5 py-2.5 eyebrow whitespace-nowrap">Дата</th>
+                <th className="text-left px-3.5 py-2.5 eyebrow whitespace-nowrap">Категория</th>
+                <th className="w-full text-left px-3.5 py-2.5 eyebrow whitespace-nowrap">Описание</th>
+                <th className="text-left px-3.5 py-2.5 eyebrow whitespace-nowrap">Привязка</th>
+                <th className="hidden text-left px-3.5 py-2.5 eyebrow whitespace-nowrap xl:table-cell">Документ</th>
+                <th className="text-right px-3.5 py-2.5 eyebrow whitespace-nowrap">Сумма</th>
+                <th className="text-left px-3.5 py-2.5 eyebrow whitespace-nowrap">Статус</th>
+                <th className="text-right px-3.5 py-2.5 eyebrow whitespace-nowrap"></th>
               </tr>
             </thead>
             <tbody>
@@ -540,15 +545,15 @@ function ExpensesPageInner() {
                       isPending ? "bg-amber-soft/50" : "hover:bg-surface-subtle"
                     }`}
                   >
-                    <td className="px-3.5 py-3 mono-num text-xs text-ink-2 align-middle">
+                    <td className="px-3.5 py-3 mono-num text-xs text-ink-2 align-middle whitespace-nowrap">
                       {new Date(e.expenseDate).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
                     </td>
-                    <td className="px-3.5 py-3 align-middle">
+                    <td className="px-3.5 py-3 align-middle whitespace-nowrap">
                       <span className="text-[12px] font-medium text-ink">
                         {GROUP_META[gk].icon} {catLabel}
                       </span>
                     </td>
-                    <td className="px-3.5 py-3 align-middle">
+                    <td className="min-w-[140px] px-3.5 py-3 align-middle">
                       <p className="font-medium text-ink">{e.description ?? e.name}</p>
                       {e.booking?.projectName && (
                         <p className="text-[11px] text-ink-2 mt-0.5">{e.booking.projectName}</p>
@@ -571,15 +576,15 @@ function ExpensesPageInner() {
                           📦 #{e.bookingId.slice(-6)}
                         </a>
                       ) : unlinkedRepair ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-soft text-amber border border-amber-border">
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-soft text-amber border border-amber-border">
                           ⚠ Не привязан
                         </span>
                       ) : (
                         <span className="text-xs text-ink-3">—</span>
                       )}
                     </td>
-                    {/* Документ */}
-                    <td className="px-3.5 py-3 align-middle">
+                    {/* Документ (до xl скрыт: прикрепить можно кнопкой 📎/📄 в действиях) */}
+                    <td className="hidden px-3.5 py-3 align-middle xl:table-cell">
                       {e.documentUrl ? (
                         <a
                           href={`/api/expenses/${e.id}/document`}
@@ -603,7 +608,7 @@ function ExpensesPageInner() {
                       −{formatRub(e.amount)}
                     </td>
                     {/* Статус */}
-                    <td className="px-3.5 py-3 align-middle">
+                    <td className="px-3.5 py-3 align-middle whitespace-nowrap">
                       {isPending ? (
                         <StatusPill variant="warn" label="Ждёт утв." />
                       ) : (
@@ -688,7 +693,22 @@ function ExpensesPageInner() {
           <div className="mb-3">
             <p className="eyebrow text-rose mb-1">Расходы · {PERIOD_LABELS[period]}</p>
             <p className="mono-num text-[26px] font-semibold text-rose">{formatExpenseRub(totalAll)}</p>
-            <p className="text-xs text-ink-3 mt-0.5">{approvedItems.length} утверждено · {pendingItems.length} ждут</p>
+            <p className="text-xs text-ink-3 mt-0.5">
+              {approvedItems.length} утверждено ·{" "}
+              {/* Фильтр «ждут утверждения» на телефоне — здесь: KPI-карточки скрыты */}
+              {pendingItems.length > 0 || showPendingOnly ? (
+                <button
+                  type="button"
+                  onClick={() => setShowPendingOnly((v) => !v)}
+                  aria-pressed={showPendingOnly}
+                  className="text-amber underline decoration-dotted underline-offset-2"
+                >
+                  {pendingItems.length} ждут{showPendingOnly ? " · сбросить" : ""}
+                </button>
+              ) : (
+                <>{pendingItems.length} ждут</>
+              )}
+            </p>
           </div>
 
           {/* Mobile category pills horizontal scroll */}

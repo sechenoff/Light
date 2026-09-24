@@ -46,6 +46,7 @@ export function InWorkList({
   onAcceptBack,
   version,
   initialFilter,
+  onCountChange,
 }: {
   /** Тап по карточке — открыть детали брони. */
   onSelect: (bookingId: string) => void;
@@ -55,6 +56,8 @@ export function InWorkList({
   version?: number;
   /** Стартовый фильтр (например, «overdue» при переходе из алерта Смены). */
   initialFilter?: DeadlineFilter;
+  /** Сколько выдач в списке после загрузки (страница прячет подсказку справа). */
+  onCountChange?: (count: number) => void;
 }) {
   const [bookings, setBookings] = useState<InWorkBooking[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +82,10 @@ export function InWorkList({
       cancelled = true;
     };
   }, [version]);
+
+  useEffect(() => {
+    if (bookings !== null) onCountChange?.(bookings.length);
+  }, [bookings, onCountChange]);
 
   const counts = useMemo(() => {
     const list = bookings ?? [];
@@ -112,7 +119,7 @@ export function InWorkList({
     return (
       <div
         role="alert"
-        className="mx-2.5 my-2 rounded-lg border border-rose-border bg-rose-soft px-3 py-2.5 text-sm text-rose"
+        className="mx-3 my-2 rounded-lg border border-rose-border bg-rose-soft px-3 py-2.5 text-sm text-rose lg:mx-2.5"
       >
         {error}
       </div>
@@ -121,7 +128,7 @@ export function InWorkList({
 
   if (bookings === null) {
     return (
-      <div className="space-y-2 px-2.5 py-2">
+      <div className="space-y-2 px-3 py-2 lg:px-2.5">
         {[1, 2, 3].map((i) => (
           <div
             key={i}
@@ -135,7 +142,7 @@ export function InWorkList({
 
   if (bookings.length === 0) {
     return (
-      <p className="px-4 py-16 text-center text-sm text-ink-3">
+      <p className="text-balance px-4 py-16 text-center text-sm leading-relaxed text-ink-3">
         Нет активных выдач — всё оборудование на складе.
       </p>
     );
@@ -151,7 +158,7 @@ export function InWorkList({
   return (
     <div className="pb-2">
       {/* Фильтры-пилюли */}
-      <div className="flex flex-wrap gap-1.5 px-2.5 py-2.5" role="tablist" aria-label="Фильтр по сроку">
+      <div className="flex flex-wrap gap-1.5 px-3 py-2.5 lg:gap-1 lg:px-2.5" role="tablist" aria-label="Фильтр по сроку">
         {pills.map((p) => {
           const on = activeFilter === p.key;
           return (
@@ -161,7 +168,7 @@ export function InWorkList({
               role="tab"
               aria-selected={on}
               onClick={() => setFilter(p.key)}
-              className={`min-h-[30px] rounded-full border px-3 py-1 text-[11.5px] font-semibold transition-colors ${
+              className={`min-h-[30px] rounded-full border px-3 py-1 text-[11.5px] font-semibold lg:px-2 transition-colors ${
                 on
                   ? p.rose
                     ? "border-rose bg-rose text-surface"
@@ -189,7 +196,7 @@ export function InWorkList({
           return (
             <div
               key={b.bookingId}
-              className={`relative mx-2.5 mb-1.5 overflow-hidden rounded-lg border px-3 py-2.5 transition-colors ${
+              className={`relative mx-3 mb-1.5 overflow-hidden rounded-lg border px-3 py-2.5 transition-colors lg:mx-2.5 ${
                 b.isOverdue
                   ? "border-rose-border bg-gradient-to-r from-rose-soft/60 to-surface"
                   : "border-border bg-surface"
@@ -209,10 +216,11 @@ export function InWorkList({
                     <div className="truncate text-[13.5px] font-semibold text-ink">
                       {b.clientName || "—"} · {b.projectName || "Без названия"}
                     </div>
-                    <div className="mt-0.5 truncate text-[11.5px] text-ink-2">
+                    {/* Неразрывные пробелы: при переносе число не отрывается от слова. */}
+                    <div className="mt-0.5 line-clamp-2 text-[11.5px] text-ink-2">
                       {b.displayNo}
-                      {b.issuedAt ? ` · взято ${shortDate(b.issuedAt)}` : ""}
-                      {` · ${itemCount} ${pluralize(itemCount, "позиция", "позиции", "позиций")}`}
+                      {b.issuedAt ? ` · взято\u00a0${shortDate(b.issuedAt)}` : ""}
+                      {` · ${itemCount}\u00a0${pluralize(itemCount, "позиция", "позиции", "позиций")}`}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">

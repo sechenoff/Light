@@ -68,7 +68,7 @@ export function AiRequestModal({ open, text, onTextChange, onParse, onClose, par
       aria-labelledby="ai-request-title"
     >
       <div
-        className="w-full max-w-lg rounded-lg bg-surface p-6 shadow-lg"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-lg bg-surface p-5 shadow-lg sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-start justify-between gap-3">
@@ -83,7 +83,7 @@ export function AiRequestModal({ open, text, onTextChange, onParse, onClose, par
             aria-label="Закрыть"
             onClick={onClose}
             disabled={busy}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-subtle text-[13px] text-ink-2 hover:bg-surface-muted hover:text-ink disabled:opacity-40"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-subtle sm:h-7 sm:w-7 text-[13px] text-ink-2 hover:bg-surface-muted hover:text-ink disabled:opacity-40"
           >
             ✕
           </button>
@@ -137,8 +137,8 @@ export function AiRequestModal({ open, text, onTextChange, onParse, onClose, par
             <span className="text-[13px] font-medium">Читаю документ… обычно 10–20 секунд</span>
           ) : (
             <>
-              <span className="text-[13px] font-medium text-ink">📄 Загрузить заявку файлом — PDF или фото</span>
-              <span className="text-xs text-ink-3">
+              <span className="text-balance text-[13px] font-medium text-ink">📄 Загрузить заявку файлом — PDF или фото</span>
+              <span className="text-balance text-xs text-ink-3">
                 Прочитаем список приборов, проект и контакты гаффера; даты подставятся, если они есть в документе
               </span>
             </>

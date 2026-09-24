@@ -68,9 +68,11 @@ describe("SummaryPanel — суммы", () => {
     const sizer = total.parentElement!.querySelector("[aria-hidden]") as HTMLElement;
     expect(sizer).not.toBeNull();
     expect(sizer.textContent).toBe(total.value);
-    // Двойник невидим, но занимает место; поле растянуто по нему.
+    // Двойник невидим, но занимает место; поле растянуто по нему и не
+    // раздувает трек собственной шириной (w-0 + min-w-full).
     expect(sizer.className).toContain("invisible");
-    expect(total.className).toContain("w-full");
+    expect(total.className).toContain("w-0");
+    expect(total.className).toContain("min-w-full");
     // Одинаковые метрики: шрифт, размер, отступы, рамка.
     for (const cls of ["mono-num", "text-[30px]", "px-2", "border"]) {
       expect(sizer.className).toContain(cls);

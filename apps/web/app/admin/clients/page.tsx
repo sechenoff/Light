@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { StatusPill } from "../../../src/components/StatusPill";
@@ -31,6 +31,130 @@ const PORTAL_PILL: Record<PortalStatus, { label: string; variant: "ok" | "warn" 
   ACTIVE: { label: "Активен", variant: "ok" },
   DISABLED: { label: "Отключён", variant: "alert" },
 };
+
+// ─── Части строки клиента (общие для таблицы и мобильного списка) ───────────
+
+// Иконки действий — инлайн-SVG в стиле TabIcon (AdminTabNav): эмодзи ✎ и 🗑
+// рендерились разного размера и цвета, а цветная корзина не красилась ховером.
+function ActionIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function ClientActions({
+  client,
+  size,
+  onEdit,
+  onDelete,
+}: {
+  client: Client;
+  size: "sm" | "lg";
+  onEdit: (client: Client) => void;
+  onDelete: (client: Client) => void;
+}) {
+  const box = size === "lg" ? "h-10 w-10" : "h-8 w-8";
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => onEdit(client)}
+        className={`inline-flex ${box} items-center justify-center rounded text-ink-3 hover:bg-surface-subtle hover:text-ink transition-colors`}
+        aria-label={`Редактировать клиента ${client.name}`}
+      >
+        <ActionIcon>
+          <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+        </ActionIcon>
+      </button>
+      <button
+        type="button"
+        onClick={() => onDelete(client)}
+        disabled={client.bookingCount > 0}
+        title={client.bookingCount > 0 ? "Нельзя удалить клиента с активными бронями" : undefined}
+        className={`inline-flex ${box} items-center justify-center rounded text-ink-3 hover:bg-rose-soft hover:text-rose transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ink-3`}
+        aria-label={`Удалить клиента ${client.name}`}
+      >
+        <ActionIcon>
+          <path d="M3 6h18" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </ActionIcon>
+      </button>
+    </>
+  );
+}
+
+function PortalButton({ client, onOpen }: { client: Client; onOpen: (client: Client) => void }) {
+  if (client.portalStatus) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen(client)}
+        className="inline-flex min-h-8 items-center"
+        title={
+          client.portalStatus === "ACTIVE" && client.portalLastLoginAt
+            ? `Последний вход: ${new Date(client.portalLastLoginAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}`
+            : undefined
+        }
+        aria-label={`Управлять доступом в кабинет клиента ${client.name}`}
+      >
+        <StatusPill
+          variant={PORTAL_PILL[client.portalStatus].variant}
+          label={PORTAL_PILL[client.portalStatus].label}
+        />
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(client)}
+      className="inline-flex min-h-8 items-center whitespace-nowrap text-[12px] text-accent-bright hover:underline"
+      aria-label={`Пригласить клиента ${client.name} в личный кабинет`}
+    >
+      Пригласить
+    </button>
+  );
+}
+
+function BookingCount({ client, className = "" }: { client: Client; className?: string }) {
+  if (client.bookingCount === 0) return <span className={`text-ink-3 ${className}`}>0</span>;
+  return (
+    <Link
+      href={`/bookings?q=${encodeURIComponent(client.name)}`}
+      className={`text-accent-bright hover:underline ${className}`}
+      aria-label={`Брони клиента ${client.name}`}
+    >
+      {client.bookingCount}
+    </Link>
+  );
+}
+
+function DebtLink({ client, amount, className = "" }: { client: Client; amount: number; className?: string }) {
+  return (
+    <Link
+      href={`/finance/debts?client=${encodeURIComponent(client.id)}`}
+      className={`mono-num whitespace-nowrap text-rose hover:underline ${className}`}
+      aria-label={`Долг клиента ${client.name}`}
+    >
+      {formatRub(amount)}
+    </Link>
+  );
+}
+
+const DASH = <span className="text-ink-3">—</span>;
 
 // ─── Modal ──────────────────────────────────────────────────────────────────
 
@@ -462,8 +586,8 @@ export default function AdminClientsPage() {
   if (authLoading) {
     return (
       <div className="p-6">
-        <div className="h-8 bg-surface-muted rounded animate-pulse w-48 mb-4" />
-        <div className="h-4 bg-surface-muted rounded animate-pulse w-full mb-2" />
+        <div className="h-8 bg-surface-subtle rounded animate-pulse w-48 mb-4" />
+        <div className="h-4 bg-surface-subtle rounded animate-pulse w-full mb-2" />
       </div>
     );
   }
@@ -509,7 +633,9 @@ export default function AdminClientsPage() {
         />
       </form>
 
-      {/* Table */}
+      {/* Таблица с md, на телефоне — карточки. Колонки, которые не влезают,
+          прячутся по ширине (телефон < lg, почта и «Создан» < xl), а их
+          значения переезжают под имя. */}
       <div className="bg-surface border border-border rounded-md shadow-xs overflow-x-auto">
         {fetching ? (
           <div className="p-8 text-center text-ink-3 text-sm">Загружаю…</div>
@@ -518,115 +644,102 @@ export default function AdminClientsPage() {
             {search.trim() ? "Ничего не найдено" : "Клиенты ещё не добавлены"}
           </div>
         ) : (
-          <table className="w-full min-w-[720px] text-[13px]">
+          <>
+          <table className="hidden md:table w-full text-[13px]">
             <thead>
               <tr className="border-b border-border bg-surface-muted">
-                <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Имя</th>
-                <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Телефон</th>
-                <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Email</th>
-                <th className="px-4 py-2.5 text-right eyebrow text-ink-2 tabular-nums">Броней</th>
-                <th className="px-4 py-2.5 text-right eyebrow text-ink-2 tabular-nums">Долг</th>
-                <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Личный кабинет</th>
-                <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Создан</th>
-                <th className="px-4 py-2.5 text-right eyebrow text-ink-2">Действия</th>
+                <th className="px-4 py-2.5 text-left eyebrow text-ink-2 whitespace-nowrap">Имя</th>
+                <th className="hidden lg:table-cell px-4 py-2.5 text-left eyebrow text-ink-2 whitespace-nowrap">Телефон</th>
+                <th className="hidden xl:table-cell px-4 py-2.5 text-left eyebrow text-ink-2 whitespace-nowrap">Email</th>
+                <th className="px-4 py-2.5 text-right eyebrow text-ink-2 tabular-nums whitespace-nowrap">Броней</th>
+                <th className="px-4 py-2.5 text-right eyebrow text-ink-2 tabular-nums whitespace-nowrap">Долг</th>
+                <th className="px-4 py-2.5 text-left eyebrow text-ink-2 whitespace-nowrap">Личный кабинет</th>
+                <th className="hidden xl:table-cell px-4 py-2.5 text-left eyebrow text-ink-2 whitespace-nowrap">Создан</th>
+                <th className="px-4 py-2.5 text-right eyebrow text-ink-2 whitespace-nowrap">Действия</th>
               </tr>
             </thead>
             <tbody>
-              {clients.map((client) => (
+              {clients.map((client) => {
+                const debt = Number(debtByClient[client.id] ?? 0);
+                return (
                 <tr
                   key={client.id}
                   className="border-b border-border last:border-0 hover:bg-surface-muted transition-colors"
                 >
-                  <td className="px-4 py-2.5 font-medium text-ink">{client.name}</td>
-                  <td className="px-4 py-2.5 text-ink-2">{client.phone ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-ink-2">{client.email ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-right mono-num text-ink">
-                    {client.bookingCount > 0 ? (
-                      <Link
-                        href={`/bookings?q=${encodeURIComponent(client.name)}`}
-                        className="text-accent-bright hover:underline"
-                        aria-label={`Брони клиента ${client.name}`}
-                      >
-                        {client.bookingCount}
-                      </Link>
-                    ) : (
-                      <span className="text-ink-3">0</span>
+                  <td className="px-4 py-2.5 font-medium text-ink">
+                    {client.name}
+                    {(client.phone || client.email) && (
+                      <div className="xl:hidden flex flex-wrap gap-x-2 text-xs font-normal text-ink-3">
+                        {client.phone && <span className="lg:hidden">{client.phone}</span>}
+                        {client.email && <span className="break-all">{client.email}</span>}
+                      </div>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-right mono-num">
-                    {debtByClient[client.id] && Number(debtByClient[client.id]) > 0 ? (
-                      <Link
-                        href={`/finance/debts?client=${encodeURIComponent(client.id)}`}
-                        className="text-rose hover:underline"
-                        aria-label={`Долг клиента ${client.name}`}
-                      >
-                        {formatRub(Number(debtByClient[client.id]))}
-                      </Link>
-                    ) : (
-                      <span className="text-ink-3">—</span>
-                    )}
+                  <td className="hidden lg:table-cell px-4 py-2.5 text-ink-2 whitespace-nowrap">{client.phone ?? DASH}</td>
+                  <td className="hidden xl:table-cell px-4 py-2.5 text-ink-2">{client.email ?? DASH}</td>
+                  <td className="px-4 py-2.5 text-right mono-num text-ink">
+                    <BookingCount client={client} />
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    {debt > 0 ? <DebtLink client={client} amount={debt} /> : DASH}
                   </td>
                   <td className="px-4 py-2.5">
-                    {client.portalStatus ? (
-                      <button
-                        type="button"
-                        onClick={() => setPortalTarget(client)}
-                        title={
-                          client.portalStatus === "ACTIVE" && client.portalLastLoginAt
-                            ? `Последний вход: ${new Date(client.portalLastLoginAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}`
-                            : undefined
-                        }
-                        aria-label={`Управлять доступом в кабинет клиента ${client.name}`}
-                      >
-                        <StatusPill
-                          variant={PORTAL_PILL[client.portalStatus].variant}
-                          label={PORTAL_PILL[client.portalStatus].label}
-                        />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setPortalTarget(client)}
-                        className="text-[12px] text-accent-bright hover:underline"
-                        aria-label={`Пригласить клиента ${client.name} в личный кабинет`}
-                      >
-                        Пригласить
-                      </button>
-                    )}
+                    <PortalButton client={client} onOpen={setPortalTarget} />
                   </td>
-                  <td className="px-4 py-2.5 text-ink-3">
+                  <td className="hidden xl:table-cell px-4 py-2.5 text-ink-3">
                     {new Date(client.createdAt).toLocaleDateString("ru-RU")}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(client)}
-                        className="p-1.5 rounded hover:bg-surface-subtle text-ink-3 hover:text-ink transition-colors"
-                        aria-label={`Редактировать клиента ${client.name}`}
-                      >
-                        ✎
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => requestDelete(client)}
-                        disabled={client.bookingCount > 0}
-                        title={
-                          client.bookingCount > 0
-                            ? "Нельзя удалить клиента с активными бронями"
-                            : undefined
-                        }
-                        className="p-1.5 rounded hover:bg-rose-soft text-ink-3 hover:text-rose transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                        aria-label={`Удалить клиента ${client.name}`}
-                      >
-                        🗑
-                      </button>
+                      <ClientActions client={client} size="sm" onEdit={openEdit} onDelete={requestDelete} />
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
+
+          {/* Телефон: карточки вместо таблицы — долг, кабинет и действия видны
+              без прокрутки вбок. */}
+          <ul className="md:hidden divide-y divide-border">
+            {clients.map((client) => {
+              const debt = Number(debtByClient[client.id] ?? 0);
+              return (
+                <li key={client.id} className="p-3 space-y-1.5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 font-medium text-ink break-words">{client.name}</span>
+                    {debt > 0 && (
+                      <span className="shrink-0 text-xs text-ink-3">
+                        долг{" "}
+                        <DebtLink client={client} amount={debt} className="inline-flex min-h-8 items-center text-sm" />
+                      </span>
+                    )}
+                  </div>
+                  {(client.phone || client.email) && (
+                    <div className="flex flex-wrap gap-x-3 text-xs text-ink-3">
+                      {client.phone && <span>{client.phone}</span>}
+                      {client.email && <span className="break-all">{client.email}</span>}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 pt-1">
+                    <span className="inline-flex items-center gap-1 text-xs text-ink-2">
+                      Броней
+                      <BookingCount
+                        client={client}
+                        className="mono-num inline-flex min-h-8 min-w-8 items-center justify-center text-sm"
+                      />
+                    </span>
+                    <PortalButton client={client} onOpen={setPortalTarget} />
+                    <div className="ml-auto flex gap-1">
+                      <ClientActions client={client} size="lg" onEdit={openEdit} onDelete={requestDelete} />
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          </>
         )}
       </div>
 

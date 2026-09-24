@@ -150,14 +150,14 @@ function TimelineRow({
         }`}
       >
         {done ? (
-          <IconCheck className="h-3 w-3 text-white" strokeWidth={2.6} />
+          <IconCheck className="h-3 w-3 text-surface" strokeWidth={2.6} />
         ) : (
-          <Icon className="h-3 w-3 text-white" strokeWidth={2.4} />
+          <Icon className="h-3 w-3 text-surface" strokeWidth={2.4} />
         )}
       </span>
       <span className="min-w-0 flex-1">
         <span
-          className={`block truncate text-[13px] font-medium ${done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
+          className={`line-clamp-2 break-words text-[13px] font-medium leading-snug sm:line-clamp-1 xl:line-clamp-2 ${done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
         >
           {entry.clientName || "Клиент"} · {entry.projectName}
         </span>
@@ -225,7 +225,7 @@ export function ShiftHome({
 
   if (error) {
     return (
-      <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-5 lg:py-4">
+      <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-6 lg:py-4">
         {countCard}
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-12 text-center">
           <p className="text-sm text-rose">{error}</p>
@@ -243,7 +243,7 @@ export function ShiftHome({
 
   if (!data) {
     return (
-      <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-5 lg:py-4">
+      <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-6 lg:py-4">
         {countCard}
         {[64, 76, 60, 200].map((h, i) => (
           <div
@@ -263,7 +263,7 @@ export function ShiftHome({
   const readyForPickup = data.readyForPickup ?? [];
 
   return (
-    <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-5 lg:py-4">
+    <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-6 lg:py-4">
       {/* Просрочка */}
       {overdue.length > 0 && (
         <div className="flex items-start gap-2.5 rounded-lg border border-rose-border bg-rose-soft px-3.5 py-2.5 text-[12.5px] text-rose">
@@ -295,179 +295,190 @@ export function ShiftHome({
 
       {countCard}
 
+      {/* Подзаголовок относится к обеим колонкам — он над сеткой, чтобы KPI
+          и «План на сегодня» начинались с одной высоты. */}
       <h2 className="text-sm font-medium text-ink">Обычные брони · сводка смены</h2>
-      {/* KPI */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg border border-border bg-surface px-3 py-2.5 shadow-xs">
-          <p className="eyebrow">Выдачи</p>
-          <p className="mono-num text-[22px] font-semibold leading-tight">
-            {counters.issuesDone}
-            <span className="text-[13px] text-ink-3">/{counters.issuesPlanned}</span>
-          </p>
-          <p className="text-[10.5px] text-ink-3">сделано / план</p>
-        </div>
-        <div className="rounded-lg border border-border bg-surface px-3 py-2.5 shadow-xs">
-          <p className="eyebrow">Возвраты</p>
-          <p className="mono-num text-[22px] font-semibold leading-tight">
-            {counters.returnsDone}
-            <span className="text-[13px] text-ink-3">/{counters.returnsPlanned}</span>
-          </p>
-          <p className="text-[10.5px] text-ink-3">сделано / план</p>
-        </div>
-        <div
-          className={`rounded-lg border px-3 py-2.5 shadow-xs ${
-            counters.overdue > 0
-              ? "border-rose-border bg-rose-soft"
-              : "border-border bg-surface"
-          }`}
-        >
-          <p className={`eyebrow ${counters.overdue > 0 ? "!text-rose" : ""}`}>
-            Просрочка
-          </p>
-          <p
-            className={`mono-num text-[22px] font-semibold leading-tight ${counters.overdue > 0 ? "text-rose" : ""}`}
-          >
-            {counters.overdue}
-          </p>
-          <p className={`text-[10.5px] ${counters.overdue > 0 ? "text-rose/80" : "text-ink-3"}`}>
-            {counters.overdue > 0 ? "возврата ждём" : "всё в срок"}
-          </p>
-        </div>
-      </div>
 
-      {/* Быстрые действия */}
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={onGoIssue}
-          className="flex min-h-[60px] items-center gap-2.5 rounded-lg border border-accent-border bg-accent-soft p-3.5 text-left text-accent-bright transition-colors hover:bg-surface"
-        >
-          <IconIssue className="h-6 w-6 shrink-0" strokeWidth={2} />
-          <span>
-            <span className="block font-cond text-[16px] font-bold leading-tight">
-              Выдача
-            </span>
-            <span className="block text-[10.5px] opacity-75">
-              {counters.issuesPlanned - counters.issuesDone > 0
-                ? `${counters.issuesPlanned - counters.issuesDone} ${pluralize(counters.issuesPlanned - counters.issuesDone, "бронь ждёт", "брони ждут", "броней ждут")}`
-                : "плановых нет"}
-            </span>
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={onGoReturn}
-          className="flex min-h-[60px] items-center gap-2.5 rounded-lg border border-teal-border bg-teal-soft p-3.5 text-left text-teal transition-colors hover:bg-surface"
-        >
-          <IconReturn className="h-6 w-6 shrink-0" strokeWidth={2} />
-          <span>
-            <span className="block font-cond text-[16px] font-bold leading-tight">
-              Приёмка
-            </span>
-            <span className="block text-[10.5px] opacity-75">
-              {counters.returnsPlanned - counters.returnsDone > 0 || counters.overdue > 0
-                ? [
-                    counters.returnsPlanned - counters.returnsDone > 0
-                      ? `${counters.returnsPlanned - counters.returnsDone} план.`
-                      : null,
-                    counters.overdue > 0 ? `${counters.overdue} просроч.` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" + ")
-                : "плановых нет"}
-            </span>
-          </span>
-        </button>
-      </div>
-
-      {/* Вернулось из ремонта.
-          Ремонт закрыт — по учёту прибор снова «в наличии», но физически он на
-          верстаке у техника. Пока кладовщик не заберёт его и не поставит на
-          место, за ним бегут в момент выдачи, при клиенте. Список закрывается
-          сам: сервер отдаёт только последние 7 дней. */}
-      {readyForPickup.length > 0 && (
-        <section className="overflow-hidden rounded-lg border border-emerald-border bg-surface shadow-xs">
-          <div className="flex items-center justify-between gap-2 border-b border-emerald-border bg-emerald-soft px-3.5 py-2.5">
-            <h3 className="flex items-center gap-2 text-[12.5px] font-semibold text-emerald">
-              <IconWrench className="h-4 w-4 shrink-0" strokeWidth={2} />
-              Вернулось из ремонта
-            </h3>
-            <span className="mono-num text-[11px] font-semibold text-emerald">
-              {readyForPickup.length}
-            </span>
-          </div>
-          <ul>
-            {readyForPickup.map((r) => (
-              <li
-                key={r.repairId}
-                className="flex min-h-[40px] items-center gap-2 border-b border-surface-subtle px-3.5 py-2 last:border-b-0"
+      {/* С 1280 px — две колонки, как в мокапе 05: слева сводка и действия,
+          справа план дня. Порядок DOM = мобильный порядок. */}
+      <div className="flex flex-col gap-3 xl:grid xl:grid-cols-2 xl:items-start">
+        <div className="flex min-w-0 flex-col gap-3">
+          {/* KPI */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border bg-surface px-3 py-2.5 shadow-xs">
+              <p className="eyebrow">Выдачи</p>
+              <p className="mono-num text-[22px] font-semibold leading-tight">
+                {counters.issuesDone}
+                <span className="text-[13px] text-ink-3">/{counters.issuesPlanned}</span>
+              </p>
+              <p className="text-[10.5px] text-ink-3">сделано / план</p>
+            </div>
+            <div className="rounded-lg border border-border bg-surface px-3 py-2.5 shadow-xs">
+              <p className="eyebrow">Возвраты</p>
+              <p className="mono-num text-[22px] font-semibold leading-tight">
+                {counters.returnsDone}
+                <span className="text-[13px] text-ink-3">/{counters.returnsPlanned}</span>
+              </p>
+              <p className="text-[10.5px] text-ink-3">сделано / план</p>
+            </div>
+            <div
+              className={`rounded-lg border px-3 py-2.5 shadow-xs ${
+                counters.overdue > 0
+                  ? "border-rose-border bg-rose-soft"
+                  : "border-border bg-surface"
+              }`}
+            >
+              <p className={`eyebrow ${counters.overdue > 0 ? "!text-rose" : ""}`}>
+                Просрочка
+              </p>
+              <p
+                className={`mono-num text-[22px] font-semibold leading-tight ${counters.overdue > 0 ? "text-rose" : ""}`}
               >
-                <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{r.title}</span>
-                <span className="shrink-0 text-[11px] text-ink-3">
-                  починено {shortDate(r.closedAt)}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="border-t border-surface-subtle px-3.5 py-2 text-[11px] text-ink-3">
-            Забрать с верстака и вернуть на место — по учёту это уже свободно.
-          </p>
-        </section>
-      )}
-
-      {/* Лента дня */}
-      <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
-        <div className="flex items-center justify-between border-b border-border bg-surface-muted px-3.5 py-2.5">
-          <h3 className="text-[12.5px] font-semibold">План на сегодня</h3>
-          <span className="text-[11px] text-ink-3">
-            {timeline.length} {pluralize(timeline.length, "операция", "операции", "операций")}
-            {overdue.length > 0 ? ` + ${overdue.length} просроч.` : ""}
-          </span>
-        </div>
-        {timeline.length === 0 && overdue.length === 0 ? (
-          <p className="px-3.5 py-6 text-center text-sm text-ink-3">
-            По обычным броням на сегодня выдач и возвратов нет.
-          </p>
-        ) : (
-          <div>
-            {timeline.map((e) => (
-              <TimelineRow key={`${e.kind}-${e.bookingId}`} entry={e} onOpen={onOpenEntry} />
-            ))}
-            {overdue.map((e) => (
-              <TimelineRow key={`ov-${e.bookingId}`} entry={e} onOpen={onOpenEntry} />
-            ))}
+                {counters.overdue}
+              </p>
+              <p className={`text-[10.5px] ${counters.overdue > 0 ? "text-rose/80" : "text-ink-3"}`}>
+                {counters.overdue > 0 ? "возврата ждём" : "всё в срок"}
+              </p>
+            </div>
           </div>
-        )}
-      </section>
 
-      {/* Моя смена */}
-      <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
-        <div className="flex items-center justify-between border-b border-border bg-surface-muted px-3.5 py-2.5">
-          <h3 className="text-[12.5px] font-semibold">Моя смена</h3>
-          <span className="text-[11px] text-ink-3">{myShift.workerName}</span>
-        </div>
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-3.5 py-3 text-[12px] text-ink-2">
-          <span>
-            <span className="mono-num font-semibold text-ink">{myShift.sessions}</span>{" "}
-            {pluralize(myShift.sessions, "сессия", "сессии", "сессий")}
-          </span>
-          <span>
-            <span className="mono-num font-semibold text-ink">{myShift.items}</span>{" "}
-            {pluralize(myShift.items, "позиция", "позиции", "позиций")}
-          </span>
-          {myShift.avgMinutes != null && (
-            <span>
-              средняя{" "}
-              <span className="mono-num font-semibold text-ink">{myShift.avgMinutes}м</span>
-            </span>
+          {/* Быстрые действия */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={onGoIssue}
+              className="flex min-h-[60px] items-center gap-2.5 rounded-lg border border-accent-border bg-accent-soft p-3.5 text-left text-accent-bright transition-colors hover:bg-surface"
+            >
+              <IconIssue className="h-6 w-6 shrink-0" strokeWidth={2} />
+              <span>
+                <span className="block font-cond text-[16px] font-bold leading-tight">
+                  Выдача
+                </span>
+                <span className="block text-[10.5px] opacity-75">
+                  {counters.issuesPlanned - counters.issuesDone > 0
+                    ? `${counters.issuesPlanned - counters.issuesDone} ${pluralize(counters.issuesPlanned - counters.issuesDone, "бронь ждёт", "брони ждут", "броней ждут")}`
+                    : "плановых нет"}
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={onGoReturn}
+              className="flex min-h-[60px] items-center gap-2.5 rounded-lg border border-teal-border bg-teal-soft p-3.5 text-left text-teal transition-colors hover:bg-surface"
+            >
+              <IconReturn className="h-6 w-6 shrink-0" strokeWidth={2} />
+              <span>
+                <span className="block font-cond text-[16px] font-bold leading-tight">
+                  Приёмка
+                </span>
+                <span className="block text-[10.5px] opacity-75">
+                  {counters.returnsPlanned - counters.returnsDone > 0 || counters.overdue > 0
+                    ? [
+                        counters.returnsPlanned - counters.returnsDone > 0
+                          ? `${counters.returnsPlanned - counters.returnsDone} план.`
+                          : null,
+                        counters.overdue > 0 ? `${counters.overdue} просроч.` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" + ")
+                    : "плановых нет"}
+                </span>
+              </span>
+            </button>
+          </div>
+
+          {/* Вернулось из ремонта.
+              Ремонт закрыт — по учёту прибор снова «в наличии», но физически он на
+              верстаке у техника. Пока кладовщик не заберёт его и не поставит на
+              место, за ним бегут в момент выдачи, при клиенте. Список закрывается
+              сам: сервер отдаёт только последние 7 дней. */}
+          {readyForPickup.length > 0 && (
+            <section className="overflow-hidden rounded-lg border border-emerald-border bg-surface shadow-xs">
+              <div className="flex items-center justify-between gap-2 border-b border-emerald-border bg-emerald-soft px-3.5 py-2.5">
+                <h3 className="flex items-center gap-2 text-[12.5px] font-semibold text-emerald">
+                  <IconWrench className="h-4 w-4 shrink-0" strokeWidth={2} />
+                  Вернулось из ремонта
+                </h3>
+                <span className="mono-num text-[11px] font-semibold text-emerald">
+                  {readyForPickup.length}
+                </span>
+              </div>
+              <ul>
+                {readyForPickup.map((r) => (
+                  <li
+                    key={r.repairId}
+                    className="flex min-h-[40px] items-center gap-2 border-b border-surface-subtle px-3.5 py-2 last:border-b-0"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{r.title}</span>
+                    <span className="shrink-0 text-[11px] text-ink-3">
+                      починено {shortDate(r.closedAt)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="border-t border-surface-subtle px-3.5 py-2 text-[11px] text-ink-3">
+                Забрать с верстака и вернуть на место — по учёту это уже свободно.
+              </p>
+            </section>
           )}
-          {shiftDuration && (
-            <span className="ml-auto">
-              <span className="mono-num font-semibold text-ink">{shiftDuration}</span> на смене
-            </span>
-          )}
         </div>
-      </section>
+
+        <div className="flex min-w-0 flex-col gap-3">
+          {/* Лента дня */}
+          <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+            <div className="flex items-center justify-between border-b border-border bg-surface-muted px-3.5 py-2.5">
+              <h3 className="text-[12.5px] font-semibold">План на сегодня</h3>
+              <span className="text-[11px] text-ink-3">
+                {timeline.length} {pluralize(timeline.length, "операция", "операции", "операций")}
+                {overdue.length > 0 ? ` + ${overdue.length} просроч.` : ""}
+              </span>
+            </div>
+            {timeline.length === 0 && overdue.length === 0 ? (
+              <p className="px-3.5 py-6 text-center text-sm text-ink-3">
+                По обычным броням на сегодня выдач и возвратов нет.
+              </p>
+            ) : (
+              <div>
+                {timeline.map((e) => (
+                  <TimelineRow key={`${e.kind}-${e.bookingId}`} entry={e} onOpen={onOpenEntry} />
+                ))}
+                {overdue.map((e) => (
+                  <TimelineRow key={`ov-${e.bookingId}`} entry={e} onOpen={onOpenEntry} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Моя смена */}
+          <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+            <div className="flex items-center justify-between border-b border-border bg-surface-muted px-3.5 py-2.5">
+              <h3 className="text-[12.5px] font-semibold">Моя смена</h3>
+              <span className="text-[11px] text-ink-3">{myShift.workerName}</span>
+            </div>
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-3.5 py-3 text-[12px] text-ink-2">
+              <span>
+                <span className="mono-num font-semibold text-ink">{myShift.sessions}</span>{" "}
+                {pluralize(myShift.sessions, "сессия", "сессии", "сессий")}
+              </span>
+              <span>
+                <span className="mono-num font-semibold text-ink">{myShift.items}</span>{" "}
+                {pluralize(myShift.items, "позиция", "позиции", "позиций")}
+              </span>
+              {myShift.avgMinutes != null && (
+                <span>
+                  средняя{" "}
+                  <span className="mono-num font-semibold text-ink">{myShift.avgMinutes}м</span>
+                </span>
+              )}
+              {shiftDuration && (
+                <span className="ml-auto">
+                  <span className="mono-num font-semibold text-ink">{shiftDuration}</span> на смене
+                </span>
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

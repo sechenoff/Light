@@ -11,6 +11,7 @@ import {
   ENTITY_TYPE_OPTIONS,
 } from "../../../src/lib/auditLabels";
 import { AuditEntryCard } from "../../../src/components/audit/AuditEntryCard";
+import { SectionHeader } from "../../../src/components/SectionHeader";
 import type { AuditRecord } from "../../../src/lib/auditFormat";
 
 type Filters = {
@@ -30,7 +31,7 @@ const EMPTY: Filters = {
   to: "",
 };
 const fieldClass =
-  "w-full min-w-0 rounded border border-border px-3 py-2 text-sm text-ink bg-surface focus:outline-none focus:border-accent-bright";
+  "h-10 w-full min-w-0 rounded border border-border px-3 py-2 text-sm text-ink bg-surface focus:outline-none focus:border-accent-bright";
 
 function AuditContent() {
   const { authorized, loading: authLoading } = useRequireRole(["SUPER_ADMIN"]);
@@ -134,9 +135,8 @@ function AuditContent() {
     <AdminShell>
       <div className="space-y-4 min-w-0">
         <div>
-          <p className="eyebrow">История</p>
-          <h1 className="text-lg font-semibold text-ink">Журнал изменений</h1>
-          <p className="text-sm text-ink-3 mt-1">
+          <SectionHeader eyebrow="Администрирование" title="Журнал изменений" />
+          <p className="text-sm text-ink-2 mt-1">
             Кто внёс изменения, когда и что изменилось. Время — московское.
           </p>
         </div>
@@ -194,7 +194,8 @@ function AuditContent() {
                 ))}
               </select>
             </label>
-            <label className="min-w-0 text-xs text-ink-2 space-y-1 block">
+            {/* Во всю строку до xl: иначе «С даты» и «По дату» разъезжаются по разным строкам. */}
+            <label className="min-w-0 text-xs text-ink-2 space-y-1 block sm:col-span-2 xl:col-span-1">
               Действие
               <select
                 className={fieldClass}
@@ -259,7 +260,7 @@ function AuditContent() {
               type="button"
               disabled={fetching}
               onClick={() => void load()}
-              className="min-h-10 px-3 text-sm text-accent-bright disabled:opacity-50"
+              className="min-h-10 rounded border border-border px-4 py-2 text-sm text-accent-bright disabled:opacity-50"
             >
               Обновить
             </button>

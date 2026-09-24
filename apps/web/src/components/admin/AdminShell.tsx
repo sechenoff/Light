@@ -9,7 +9,12 @@
  *
  *  - таб-бар (AdminTabNav) — полосой на всю ширину, как FinanceTabNav;
  *  - контент — на полную ширину контентной области, канонические отступы
- *    `p-4 lg:p-6` (стандарт ширины страниц внутри AppShell, без max-w/mx-auto).
+ *    `p-4 lg:p-6` (стандарт ширины страниц внутри AppShell, без max-w/mx-auto);
+ *    у полосы табов те же горизонтальные отступы, края совпадают на любой ширине;
+ *  - фон страницы — от body (surface-muted), как во всём приложении. Свой фон
+ *    здесь не задаём: surface-subtle в ночной теме светлее карточек;
+ *  - запас под плавающую кнопку «Сообщить» даёт <main> в AppShell
+ *    (pb-20 lg:pb-24), здесь его не дублировать.
  *
  * Не меняй ширину в отдельной вкладке — только здесь.
  */
@@ -25,8 +30,8 @@ export function AdminShell({
   children: ReactNode;
 }) {
   return (
-    <div className="pb-10 bg-surface-subtle min-h-screen">
-      <div className="bg-surface px-4 sm:px-6">
+    <div>
+      <div className="bg-surface border-b border-border px-4 lg:px-6">
         <AdminTabNav counts={counts} />
       </div>
       <div className="p-4 lg:p-6">{children}</div>

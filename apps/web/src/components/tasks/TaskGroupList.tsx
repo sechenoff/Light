@@ -55,7 +55,7 @@ function TaskGroup({
         className="flex items-baseline gap-2.5 pt-3.5 pb-2 px-5
           text-left border-b border-border"
       >
-        <h3 className={`flex-1 font-mono text-[11px] font-semibold uppercase tracking-[0.07em] ${meta.colorClass}`}>
+        <h3 className={`font-mono text-[11px] font-semibold uppercase tracking-[0.07em] ${meta.colorClass}`}>
           {meta.label}
         </h3>
         <span className="text-[11px] font-mono text-ink-3">{tasks.length}</span>

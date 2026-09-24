@@ -38,6 +38,10 @@ const INPUT_CLASS =
   "w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent";
 const INPUT_CLASS_MONO = `${INPUT_CLASS} font-mono`;
 const FIELD_ERROR_CLASS = "text-xs text-rose mt-1";
+/** Шапка карточки — отдельной полосой, чтобы не сливаться с подписями полей (.eyebrow).
+ *  Отрицательные поля компенсируют p-5 карточки. */
+const CARD_TITLE_CLASS =
+  "-mx-5 -mt-5 rounded-t-lg border-b border-border bg-surface-muted px-5 py-3 font-cond text-xs font-semibold uppercase tracking-[0.06em] text-ink";
 
 /** ISO-строка или локальное значение → yyyy-MM-ddTHH:mm в ЛОКАЛЬНОМ времени для datetime-local */
 function toLocalDatetimeValue(value: string): string {
@@ -212,10 +216,10 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
   }
 
   return (
-    <form onSubmit={handleSave} className="max-w-xl space-y-4">
+    <form onSubmit={handleSave} className="space-y-4">
       {/* Legal info */}
       <div className="bg-surface border border-border rounded-lg p-5 space-y-4">
-        <p className="eyebrow text-ink-3 mb-1">Юридические данные</p>
+        <h2 className={CARD_TITLE_CLASS}>Юридические данные</h2>
 
         <div>
           <label htmlFor="org-legal-name" className="eyebrow block mb-1">Юр. имя</label>
@@ -229,7 +233,7 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label htmlFor="org-inn" className="eyebrow block mb-1">ИНН</label>
             <input
@@ -271,7 +275,7 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label htmlFor="org-phone" className="eyebrow block mb-1">Телефон</label>
             <input
@@ -299,7 +303,7 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
 
       {/* Bank */}
       <div className="bg-surface border border-border rounded-lg p-5 space-y-4">
-        <p className="eyebrow text-ink-3 mb-1">Банковские реквизиты</p>
+        <h2 className={CARD_TITLE_CLASS}>Банковские реквизиты</h2>
 
         <div>
           <label htmlFor="org-bank-name" className="eyebrow block mb-1">Банк</label>
@@ -361,7 +365,7 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
 
       {/* Invoice settings */}
       <div className="bg-surface border border-border rounded-lg p-5 space-y-4">
-        <p className="eyebrow text-ink-3 mb-1">Нумерация счетов</p>
+        <h2 className={CARD_TITLE_CLASS}>Нумерация счетов</h2>
 
         <div>
           <label htmlFor="org-invoice-prefix" className="eyebrow block mb-1">Префикс номера счетов</label>
@@ -394,7 +398,7 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
 
       {/* Finance policy */}
       <div className="bg-surface border border-border rounded-lg p-5 space-y-4">
-        <p className="eyebrow text-ink-3 mb-1">Финансовая политика</p>
+        <h2 className={CARD_TITLE_CLASS}>Финансовая политика</h2>
 
         <div>
           <label htmlFor="org-payment-terms" className="eyebrow block mb-1">Срок оплаты по умолчанию</label>
@@ -460,8 +464,8 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
 
       {/* Bill (счёт на оплату) */}
       <div className="bg-surface border border-border rounded-lg p-5 space-y-4">
-        <p className="eyebrow text-ink-3 mb-1">Счёт на оплату</p>
-        <p className="text-xs text-ink-3 -mt-2">
+        <h2 className={CARD_TITLE_CLASS}>Счёт на оплату</h2>
+        <p className="text-xs text-ink-3">
           Эти данные попадают в печатную форму счёта контрагенту вместе с юридическими и банковскими реквизитами выше.
         </p>
 
@@ -472,7 +476,7 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
               id="org-ogrn"
               type="text"
               inputMode="numeric"
-              className={INPUT_CLASS_MONO}
+              className={`${INPUT_CLASS_MONO} placeholder:font-sans`}
               value={form.ogrn ?? ""}
               onChange={(e) => {
                 set("ogrn", e.target.value);
@@ -490,9 +494,11 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
               className={INPUT_CLASS}
               value={form.taxNote ?? ""}
               onChange={(e) => set("taxNote", e.target.value)}
-              placeholder="Без НДС (УСН, освобождение по ст. 145 НК РФ)"
+              placeholder="Без НДС"
             />
-            <p className="text-xs text-ink-3 mt-1">Печатается в итогах и в назначении платежа. Пусто — «Без НДС».</p>
+            <p className="text-xs text-ink-3 mt-1">
+              Печатается в итогах и в назначении платежа. Пусто — «Без НДС». Например: «Без НДС (УСН, освобождение по ст. 145 НК РФ)».
+            </p>
           </div>
           <div>
             <label htmlFor="org-signer-title" className="eyebrow block mb-1">Подписант — должность</label>
@@ -524,7 +530,7 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
         <button
           type="submit"
           disabled={saving}
-          className="px-5 py-2.5 text-sm bg-accent-bright text-surface rounded hover:opacity-90 disabled:opacity-50 font-medium"
+          className="w-full sm:w-auto px-5 py-2.5 text-sm bg-accent-bright text-surface rounded hover:opacity-90 disabled:opacity-50 font-medium"
         >
           {saving ? "Сохранение…" : "Сохранить"}
         </button>
@@ -582,14 +588,21 @@ function PageGuard() {
         ))}
       </div>
 
-      {tab === "org" && (
-        <Suspense fallback={<div className="py-8 text-sm text-ink-3">Загрузка…</div>}>
-          <OrgSettingsForm onDirtyChange={(d) => { orgDirtyRef.current = d; }} />
-        </Suspense>
+      {/* Решение владельца: «Организация», «Каталог» и «Прайслист» — в одной
+          ширине, чтобы контент не скакал между подвкладками. «Импорт оборудования»
+          остаётся на всю ширину: там широкая таблица сопоставления и превью. */}
+      {tab !== "import" && (
+        <div className="max-w-3xl">
+          {tab === "org" && (
+            <Suspense fallback={<div className="py-8 text-sm text-ink-3">Загрузка…</div>}>
+              <OrgSettingsForm onDirtyChange={(d) => { orgDirtyRef.current = d; }} />
+            </Suspense>
+          )}
+          {tab === "catalog" && <CatalogTab />}
+          {tab === "pricelist" && <PricelistTab />}
+        </div>
       )}
-      {tab === "catalog" && <CatalogTab />}
       {tab === "import" && <EquipmentImportTab />}
-      {tab === "pricelist" && <PricelistTab />}
       </div>
     </AdminShell>
   );

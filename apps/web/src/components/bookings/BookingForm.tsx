@@ -1482,13 +1482,15 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
 
   return (
     <div>
-      <header className="sticky top-0 z-20 border-b border-border bg-surface shadow-xs">
-        <div className="flex items-center justify-between px-4 md:px-8 py-3">
-          <div className="flex items-center gap-3 text-[13px]">
+      {/* Ниже lg шапка формы липнет под тёмную шапку приложения (h-12) — иначе
+          накрывает её вместе с кнопкой меню. */}
+      <header className="sticky top-12 z-20 border-b border-border bg-surface shadow-xs lg:top-0">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3 lg:px-6">
+          <div className="flex min-w-0 items-center gap-3 whitespace-nowrap text-[13px]">
             {breadcrumb}
           </div>
           {isEdit && (
-            <div className="text-sm font-medium text-ink">{headerTitle}</div>
+            <div className="hidden min-w-0 truncate text-sm font-medium text-ink md:block">{headerTitle}</div>
           )}
         </div>
         {/* Рейка шагов (4.8): статус секций + клик-переход. Не wizard —
@@ -1525,7 +1527,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
               </div>
             </div>
           )}
-          <div ref={(el) => { sectionRefs.current["step-client"] = el; }} className="scroll-mt-28">
+          <div ref={(el) => { sectionRefs.current["step-client"] = el; }} className="scroll-mt-44 md:scroll-mt-36 lg:scroll-mt-28">
             <ClientProjectCard
               clientName={clientName}
               projectName={projectName}
@@ -1543,7 +1545,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
               }
             />
           </div>
-          <div ref={(el) => { sectionRefs.current["step-dates"] = el; }} className="scroll-mt-28">
+          <div ref={(el) => { sectionRefs.current["step-dates"] = el; }} className="scroll-mt-44 md:scroll-mt-36 lg:scroll-mt-28">
             <DatesCard
               pickupLocal={pickupLocal}
               returnLocal={returnLocal}
@@ -1559,7 +1561,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
 
           <div
             ref={(el) => { sectionRefs.current["step-equipment"] = el; }}
-            className="flex scroll-mt-28 flex-col gap-2"
+            className="flex scroll-mt-44 flex-col gap-2 md:scroll-mt-36 lg:scroll-mt-28"
           >
           {submitAttempted && !hasItems && (
             <div role="alert" className="rounded-md border border-rose-border bg-rose-soft px-4 py-2.5 text-[13px] text-rose">
@@ -1614,45 +1616,57 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
 
           <div
             ref={(el) => { sectionRefs.current["step-details"] = el; }}
-            className="flex scroll-mt-28 flex-col gap-3.5"
+            className="flex scroll-mt-44 flex-col gap-3.5 md:scroll-mt-36 lg:scroll-mt-28"
           >
           <CommentCard value={bookingComment} onChange={setBookingComment} />
 
           {/* Срок оплаты */}
-          <div className="bg-surface border border-border rounded-lg p-4">
-            <label className="eyebrow block mb-1">Срок оплаты</label>
-            <input
-              type="date"
-              className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
-              value={expectedPaymentDateLocal}
-              onChange={(e) => setExpectedPaymentDateLocal(e.target.value)}
-            />
-            {/* F3: dynamic placeholder showing computed default date */}
-            {!expectedPaymentDateLocal && returnISO && defaultPaymentTermsDays !== null && (() => {
-              const endDate = new Date(returnISO);
-              const defaultDate = addDays(endDate, defaultPaymentTermsDays);
-              const defaultStr = toMoscowDateString(defaultDate);
-              const [y, m, d] = defaultStr.split("-");
-              const ddMm = `${d}.${m}.${y}`;
-              return (
+          <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden">
+            <div className="px-5 py-3 border-b border-border bg-surface-muted flex items-center justify-between">
+              <label htmlFor="expected-payment-date" className="eyebrow text-ink">Срок оплаты</label>
+              <span className="text-[11px] text-ink-3 italic">опционально</span>
+            </div>
+            <div className="p-5">
+              <input
+                id="expected-payment-date"
+                type="date"
+                className="w-full rounded border border-border-strong bg-surface px-3 py-2 text-base text-ink focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft sm:max-w-[240px] sm:text-[13.5px]"
+                value={expectedPaymentDateLocal}
+                onChange={(e) => setExpectedPaymentDateLocal(e.target.value)}
+              />
+              {/* F3: dynamic placeholder showing computed default date */}
+              {!expectedPaymentDateLocal && returnISO && defaultPaymentTermsDays !== null && (() => {
+                const endDate = new Date(returnISO);
+                const defaultDate = addDays(endDate, defaultPaymentTermsDays);
+                const defaultStr = toMoscowDateString(defaultDate);
+                const [y, m, d] = defaultStr.split("-");
+                const ddMm = `${d}.${m}.${y}`;
+                return (
+                  <p className="text-xs text-ink-3 mt-1">
+                    {defaultPaymentTermsDays === 0
+                      ? `по умолчанию: совпадает с днём сдачи (${ddMm})`
+                      : `по умолчанию: через ${defaultPaymentTermsDays} дн. после сдачи (${ddMm})`}
+                  </p>
+                );
+              })()}
+              {(!returnISO || expectedPaymentDateLocal) && (
                 <p className="text-xs text-ink-3 mt-1">
-                  {defaultPaymentTermsDays === 0
-                    ? `по умолчанию: совпадает с днём сдачи (${ddMm})`
-                    : `по умолчанию: через ${defaultPaymentTermsDays} дн. после сдачи (${ddMm})`}
+                  Оставь пустым для default-значения из настроек организации
                 </p>
-              );
-            })()}
-            {(!returnISO || expectedPaymentDateLocal) && (
-              <p className="text-xs text-ink-3 mt-1">
-                Оставь пустым для default-значения из настроек организации
-              </p>
-            )}
+              )}
+            </div>
           </div>
           </div>
         </div>
 
         {/* Right column: Discount, Summary, Transport */}
-        <div className="sticky top-20 flex max-h-[calc(100vh-6rem)] flex-col gap-3.5 self-start overflow-y-auto pr-1">
+        {/* Своя прокрутка и липкость — только на lg, где колонка стоит справа.
+            Ниже lg она идёт потоком под формой. top-[104px] = шапка формы
+            (≈92 px) + зазор; pb-16 даёт докрутить низ выше кнопки «Сообщить».
+            max-h = 100vh − 224: top 104 + lg:pb-24 у <main> (96) + нижнее поле
+            сетки lg:p-6 (24). Иначе в конце страницы низ ячейки грида не даёт
+            колонке встать на 104 px, и она уезжает под шапку формы. */}
+        <div className="flex flex-col gap-3.5 self-start lg:sticky lg:top-[104px] lg:max-h-[calc(100vh-224px)] lg:overflow-y-auto lg:pb-16">
           <DiscountCard value={discountPercent} onChange={setDiscountPercent} />
           <PaymentFormCard
             value={paymentForm}

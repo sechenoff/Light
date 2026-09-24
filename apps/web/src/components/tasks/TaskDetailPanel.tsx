@@ -57,7 +57,8 @@ export function TaskDetailPanel({
 
   // Esc closes
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    // defaultPrevented — Esc уже закрыл модалку правки, открытую поверх панели.
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -112,7 +113,7 @@ export function TaskDetailPanel({
         ref={panelRef}
         tabIndex={-1}
         onKeyDown={handleTrapKey}
-        className="relative w-full max-w-[480px] h-full bg-surface shadow-xl overflow-y-auto animate-slidein"
+        className="relative w-full max-w-[480px] h-full bg-surface shadow-xl overflow-y-auto animate-slidein focus:outline-none"
       >
         {/* Header */}
         <div className="sticky top-0 bg-surface border-b border-border px-5 py-4 flex items-start justify-between gap-3 z-10">
@@ -125,7 +126,7 @@ export function TaskDetailPanel({
           <button
             onClick={onClose}
             aria-label="Закрыть"
-            className="text-ink-3 hover:text-ink text-xl leading-none shrink-0"
+            className="inline-flex h-9 w-9 -mr-2 -mt-1 shrink-0 items-center justify-center rounded-md text-xl leading-none text-ink-3 hover:bg-surface-muted hover:text-ink"
           >
             ✕
           </button>

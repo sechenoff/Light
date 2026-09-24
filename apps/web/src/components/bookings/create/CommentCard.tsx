@@ -17,7 +17,7 @@ export function CommentCard({ value, onChange }: CommentCardProps) {
           <span>Зачем эта бронь и что важно знать</span>
         </label>
         <textarea
-          className="w-full min-h-[64px] resize-y rounded border border-border-strong px-3 py-2.5 text-[13.5px] text-ink bg-surface leading-relaxed focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
+          className="w-full min-h-[64px] resize-y rounded border border-border-strong px-3 py-2.5 text-base sm:text-[13.5px] text-ink bg-surface leading-relaxed focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Постоянный клиент, торгуется по свету..."

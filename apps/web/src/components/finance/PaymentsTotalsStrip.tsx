@@ -16,7 +16,9 @@ interface Props {
 
 export function PaymentsTotalsStrip({ billed, paid, outstanding, averageAmount, count }: Props) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border border-border rounded-lg bg-surface shadow-xs mb-5">
+    // Разделители — фон bg-border сквозь gap-px: без двойной линии у третьей
+    // ячейки в сетке 2×2 и с линией между рядами (divide-x её не даёт).
+    <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border shadow-xs xl:grid-cols-4">
       <TotalsCell
         eyebrow="Начислено"
         value={formatRub(billed)}
@@ -52,9 +54,9 @@ function TotalsCell({
   valueClass?: string;
 }) {
   return (
-    <div className="px-5 py-4">
+    <div className="min-w-0 bg-surface px-3 py-3 sm:px-4 sm:py-4 xl:px-5">
       <p className="eyebrow mb-1">{eyebrow}</p>
-      <p className={`text-xl font-semibold mono-num ${valueClass}`}>{value}</p>
+      <p className={`text-base font-semibold mono-num whitespace-nowrap sm:text-lg xl:text-xl ${valueClass}`}>{value}</p>
       {sub && <p className="text-xs text-ink-3 mt-0.5">{sub}</p>}
     </div>
   );

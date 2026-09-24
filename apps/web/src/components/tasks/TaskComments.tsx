@@ -67,7 +67,7 @@ export function TaskComments({ comments, currentUserId, isSuperAdmin, onAdd, onD
                 <button
                   onClick={() => void onDelete(c.id)}
                   aria-label="Удалить комментарий"
-                  className="text-[11px] text-ink-3 hover:text-rose opacity-0 group-hover:opacity-100 transition-opacity mt-1"
+                  className="text-[11px] text-ink-3 hover:text-rose [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity mt-1"
                 >
                   Удалить
                 </button>
@@ -92,7 +92,7 @@ export function TaskComments({ comments, currentUserId, isSuperAdmin, onAdd, onD
           <button
             onClick={submit}
             disabled={!draft.trim()}
-            className="text-[13px] font-medium px-3 py-1 rounded-md bg-accent-bright text-surface disabled:opacity-40 hover:opacity-90 transition-opacity"
+            className="min-h-9 text-[13px] font-medium px-3 py-1.5 lg:min-h-0 lg:py-1 rounded-md bg-accent-bright text-surface disabled:opacity-40 hover:opacity-90 transition-opacity"
           >
             Отправить
           </button>

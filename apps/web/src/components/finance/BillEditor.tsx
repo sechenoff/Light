@@ -142,6 +142,15 @@ function legalFromPayer(p: Partial<BillPayer> | null | undefined): Record<LegalK
 
 const INPUT = "w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent";
 const INPUT_MONO = `${INPUT} font-mono`;
+// Поле фиксированной высоты — для ряда «Номер / Дата / Оплатить до»: date-поле выше
+// текстового, и ряд шёл ступенькой. В сам INPUT высоту не кладём — он и в textarea.
+const FIELD = `${INPUT} h-10`;
+// Кнопка шапки карточки счёта. min-h, а не h: в сетке 2×2 на телефоне длинная
+// подпись («Вернуть в «Выставлен»») переносится на вторую строку.
+const HEADER_BTN = "inline-flex min-h-9 items-center justify-center rounded px-3.5 py-1.5 text-center text-[12px] leading-tight";
+// Невидимая зона нажатия вокруг текстовой ссылки/кнопки — без сдвига вёрстки.
+const HIT_AREA_TEXT = "relative after:absolute after:-inset-x-1 after:-inset-y-2 after:content-['']";
+const HIT_AREA_INLINE = "relative after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-['']";
 
 export type BillEditorProps =
   | { mode: "create"; bookingId?: string | null }
@@ -371,10 +380,10 @@ export function BillEditor(props: BillEditorProps) {
   return (
     <div className="p-4 lg:p-6">
       {/* Header */}
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="eyebrow text-ink-3">
-            <Link href="/finance/bills" className="hover:text-ink">Счета на оплату</Link>
+            <Link href="/finance/bills" className={`${HIT_AREA_INLINE} hover:text-ink`}>Счета на оплату</Link>
             {" · "}
             {isEdit ? "карточка" : "новый"}
           </p>
@@ -385,25 +394,25 @@ export function BillEditor(props: BillEditorProps) {
           {linkedBookingId && (
             <p className="mt-1 text-xs text-ink-3">
               По брони{" "}
-              <Link href={`/bookings/${linkedBookingId}`} className="text-accent hover:underline">
+              <Link href={`/bookings/${linkedBookingId}`} className={`${HIT_AREA_INLINE} text-accent hover:underline`}>
                 открыть карточку →
               </Link>
             </p>
           )}
         </div>
         {bill && (
-          <div className="flex flex-wrap gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
             <button
               type="button"
               onClick={() => void printEstimate(`/api/bills/${bill.id}/pdf`, "Счёт не найден")}
-              className="rounded bg-accent-bright px-3.5 py-2 text-[13px] font-semibold text-surface hover:opacity-90"
+              className={`${HEADER_BTN} border border-accent-bright bg-accent-bright font-semibold text-surface hover:opacity-90`}
             >
               Печать
             </button>
             <button
               type="button"
               onClick={() => void downloadEstimate(`/api/bills/${bill.id}/pdf`, `schet-${bill.number}-${bill.year}.pdf`, "Счёт не найден")}
-              className="rounded border border-border px-3.5 py-2 text-[13px] text-ink-2 hover:bg-surface-muted"
+              className={`${HEADER_BTN} border border-border text-ink-2 hover:bg-surface-muted`}
             >
               Скачать PDF
             </button>
@@ -412,7 +421,7 @@ export function BillEditor(props: BillEditorProps) {
                 type="button"
                 disabled={statusBusy}
                 onClick={() => void setStatus("PAID")}
-                className="rounded border border-emerald-border bg-emerald-soft px-3.5 py-2 text-[13px] text-emerald hover:opacity-90 disabled:opacity-50"
+                className={`${HEADER_BTN} border border-emerald-border bg-emerald-soft text-emerald hover:opacity-90 disabled:opacity-50`}
               >
                 Оплачен
               </button>
@@ -422,7 +431,7 @@ export function BillEditor(props: BillEditorProps) {
                 type="button"
                 disabled={statusBusy}
                 onClick={() => void setStatus("ISSUED")}
-                className="rounded border border-border px-3.5 py-2 text-[13px] text-ink-2 hover:bg-surface-muted disabled:opacity-50"
+                className={`${HEADER_BTN} border border-border text-ink-2 hover:bg-surface-muted disabled:opacity-50`}
               >
                 Вернуть в «Выставлен»
               </button>
@@ -436,7 +445,7 @@ export function BillEditor(props: BillEditorProps) {
                     void setStatus("CANCELLED");
                   }
                 }}
-                className="rounded border border-rose-border px-3.5 py-2 text-[13px] text-rose hover:bg-rose-soft disabled:opacity-50"
+                className={`${HEADER_BTN} border border-rose-border text-rose hover:bg-rose-soft disabled:opacity-50`}
               >
                 Отменить
               </button>
@@ -456,7 +465,7 @@ export function BillEditor(props: BillEditorProps) {
           e.preventDefault();
           void save(false);
         }}
-        className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]"
+        className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] 2xl:grid-cols-[minmax(0,1fr)_320px]"
       >
         <div className="min-w-0 space-y-4">
           {/* Контрагент */}
@@ -478,7 +487,7 @@ export function BillEditor(props: BillEditorProps) {
             <button
               type="button"
               onClick={() => setLegalOpen((v) => !v)}
-              className="mt-3 text-[12.5px] text-accent hover:underline"
+              className={`mt-3 text-[12.5px] text-accent hover:underline ${HIT_AREA_TEXT}`}
             >
               {legalOpen ? "Скрыть реквизиты" : "Реквизиты для счёта (ИНН, банк, адрес)"}
             </button>
@@ -513,7 +522,7 @@ export function BillEditor(props: BillEditorProps) {
             <div className="space-y-2">
               {/* Одна строка на позицию — только на широких экранах (xl): левая колонка
                   страницы ≈ 480 px при боковом меню, и шесть колонок в неё не встают. */}
-              <div className="hidden grid-cols-[minmax(0,1fr)_72px_96px_112px_104px_24px] gap-2 px-1 text-[11px] text-ink-3 xl:grid">
+              <div className="hidden grid-cols-[minmax(0,1fr)_72px_96px_112px_104px_28px] gap-2 px-1 text-[11px] text-ink-3 xl:grid">
                 <span>Наименование</span>
                 <span className="text-right">Кол-во</span>
                 <span>Ед.</span>
@@ -522,9 +531,10 @@ export function BillEditor(props: BillEditorProps) {
                 <span />
               </div>
               {lines.map((l, i) => (
+                // В карточке (< xl) у полей видимые мини-подписи — шапка колонок есть только на xl.
                 <div
                   key={l.key}
-                  className="grid grid-cols-2 gap-2 rounded border border-border p-2 xl:grid-cols-[minmax(0,1fr)_72px_96px_112px_104px_24px] xl:items-center xl:border-0 xl:p-0"
+                  className="grid grid-cols-2 items-end gap-2 rounded border border-border p-2 xl:grid-cols-[minmax(0,1fr)_72px_96px_112px_104px_28px] xl:items-center xl:border-0 xl:p-0"
                 >
                   <input
                     type="text"
@@ -535,45 +545,60 @@ export function BillEditor(props: BillEditorProps) {
                     disabled={readOnly}
                     onChange={(e) => setLine(l.key, { name: e.target.value })}
                   />
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    aria-label="Количество"
-                    className={`${INPUT_MONO} text-right`}
-                    value={l.quantity}
-                    disabled={readOnly}
-                    onChange={(e) => setLine(l.key, { quantity: e.target.value })}
-                  />
-                  <select
-                    aria-label="Единица"
-                    className={INPUT}
-                    value={l.unit}
-                    disabled={readOnly}
-                    onChange={(e) => setLine(l.key, { unit: e.target.value })}
-                  >
-                    {(UNITS.includes(l.unit) ? UNITS : [l.unit, ...UNITS]).map((u) => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    aria-label="Цена"
-                    className={`${INPUT_MONO} text-right`}
-                    placeholder="0"
-                    value={l.price}
-                    disabled={readOnly}
-                    onChange={(e) => setLine(l.key, { price: e.target.value })}
-                  />
-                  <div className="mono-num text-right text-sm text-ink">{formatMoneyRub(lineSum(l))}</div>
+                  <label className="min-w-0">
+                    <span className="mb-1 block text-[11px] text-ink-3 xl:hidden">Кол-во</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      aria-label="Количество"
+                      className={`${INPUT_MONO} text-right`}
+                      value={l.quantity}
+                      disabled={readOnly}
+                      onChange={(e) => setLine(l.key, { quantity: e.target.value })}
+                    />
+                  </label>
+                  <label className="min-w-0">
+                    <span className="mb-1 block text-[11px] text-ink-3 xl:hidden">Ед.</span>
+                    <select
+                      aria-label="Единица"
+                      className={INPUT}
+                      value={l.unit}
+                      disabled={readOnly}
+                      onChange={(e) => setLine(l.key, { unit: e.target.value })}
+                    >
+                      {(UNITS.includes(l.unit) ? UNITS : [l.unit, ...UNITS]).map((u) => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="min-w-0">
+                    <span className="mb-1 block text-[11px] text-ink-3 xl:hidden">Цена, ₽</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      aria-label="Цена"
+                      className={`${INPUT_MONO} text-right`}
+                      placeholder="0"
+                      value={l.price}
+                      disabled={readOnly}
+                      onChange={(e) => setLine(l.key, { price: e.target.value })}
+                    />
+                  </label>
+                  <div className="min-w-0">
+                    <span className="mb-1 block text-right text-[11px] text-ink-3 xl:hidden">Сумма</span>
+                    {/* Прозрачная рамка + py-2 — высота как у поля, базовые линии совпадают */}
+                    <div className="mono-num border border-transparent py-2 text-right text-sm text-ink xl:border-0 xl:py-0">
+                      {formatMoneyRub(lineSum(l))}
+                    </div>
+                  </div>
                   <button
                     type="button"
                     aria-label="Удалить позицию"
                     disabled={readOnly || lines.length === 1}
                     onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key))}
-                    className="text-ink-3 hover:text-rose disabled:opacity-30"
+                    className="col-span-2 inline-flex h-9 items-center justify-self-end gap-1 rounded px-2 text-[12.5px] text-ink-3 hover:text-rose disabled:hidden xl:col-span-1 xl:h-7 xl:w-7 xl:justify-center xl:justify-self-center xl:px-0 xl:disabled:inline-flex xl:disabled:opacity-30"
                   >
-                    ×
+                    ×<span className="xl:hidden"> Удалить</span>
                   </button>
                 </div>
               ))}
@@ -582,7 +607,7 @@ export function BillEditor(props: BillEditorProps) {
               <button
                 type="button"
                 onClick={() => setLines((prev) => [...prev, newLine()])}
-                className="mt-3 text-[12.5px] text-accent hover:underline"
+                className={`mt-3 text-[12.5px] text-accent hover:underline ${HIT_AREA_TEXT}`}
               >
                 + Добавить позицию
               </button>
@@ -592,14 +617,14 @@ export function BillEditor(props: BillEditorProps) {
           {/* Шапка документа */}
           <section className="rounded-lg border border-border bg-surface p-5 shadow-xs">
             <p className="eyebrow mb-3 text-ink-3">Документ</p>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,0.6fr)_minmax(0,1fr)_minmax(0,1fr)]">
               <div>
                 <label htmlFor="bill-number" className="eyebrow mb-1 block">Номер</label>
                 <input
                   id="bill-number"
                   type="number"
                   min={1}
-                  className={INPUT_MONO}
+                  className={`${FIELD} font-mono`}
                   placeholder={nextNumber != null ? `авто: ${nextNumber}` : ""}
                   value={number}
                   disabled={readOnly}
@@ -608,11 +633,11 @@ export function BillEditor(props: BillEditorProps) {
               </div>
               <div>
                 <label htmlFor="bill-date" className="eyebrow mb-1 block">Дата</label>
-                <input id="bill-date" type="date" className={INPUT_MONO} value={date} disabled={readOnly} onChange={(e) => setDate(e.target.value)} />
+                <input id="bill-date" type="date" className={FIELD} value={date} disabled={readOnly} onChange={(e) => setDate(e.target.value)} />
               </div>
               <div>
                 <label htmlFor="bill-due" className="eyebrow mb-1 block">Оплатить до</label>
-                <input id="bill-due" type="date" className={INPUT_MONO} value={dueDate} disabled={readOnly} onChange={(e) => setDueDate(e.target.value)} />
+                <input id="bill-due" type="date" className={FIELD} value={dueDate} disabled={readOnly} onChange={(e) => setDueDate(e.target.value)} />
               </div>
               <div className="sm:col-span-3">
                 <label htmlFor="bill-basis" className="eyebrow mb-1 block">Основание</label>
@@ -655,7 +680,8 @@ export function BillEditor(props: BillEditorProps) {
         </div>
 
         {/* Итог */}
-        <aside className="lg:sticky lg:top-20 flex flex-col gap-3 self-start rounded-lg border border-border bg-surface p-4 shadow-xs">
+        {/* top-6: на ≥lg мобильной шапки AppShell нет, top-20 оставлял пустые 80 px */}
+        <aside className="lg:sticky lg:top-6 flex flex-col gap-3 self-start rounded-lg border border-border bg-surface p-5 shadow-xs">
           <p className="eyebrow text-ink-3">Итого к оплате</p>
           <div className="flex items-baseline gap-1">
             <span className="font-mono text-[30px] font-semibold leading-none text-ink">
@@ -678,7 +704,7 @@ export function BillEditor(props: BillEditorProps) {
                   <button
                     type="submit"
                     disabled={!canSubmit}
-                    className="w-full rounded bg-accent-bright px-4 py-2.5 text-sm font-medium text-surface hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="w-full rounded border border-accent-bright bg-accent-bright px-4 py-2.5 text-sm font-medium text-surface hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {saving ? "Сохранение…" : "Сохранить изменения"}
                   </button>
@@ -697,7 +723,7 @@ export function BillEditor(props: BillEditorProps) {
                     type="button"
                     disabled={!canSubmit}
                     onClick={() => void save(true)}
-                    className="w-full rounded bg-accent-bright px-4 py-2.5 text-sm font-medium text-surface hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="w-full rounded border border-accent-bright bg-accent-bright px-4 py-2.5 text-sm font-medium text-surface hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {saving ? "Выставляю…" : "Выставить и распечатать →"}
                   </button>

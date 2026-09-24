@@ -17,11 +17,13 @@ export function EquipmentStatsPage() {
   const { data, error, loading, retry } = useEquipmentStats();
 
   return (
-    <div className="p-4 lg:p-6 space-y-2">
+    // Нижний запас под кнопку «Сообщить» даёт <main> в AppShell — здесь не дублировать.
+    <div className="p-4 lg:p-6 space-y-6">
       <SectionHeader
         eyebrow="Аналитика"
         title="Статистика техники"
         actions={<PeriodToggle />}
+        className="flex-wrap"
       />
 
       {loading && !data ? (

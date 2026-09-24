@@ -91,6 +91,7 @@ export function CategoryPopover({
             total={total}
             value={value}
             onPick={pick}
+            dense={false}
           />
         )}
       </>
@@ -145,6 +146,7 @@ export function CategoryPopover({
           total={total}
           value={value}
           onPick={pick}
+          dense
         />
       )}
     </>
@@ -161,6 +163,8 @@ type ListProps = {
   total: number;
   value: string | undefined;
   onPick: (next: string | undefined) => void;
+  /** Плотные строки десктопного поповера; на мобильном строки ≈40 px под палец. */
+  dense: boolean;
 };
 
 function List({
@@ -173,6 +177,7 @@ function List({
   total,
   value,
   onPick,
+  dense,
 }: ListProps) {
   return (
     <FloatingPortal>
@@ -188,6 +193,7 @@ function List({
             count={total}
             selected={!value}
             onSelect={() => onPick(undefined)}
+            dense={dense}
           />
           <div className="my-1 border-t border-border" />
           {categories.map((c) => (
@@ -197,6 +203,7 @@ function List({
               count={counts[c] ?? 0}
               selected={value === c}
               onSelect={() => onPick(c)}
+              dense={dense}
             />
           ))}
         </div>
@@ -210,11 +217,13 @@ function Row({
   count,
   selected,
   onSelect,
+  dense,
 }: {
   label: string;
   count: number;
   selected: boolean;
   onSelect: () => void;
+  dense: boolean;
 }) {
   return (
     <button
@@ -222,7 +231,7 @@ function Row({
       role="option"
       aria-selected={selected}
       onClick={onSelect}
-      className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-xs transition-colors ${
+      className={`flex w-full items-center justify-between gap-3 px-3 text-left transition-colors ${dense ? "py-1.5 text-xs" : "py-2.5 text-sm"} ${
         selected ? "bg-accent-soft font-semibold text-accent-bright" : "text-ink hover:bg-surface-subtle"
       } ${FOCUS_RING}`}
     >

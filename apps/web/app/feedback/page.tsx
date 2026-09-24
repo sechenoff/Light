@@ -105,8 +105,10 @@ function FeedbackPageInner() {
       </p>
 
       {/* Filter rows */}
+      {/* На телефоне чипы идут лентой со скроллом, как LkNav: перенос оставлял
+          «Отклонено» одного на второй строке. */}
       <div className="space-y-2 mb-5">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
           {STATUS_FILTERS.map((f) => {
             const active = statusFilter === f.value;
             const cnt = f.value === "ALL" ? allItems.length : (counts[f.value as FeedbackStatus] ?? 0);
@@ -115,7 +117,7 @@ function FeedbackPageInner() {
                 key={f.value}
                 type="button"
                 onClick={() => setStatusFilter(f.value)}
-                className={`h-8 px-3 rounded-md text-xs font-semibold border transition-colors inline-flex items-center gap-1.5 ${
+                className={`h-9 sm:h-8 shrink-0 px-3 rounded-md text-xs font-semibold border transition-colors inline-flex items-center gap-1.5 ${
                   active
                     ? "bg-inverse text-on-inverse border-inverse"
                     : "bg-surface text-ink-2 border-border hover:border-inverse"
@@ -127,7 +129,7 @@ function FeedbackPageInner() {
             );
           })}
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
           {CATEGORY_FILTERS.map((f) => {
             const active = categoryFilter === f.value;
             return (
@@ -135,7 +137,7 @@ function FeedbackPageInner() {
                 key={f.value}
                 type="button"
                 onClick={() => setCategoryFilter(f.value)}
-                className={`h-7 px-2.5 rounded-md text-[11px] font-semibold border transition-colors ${
+                className={`h-8 sm:h-7 shrink-0 px-2.5 rounded-md text-[11px] font-semibold border transition-colors ${
                   active
                     ? "bg-accent-soft text-accent border-accent-border"
                     : "bg-surface text-ink-3 border-border hover:border-strong hover:text-ink-2"
@@ -254,9 +256,9 @@ function FeedbackListRow({ item, onOpen }: { item: FeedbackListItem; onOpen: () 
             <CategoryIcon category={item.category} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <span className="font-semibold text-ink text-sm truncate flex-1 min-w-0">{item.title}</span>
-              <StatusPill variant={status.variant} label={status.label} />
+            <div className="flex items-start gap-2">
+              <span className="font-semibold text-ink text-sm line-clamp-2 break-words flex-1 min-w-0">{item.title}</span>
+              <StatusPill variant={status.variant} label={status.label} className="shrink-0" />
             </div>
             <p className="text-xs text-ink-2 mt-1 line-clamp-2 leading-snug">{item.description}</p>
             <div className="text-[11px] text-ink-3 mt-2 flex items-center gap-2 flex-wrap">

@@ -57,7 +57,7 @@ export function ThemeToggle() {
             aria-label={opt.label}
             title={opt.label}
             onClick={() => setTheme(opt.key)}
-            className={`flex h-7 flex-1 items-center justify-center rounded-md transition-colors ${
+            className={`flex h-9 flex-1 items-center lg:h-7 justify-center rounded-md transition-colors ${
               active
                 ? "bg-white/15 text-white"
                 : "text-slate-400 hover:text-white hover:bg-white/10"

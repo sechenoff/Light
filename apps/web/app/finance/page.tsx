@@ -94,9 +94,11 @@ function KpiCard({
 }) {
   const valueColor = tone === "ok" ? "text-emerald" : tone === "alert" ? "text-rose" : "text-ink";
   const inner = (
-    <div className="border border-border bg-surface rounded-lg px-5 py-4 shadow-xs h-full">
-      <p className="eyebrow mb-2">{eyebrow}</p>
-      <p className={`mono-num text-[22px] font-semibold ${valueColor} leading-tight`}>{value}</p>
+    <div className="border border-border bg-surface rounded-lg px-3 py-3 shadow-xs h-full sm:px-5 sm:py-4">
+      {/* min-h-8 на телефоне: eyebrow в две строки не сдвигает сумму в ряду 2×2;
+          до 360 px карточки в одну колонку, там держать строку незачем */}
+      <p className="eyebrow mb-2 min-[360px]:min-h-8 sm:min-h-0">{eyebrow}</p>
+      <p className={`mono-num text-[16px] font-semibold ${valueColor} leading-tight sm:text-[22px]`}>{value}</p>
       {sub && <p className="text-[11.5px] text-ink-2 mt-1.5">{sub}</p>}
     </div>
   );
@@ -160,7 +162,7 @@ function FinancePageInner() {
   // только «Счета», сюда попадает лишь прямым URL — показываем заглушку.
   if (!isSA) {
     return (
-      <div className="pb-10 bg-surface-subtle min-h-screen">
+      <div className="pb-10">
         <FinanceTabNav />
         <div className="p-4 lg:p-6">
           <div className="bg-surface border border-border rounded-lg px-6 py-14 text-center shadow-xs">
@@ -194,7 +196,7 @@ function FinancePageInner() {
   const hasAttention = data.topDebtors.length > 0 || data.upcomingWeek.length > 0;
 
   return (
-    <div className="pb-10 bg-surface-subtle min-h-screen">
+    <div className="pb-10">
       <FinanceTabNav debtCount={data.debtorClientsCount} />
 
       <div className="p-4 lg:p-6">
@@ -204,17 +206,20 @@ function FinancePageInner() {
           <p className="eyebrow text-ink-3">Финансы</p>
           <div className="flex items-center justify-between gap-3 flex-wrap mt-1">
             <h1 className="text-[22px] font-semibold text-ink tracking-tight">Сводка по деньгам</h1>
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* min-w-0 + w-full: ряд не распирается лентой периодов, она прокручивается сама */}
+            <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto">
               <PeriodSelector value={period} onChange={handlePeriodChange} />
               <button
+                type="button"
                 onClick={() => setRecordPaymentOpen(true)}
-                className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-surface rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+                className="inline-flex h-10 flex-1 items-center justify-center whitespace-nowrap rounded px-3.5 text-[12px] font-semibold bg-accent-bright text-surface hover:opacity-90 transition-opacity sm:h-9 sm:flex-none"
               >
                 + Записать платёж
               </button>
               <button
+                type="button"
                 onClick={() => setCreateInvoiceOpen(true)}
-                className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors whitespace-nowrap"
+                className="inline-flex h-10 flex-1 items-center justify-center whitespace-nowrap rounded border border-border bg-surface px-3.5 text-[12px] font-medium text-ink hover:bg-surface-subtle transition-colors sm:h-9 sm:flex-none"
               >
                 + Создать счёт
               </button>
@@ -223,7 +228,7 @@ function FinancePageInner() {
         </div>
 
         {/* KPI strip: три метрики за период + долг-снимок */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-4">
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-3.5 mb-4">
           <KpiCard
             eyebrow={`Получено · ${PERIOD_LABELS[period].toLowerCase()}`}
             value={formatRub(earned)}
@@ -268,7 +273,7 @@ function FinancePageInner() {
             </span>
             <Link
               href="/finance/debts?overdueOnly=true"
-              className="ml-auto px-3 py-1 text-[12px] font-medium border border-amber-border rounded-lg text-amber hover:bg-amber-border/20 whitespace-nowrap"
+              className="ml-auto px-3 py-2 text-[12px] font-medium border border-amber-border rounded-lg text-amber hover:bg-amber-border/20 whitespace-nowrap sm:py-1"
             >
               Открыть →
             </Link>
@@ -276,19 +281,19 @@ function FinancePageInner() {
         )}
 
         {/* Денежный поток + долг по возрасту */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4 mb-4">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.3fr_1fr] gap-4 mb-4">
           <CashflowChart trend={data.trend} monthsToShow={6} />
           <AgingStrip aging={data.aging} />
         </div>
 
         {/* Требует внимания: должники + ожидаемые поступления */}
         {hasAttention && (
-          <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4 mb-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[1.3fr_1fr] gap-4 mb-4">
             {data.topDebtors.length > 0 && (
               <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
                 <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
                   <h3 className="text-[13.5px] font-semibold text-ink">Топ-должники</h3>
-                  <Link href="/finance/debts" className="text-xs text-accent-bright font-medium hover:underline">
+                  <Link href="/finance/debts" className="-my-2 py-2 text-xs text-accent-bright font-medium hover:underline">
                     Все долги →
                   </Link>
                 </div>
@@ -298,8 +303,8 @@ function FinancePageInner() {
                       <tr className="border-b border-border bg-surface-subtle">
                         <th className="text-left px-4 py-2.5 eyebrow">Клиент</th>
                         <th className="text-right px-3 py-2.5 eyebrow">Сумма</th>
-                        <th className="text-right px-3 py-2.5 eyebrow">Просрочка</th>
-                        <th className="px-3 py-2.5 eyebrow text-left">Статус</th>
+                        <th className="hidden text-right px-3 py-2.5 eyebrow sm:table-cell">Просрочка</th>
+                        <th className="hidden px-3 py-2.5 eyebrow text-left sm:table-cell">Статус</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -311,12 +316,18 @@ function FinancePageInner() {
                         >
                           <td className="px-4 py-3">
                             <strong className="text-ink font-medium">{d.clientName}</strong>
+                            {/* На телефоне колонки «Просрочка» и «Статус» скрыты — подпись под именем */}
+                            {(d.overdueDays === null || d.overdueDays > 0) && (
+                              <span className={`sm:hidden block mt-0.5 text-[11px] ${d.overdueDays ? "text-rose" : "text-ink-3"}`}>
+                                {d.overdueDays ? `просрочка ${d.overdueDays} дн.` : "без срока"}
+                              </span>
+                            )}
                           </td>
                           <td className="px-3 py-3 text-right mono-num font-medium">{formatRub(d.outstanding)}</td>
-                          <td className="px-3 py-3 text-right mono-num text-ink-2">
+                          <td className="hidden px-3 py-3 text-right mono-num text-ink-2 sm:table-cell">
                             {d.overdueDays !== null && d.overdueDays > 0 ? `${d.overdueDays} дн.` : "—"}
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="hidden px-3 py-3 sm:table-cell">
                             <StatusPill
                               variant={d.overdueDays !== null ? (d.overdueDays > 7 ? "alert" : "warn") : "view"}
                               label={d.overdueDays !== null ? "Просрочен" : "Без срока"}

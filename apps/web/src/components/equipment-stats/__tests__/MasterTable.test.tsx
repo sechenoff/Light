@@ -8,6 +8,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
 }));
 
+// Первая ячейка строки: ссылка с названием + подпись категории (видна до xl),
+// поэтому название читаем из ссылки, а не из textContent всей ячейки.
+function nameOf(tr: HTMLElement): string | null {
+  return within(within(tr).getAllByRole("cell")[0]).getByRole("link").textContent;
+}
+
 function row(overrides: Partial<EquipmentStatRow>): EquipmentStatRow {
   return {
     id: "id-1",
@@ -36,7 +42,7 @@ describe("MasterTable", () => {
   it("renders all rows by default sorted alphabetically", () => {
     render(<MasterTable rows={rows} />);
     const dataRows = screen.getAllByRole("row").slice(1); // skip header
-    const names = dataRows.map((r) => within(r).getAllByRole("cell")[0].textContent);
+    const names = dataRows.map(nameOf);
     expect(names).toEqual(["Aputure", "Manfrotto", "Софтбокс"]);
   });
 
@@ -45,7 +51,7 @@ describe("MasterTable", () => {
     fireEvent.click(screen.getByRole("button", { name: "Без аренды" }));
     const dataRows = screen.getAllByRole("row").slice(1);
     expect(dataRows).toHaveLength(1);
-    expect(within(dataRows[0]).getAllByRole("cell")[0].textContent).toBe("Manfrotto");
+    expect(nameOf(dataRows[0])).toBe("Manfrotto");
   });
 
   it("filters to rows with incidents when 'С поломками' chip is active", () => {
@@ -53,14 +59,14 @@ describe("MasterTable", () => {
     fireEvent.click(screen.getByRole("button", { name: "С поломками" }));
     const dataRows = screen.getAllByRole("row").slice(1);
     expect(dataRows).toHaveLength(1);
-    expect(within(dataRows[0]).getAllByRole("cell")[0].textContent).toBe("Manfrotto");
+    expect(nameOf(dataRows[0])).toBe("Manfrotto");
   });
 
   it("sorts by Броней desc when column header clicked", () => {
     render(<MasterTable rows={rows} />);
     fireEvent.click(within(screen.getByRole("columnheader", { name: /Броней/ })).getByRole("button"));
     const dataRows = screen.getAllByRole("row").slice(1);
-    const names = dataRows.map((r) => within(r).getAllByRole("cell")[0].textContent);
+    const names = dataRows.map(nameOf);
     expect(names).toEqual(["Aputure", "Софтбокс", "Manfrotto"]);
   });
 });

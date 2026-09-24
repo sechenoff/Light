@@ -191,8 +191,8 @@ function DaySuperAdmin({ username }: { username: string }) {
 
   return (
     <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-      <DayHeader greeting={`${greetingFor(username)} ✨`} summary={summary} />
-      <div className="p-4 space-y-3">
+      <DayHeader greeting={`${greetingFor(username)}\u00A0✨`} summary={summary} />
+      <div className="p-3 sm:p-4 space-y-3 bg-surface-muted">
         {pending && pending.total > 0 && (
           <DayAlert
             variant="amber"
@@ -268,7 +268,7 @@ function DaySuperAdmin({ username }: { username: string }) {
         <div className="bg-surface border border-border rounded-lg p-3">
           <div className="flex justify-between items-baseline mb-2">
             <p className="text-sm font-semibold text-ink">Операции сегодня</p>
-            <Link href="/bookings" className="text-xs text-accent hover:underline">Все →</Link>
+            <Link href="/bookings" className="inline-flex items-center min-h-8 -my-2 text-xs text-accent hover:underline">Все →</Link>
           </div>
           <DayOperationsList operations={operations} showAmount emptyLabel="На сегодня нет операций" />
         </div>
@@ -281,7 +281,7 @@ function DaySuperAdmin({ username }: { username: string }) {
                 Сейчас на площадке: {active.length}{" "}
                 {pluralize(active.length, "бронь", "брони", "броней")}
               </p>
-              <Link href="/bookings?status=ISSUED" className="text-xs text-accent hover:underline">
+              <Link href="/bookings?status=ISSUED" className="inline-flex items-center min-h-8 -my-2 text-xs text-accent hover:underline">
                 Все →
               </Link>
             </div>
@@ -361,8 +361,8 @@ function DayWarehouse({ username }: { username: string }) {
 
   return (
     <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-      <DayHeader greeting={`${greetingFor(username)} 👋`} summary={summary} />
-      <div className="p-4 space-y-3">
+      <DayHeader greeting={`${greetingFor(username)}\u00A0👋`} summary={summary} />
+      <div className="p-3 sm:p-4 space-y-3 bg-surface-muted">
         {pending && pending.total > 0 && (
           <DayAlert
             variant="amber"
@@ -380,7 +380,7 @@ function DayWarehouse({ username }: { username: string }) {
             обнаруживает нехватку на выдаче и забирает починенное с верстака. */}
         <DayRepairSummary stats={repairStats} variant="warehouse" />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="bg-surface border border-border rounded-lg p-3">
             <div className="flex justify-between items-baseline mb-2">
               <p className="text-sm font-semibold text-ink">📤 Выдачи сегодня</p>
@@ -536,10 +536,10 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
 
   return (
     <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-      <DayHeader greeting={`${greetingFor(username)} 🔧`} summary={summary} />
-      <div className="p-4 space-y-3">
+      <DayHeader greeting={`${greetingFor(username)}\u00A0🔧`} summary={summary} />
+      <div className="p-3 sm:p-4 space-y-3 bg-surface-muted">
         {newRepairs && newRepairs.length > 0 && (
-          <div className="bg-surface border border-rose-border rounded-lg p-4">
+          <div className="bg-surface border border-rose-border rounded-lg p-3">
             <div className="flex justify-between items-baseline mb-2">
               <p className="text-sm font-semibold text-rose">🆕 Новые поломки — требуют твоей оценки</p>
               <span className="inline-flex items-center justify-center min-w-[20px] px-1.5 py-0.5 rounded-full text-[11px] bg-rose text-surface">
@@ -579,7 +579,7 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
             карточки, а срыв брони может висеть на чужой или ничьей. */}
         <DayRepairSummary stats={stats} variant="technician" />
 
-        <div className="bg-surface border border-border rounded-lg p-4">
+        <div className="bg-surface border border-border rounded-lg p-3">
           <div className="flex justify-between items-baseline mb-2">
             <p className="text-sm font-semibold text-ink">🛠 В работе</p>
             <span className="mono-num text-sm text-ink-3">{myCount}</span>

@@ -50,7 +50,7 @@ const SORTS: { key: RepairSort; label: string }[] = [
 ];
 
 const GROUP_BTN =
-  "border-r border-border px-2.5 py-1 text-[11px] font-semibold leading-[1.6] text-ink-2 transition-colors last:border-r-0 hover:bg-surface-muted";
+  "border-r border-border px-2.5 py-2 text-[11px] font-semibold leading-[1.6] text-ink-2 transition-colors last:border-r-0 hover:bg-surface-muted md:py-1";
 const GROUP_BTN_ON = "bg-accent text-surface hover:bg-accent";
 
 function GroupHeader({
@@ -217,17 +217,20 @@ export default function RepairQueuePage() {
               // открытие не должно молча дозагружать следующую.
               if (next && queue.archive.items.length === 0) queue.archive.loadMore();
             }}
-            className="whitespace-nowrap text-[11.5px] font-semibold text-accent-bright hover:text-accent hover:underline"
+            className="whitespace-nowrap py-2 text-[11.5px] font-semibold text-accent-bright hover:text-accent hover:underline md:py-0"
           >
-            Починенные и списанные →
+            {/* На телефоне шапка — в одну строку, как в мокапе: короткие подписи. */}
+            <span className="md:hidden">Архив →</span>
+            <span className="hidden md:inline">Починенные и списанные →</span>
           </button>
           <button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded border border-accent-bright bg-accent-bright px-3 py-1 text-xs font-semibold text-surface transition-colors hover:border-accent hover:bg-accent"
+            className="inline-flex items-center gap-1.5 rounded border border-accent-bright bg-accent-bright px-3 py-2 text-xs font-semibold text-surface transition-colors hover:border-accent hover:bg-accent lg:py-1"
           >
             <RepairIcon name="plus" />
-            Завести поломку
+            <span className="md:hidden">Поломка</span>
+            <span className="hidden md:inline">Завести поломку</span>
           </button>
         </div>
       </header>
@@ -293,7 +296,8 @@ export default function RepairQueuePage() {
               </button>
             ))}
         </div>
-        <span className="eyebrow ml-auto hidden shrink-0 whitespace-nowrap md:inline">
+        {/* Счётчик — только там, где ряд влезает целиком; число и так есть на «Все N». */}
+        <span className="eyebrow ml-auto hidden shrink-0 whitespace-nowrap xl:inline">
           {counts.all}{" "}
           {pluralize(counts.all, "открытый ремонт", "открытых ремонта", "открытых ремонтов")}
         </span>

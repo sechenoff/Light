@@ -12,7 +12,7 @@ export function SectionHeader({
   className?: string;
 }) {
   return (
-    <div className={`flex items-center justify-between gap-3 ${className}`}>
+    <div className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 ${className}`}>
       <div className="min-w-0">
         {eyebrow && <p className="eyebrow mb-0.5">{eyebrow}</p>}
         <h2 className="text-[17px] font-semibold tracking-tight text-ink leading-snug">{title}</h2>

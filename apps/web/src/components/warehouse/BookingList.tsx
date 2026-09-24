@@ -21,7 +21,7 @@
  * Tap a card → `createSession(bookingId, operation)` → advance to checklist.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { scanApi } from "./api";
 import { isScanApiError } from "./types";
 import type {
@@ -35,6 +35,7 @@ import {
   addDays,
 } from "../../lib/moscowDate";
 import { pluralize } from "../../lib/format";
+import { IconRefresh } from "./workstationIcons";
 
 type Bucket = "overdue" | "today" | "tomorrow" | "later";
 
@@ -152,6 +153,7 @@ export function BookingList({
   activeBookingId = null,
   onUnauth,
   onSelect,
+  onCountChange,
 }: {
   operation: ScanOperation;
   /**
@@ -175,6 +177,11 @@ export function BookingList({
     booking: BookingSummary,
     session?: ScanSessionInfo,
   ) => void;
+  /**
+   * Сколько броней в списке после загрузки — страница прячет подсказку
+   * «Выберите бронь слева», когда выбирать нечего.
+   */
+  onCountChange?: (count: number) => void;
 }) {
   const [bookings, setBookings] = useState<BookingSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,6 +191,11 @@ export function BookingList({
   // новые брони появляются без пере-захода в шаг.
   const [reloadKey, setReloadKey] = useState(0);
   const [search, setSearch] = useState("");
+  // Через ref: колбэк меняется вместе с табом, а перезапрашивать список из-за
+  // этого не нужно. Счёт отдаём только по факту загрузки — без устаревшего
+  // значения от списка соседнего таба.
+  const onCountChangeRef = useRef(onCountChange);
+  onCountChangeRef.current = onCountChange;
 
   useEffect(() => {
     let cancelled = false;
@@ -192,7 +204,9 @@ export function BookingList({
     scanApi
       .listBookings(operation)
       .then((list) => {
-        if (!cancelled) setBookings(list);
+        if (cancelled) return;
+        setBookings(list);
+        onCountChangeRef.current?.(list.length);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -258,7 +272,7 @@ export function BookingList({
   return (
     <div className="py-2">
       {/* Шапка списка: счётчик + «Обновить». */}
-      <div className="flex items-center justify-between px-3.5 pb-1 pt-1.5">
+      <div className="flex items-center justify-between px-3 pb-1 pt-1.5 lg:px-3.5">
         <span className="text-[11px] text-ink-3">
           {loading
             ? "Загрузка…"
@@ -269,16 +283,18 @@ export function BookingList({
           onClick={() => setReloadKey((k) => k + 1)}
           disabled={loading}
           aria-label="Обновить список броней"
-          className="flex h-8 items-center gap-1 rounded px-2 text-[11px] font-medium text-ink-3 transition-colors hover:bg-surface-subtle hover:text-ink disabled:opacity-40"
+          className="-mr-2 flex h-8 items-center gap-1 rounded px-2 text-[11px] font-medium text-ink-3 transition-colors hover:bg-surface-subtle hover:text-ink disabled:opacity-40"
         >
-          <span aria-hidden="true" className={loading ? "inline-block animate-spin" : ""}>⟳</span>
+          <IconRefresh
+            className={`h-3.5 w-3.5 shrink-0 ${loading ? "motion-safe:animate-spin" : ""}`}
+          />
           Обновить
         </button>
       </div>
 
       {/* Поиск — только когда список длинный. */}
       {bookings.length > SEARCH_THRESHOLD && (
-        <div className="px-2.5 pb-1.5">
+        <div className="px-3 pb-1.5 lg:px-2.5">
           <input
             type="search"
             value={search}
@@ -291,7 +307,7 @@ export function BookingList({
       )}
 
       {loading && (
-        <div className="space-y-2 px-2.5 py-1">
+        <div className="space-y-2 px-3 py-1 lg:px-2.5">
           {[1, 2, 3].map((i) => (
             <div
               key={i}
@@ -302,7 +318,7 @@ export function BookingList({
       )}
 
       {error && (
-        <div className="mx-2.5 my-2 rounded-lg border border-rose-border bg-rose-soft px-3 py-2.5 text-sm text-rose">
+        <div className="mx-3 my-2 rounded-lg border border-rose-border bg-rose-soft lg:mx-2.5 px-3 py-2.5 text-sm text-rose">
           <p>{error}</p>
           <button
             type="button"
@@ -315,7 +331,7 @@ export function BookingList({
       )}
 
       {!loading && !error && groups.length === 0 && (
-        <div className="whitespace-pre-line px-4 py-16 text-center text-sm leading-relaxed text-ink-3">
+        <div className="whitespace-pre-line text-balance px-4 py-16 text-center text-sm leading-relaxed text-ink-3">
           {search.trim() ? "Ничего не найдено." : emptyText}
         </div>
       )}
@@ -325,7 +341,7 @@ export function BookingList({
         groups.map((group) => (
           <section key={group.bucket}>
             <p
-              className={`eyebrow px-3.5 pb-1 pt-3 ${group.bucket === "overdue" ? "!text-rose" : ""}`}
+              className={`eyebrow px-3 pb-1 pt-3 lg:px-3.5 ${group.bucket === "overdue" ? "!text-rose" : ""}`}
             >
               {group.label}
             </p>
@@ -341,7 +357,7 @@ export function BookingList({
                   disabled={!!creating}
                   aria-label={`Бронь ${displayNo(b.id)} — ${b.projectName || "Без названия"}`}
                   aria-current={isActive ? "true" : undefined}
-                  className={`mx-2.5 mb-1.5 block w-[calc(100%-1.25rem)] rounded-lg border border-l-4 px-3 py-2.5 text-left transition-colors disabled:opacity-60 ${BUCKET_BAR[group.bucket]} ${
+                  className={`mx-3 mb-1.5 block w-[calc(100%-1.5rem)] rounded-lg lg:mx-2.5 lg:w-[calc(100%-1.25rem)] border border-l-4 px-3 py-2.5 text-left transition-colors disabled:opacity-60 ${BUCKET_BAR[group.bucket]} ${
                     isActive
                       ? "border-accent-border bg-accent-soft"
                       : "border-border bg-surface hover:bg-surface-muted active:bg-surface-subtle"

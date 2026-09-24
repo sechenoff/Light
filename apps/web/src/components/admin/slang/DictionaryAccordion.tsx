@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { DictionaryGroup, SourceFilterKey } from "./types";
-import { EquipmentRow } from "./EquipmentRow";
+import { DICTIONARY_GRID, EquipmentRow } from "./EquipmentRow";
 
 type Props = {
   groups: DictionaryGroup[];
@@ -79,13 +79,13 @@ export function DictionaryAccordion({ groups, onDelete, onRebind, onExport }: Pr
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Поиск по прибору или фразе…"
-          className="flex-1 min-w-[220px] h-9 px-3 border border-border rounded-lg text-sm text-ink bg-surface placeholder-ink-3 focus:outline-none focus:border-accent-bright"
+          className="flex-1 min-w-[220px] h-9 px-3 border border-border rounded text-sm text-ink bg-surface placeholder-ink-3 focus:outline-none focus:border-accent-bright"
         />
 
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="h-9 px-3 border border-border rounded-lg text-[12.5px] text-ink bg-surface cursor-pointer focus:outline-none focus:border-accent-bright"
+          className="h-9 w-full sm:w-auto px-3 border border-border rounded text-[12.5px] text-ink bg-surface cursor-pointer focus:outline-none focus:border-accent-bright"
         >
           <option value="">Все категории</option>
           {categories.map((cat) => (
@@ -96,7 +96,7 @@ export function DictionaryAccordion({ groups, onDelete, onRebind, onExport }: Pr
         </select>
 
         {/* Source filter */}
-        <div className="flex flex-wrap gap-px p-0.5 bg-surface-muted border border-border rounded-lg">
+        <div className="grid w-full grid-cols-2 gap-px p-0.5 bg-surface-muted border border-border rounded sm:flex sm:h-9 sm:w-auto sm:items-stretch">
           {FILTERS.map(({ key, label, icon }) => {
             const active = sourceFilter === key;
             const count = sourceCounts[key];
@@ -105,7 +105,7 @@ export function DictionaryAccordion({ groups, onDelete, onRebind, onExport }: Pr
                 key={key}
                 onClick={() => setSourceFilter(key)}
                 className={[
-                  "px-3 py-1.5 text-xs rounded cursor-pointer flex items-center gap-1 transition-colors",
+                  "justify-center px-3 py-2 sm:py-0 text-xs rounded cursor-pointer flex items-center gap-1 transition-colors",
                   active
                     ? "bg-surface text-ink font-semibold shadow-xs"
                     : "text-ink-2 hover:text-ink",
@@ -129,7 +129,7 @@ export function DictionaryAccordion({ groups, onDelete, onRebind, onExport }: Pr
 
         <button
           onClick={onExport}
-          className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg bg-surface text-ink-2 hover:text-ink hover:border-ink-3 transition-colors flex items-center gap-1.5"
+          className="h-9 w-full sm:w-auto justify-center px-3 text-xs font-medium border border-border rounded bg-surface text-ink-2 hover:text-ink hover:border-ink-3 transition-colors flex items-center gap-1.5"
         >
           ↓ Экспорт
         </button>
@@ -143,23 +143,21 @@ export function DictionaryAccordion({ groups, onDelete, onRebind, onExport }: Pr
           </span>
         ) : (
           <span>
-            Показано <span className="font-mono text-ink">{filtered.length}</span> приборов · отсортировано по количеству фраз
+            Показано <span className="font-mono text-ink">{filtered.length}</span> приборов<span className="hidden sm:inline"> · отсортировано по количеству фраз</span>
           </span>
         )}
       </div>
 
       {/* Table */}
       <div className="bg-surface border border-border rounded-lg overflow-hidden">
-        {/* Горизонтальный скролл сетки на узких экранах — шапка и строки скроллятся вместе */}
+        {/* Горизонтальный скролл сетки — страховка для sm+; на телефоне категория
+            уходит под название, и сетка помещается в экран без прокрутки вбок */}
         <div className="overflow-x-auto">
-          <div className="min-w-[560px]">
+          <div className="sm:min-w-[560px]">
             {/* Table header */}
-            <div
-              className="grid gap-3 px-4 py-2 bg-surface-muted border-b border-border eyebrow text-ink-3"
-              style={{ gridTemplateColumns: "minmax(0,1fr) 120px 80px 80px 36px" }}
-            >
+            <div className={`${DICTIONARY_GRID} py-2 bg-surface-muted border-b border-border eyebrow text-ink-3`}>
               <span>Прибор</span>
-              <span>Категория</span>
+              <span className="hidden sm:block">Категория</span>
               <span className="text-right">Фраз</span>
               <span className="text-right">Исп.</span>
               <span />

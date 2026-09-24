@@ -8,7 +8,9 @@ import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem } from 
 
 // Каталог-«проводник» (утверждённые мокапы booking-equipment-variants, вариант C
 // + booking-equipment-mobile, вариант М1):
-// - desktop (lg+): категории колонкой слева, позиции активной категории справа;
+// - desktop (xl+): категории колонкой слева, позиции активной категории справа;
+//   на 1024–1279 колонка формы узкая (≈410 px) — там, как и у состава заявки,
+//   работает мобильный drill-down, иначе на позицию остаётся ≈180 px;
 // - mobile: drill-down — список категорий на всю ширину, тап → позиции
 //   с кнопкой «← Категории».
 // Общее состояние — activeTab: "all" = категория не выбрана (desktop показывает
@@ -200,7 +202,7 @@ export function CatalogBrowser({
   return (
     <div className="border-t border-border">
       {/* ── Desktop: проводник в две панели ── */}
-      <div className="hidden lg:flex">
+      <div className="hidden xl:flex">
         <div
           className="w-[230px] flex-none overflow-y-auto border-r border-border bg-surface-muted"
           style={panelStyle}
@@ -264,10 +266,10 @@ export function CatalogBrowser({
         </div>
       </div>
       {/* Тянулка высоты — только desktop (на мобиле список листается страницей). */}
-      <div className="hidden lg:block">{resizeHandle}</div>
+      <div className="hidden xl:block">{resizeHandle}</div>
 
       {/* ── Mobile: drill-down (М1) ── */}
-      <div className="lg:hidden">
+      <div className="xl:hidden">
         {activeTab === "all" ? (
           <div>
             {categories.map((cat) => {

@@ -145,7 +145,7 @@ export function DebtReportModal({ open, rows, onClose, onRemove, onRemoveClient 
             aria-label="Закрыть"
             onClick={onClose}
             disabled={busy !== null}
-            className="rounded p-1 text-ink-3 hover:bg-surface-muted hover:text-ink disabled:opacity-40"
+            className="-m-2 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded text-ink-3 hover:bg-surface-muted hover:text-ink disabled:opacity-40 sm:m-0 sm:block sm:h-auto sm:w-auto sm:p-1"
           >
             ✕
           </button>
@@ -268,13 +268,14 @@ export function DebtReportModal({ open, rows, onClose, onRemove, onRemoveClient 
           </p>
         </div>
 
-        {/* Действия */}
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3">
+        {/* Действия. На телефоне «Печать» — первой на всю ширину, скачивания — парой
+            под ней; «Отмену» заменяет крестик в шапке */}
+        <div className="grid grid-cols-2 gap-2 border-t border-border px-5 py-3 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
           <button
             type="button"
             onClick={onClose}
             disabled={busy !== null}
-            className="rounded px-3 py-2 text-[13px] text-ink-3 hover:text-ink disabled:opacity-40"
+            className="hidden rounded px-3 py-2 text-[13px] text-ink-3 hover:text-ink disabled:opacity-40 sm:inline-block"
           >
             Отмена
           </button>
@@ -282,7 +283,7 @@ export function DebtReportModal({ open, rows, onClose, onRemove, onRemoveClient 
             type="button"
             onClick={() => void run("xlsx")}
             disabled={disabled}
-            className="rounded border border-border bg-surface px-3.5 py-2 text-[13px] font-medium text-ink-2 hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-11 rounded border border-border bg-surface px-3.5 py-2 text-[13px] font-medium text-ink-2 hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto"
           >
             {busy === "xlsx" ? "Готовлю…" : "Скачать XLSX"}
           </button>
@@ -290,7 +291,7 @@ export function DebtReportModal({ open, rows, onClose, onRemove, onRemoveClient 
             type="button"
             onClick={() => void run("pdf")}
             disabled={disabled}
-            className="rounded border border-border bg-surface px-3.5 py-2 text-[13px] font-medium text-ink-2 hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-11 rounded border border-border bg-surface px-3.5 py-2 text-[13px] font-medium text-ink-2 hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40 sm:h-auto"
           >
             {busy === "pdf" ? "Готовлю…" : "Скачать PDF"}
           </button>
@@ -298,7 +299,7 @@ export function DebtReportModal({ open, rows, onClose, onRemove, onRemoveClient 
             type="button"
             onClick={() => void run("print")}
             disabled={disabled}
-            className="rounded bg-accent-bright px-4 py-2 text-[13px] font-semibold text-surface hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="order-first col-span-2 h-11 rounded bg-accent-bright px-4 py-2 text-[13px] font-semibold text-surface hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 sm:order-none sm:h-auto"
           >
             {busy === "print" ? "Готовлю…" : "Печать →"}
           </button>

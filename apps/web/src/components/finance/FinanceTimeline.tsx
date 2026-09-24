@@ -157,13 +157,13 @@ export function FinanceTimeline({ bookingId }: FinanceTimelineProps) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden mb-4">
+    <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
       {/* Header — toggles section */}
       <button
         type="button"
         onClick={handleToggle}
         aria-expanded={open}
-        className="w-full flex items-center justify-between p-3 border-b border-border bg-surface-subtle text-left hover:bg-surface-subtle/80 transition-colors"
+        className={`w-full flex items-center justify-between p-3 bg-surface-subtle text-left hover:bg-surface-subtle/80 transition-colors ${open ? "border-b border-border" : ""}`}
       >
         <p className="eyebrow">Хронология денег</p>
         <span className={`text-ink-3 text-[12px] transition-transform ${open ? "rotate-90" : ""}`}>▸</span>

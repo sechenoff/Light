@@ -117,7 +117,7 @@ export function RepairHistoryBlock({
                 <>
                   За 12 месяцев {history.count}{" "}
                   {pluralize(history.count, "прошлый ремонт", "прошлых ремонта", "прошлых ремонтов")}{" "}
-                  на <span className="mono-num">{formatRub(history.totalCost)}</span>
+                  на <span className="whitespace-nowrap">{formatRub(history.totalCost)}</span>
                   {history.shiftsEquivalent
                     ? ` — это ${ru(history.shiftsEquivalent)} ${pluralize(
                         Math.round(Number(history.shiftsEquivalent)),
@@ -139,7 +139,7 @@ export function RepairHistoryBlock({
 
         {showMoney && history.count > 0 && !history.repeated && (
           <p className="mt-2 text-[11px] leading-[1.45] text-ink-3">
-            Прошлые ремонты: <span className="mono-num">{formatRub(history.totalCost)}</span>
+            Прошлые ремонты: <span className="whitespace-nowrap">{formatRub(history.totalCost)}</span>
             {history.shiftsEquivalent
               ? ` — ${ru(history.shiftsEquivalent)} ${pluralize(
                   Math.round(Number(history.shiftsEquivalent)),

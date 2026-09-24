@@ -151,7 +151,7 @@ export function SummaryPanel({
   const bigTotalFormatted = Math.round(total).toLocaleString("ru-RU");
 
   return (
-    <aside className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-xs">
+    <aside className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-5 shadow-xs">
       {/* Header */}
       <div className="flex items-baseline justify-between">
         <p className="eyebrow">Расчёт</p>
@@ -180,6 +180,7 @@ export function SummaryPanel({
               onChange={onChangeNegotiatedTotal}
               ariaLabel="Итоговая сумма брони"
               size="lg"
+              className="-ml-[9px]"
             />
           ) : (
             <span className="font-mono text-[32px] font-semibold leading-none text-ink">
@@ -311,8 +312,8 @@ export function SummaryPanel({
           >
             {submitting ? "Сохранение…" : "Сохранить черновик"}
           </button>
-          <p className="text-center text-[11px] leading-snug text-ink-3">
-            Черновик не занимает оборудование — можно дособрать позже.
+          <p className="text-balance text-center text-[11px] leading-snug text-ink-3">
+            Черновик не занимает оборудование&nbsp;— можно дособрать позже.
           </p>
         </div>
       ) : (
@@ -333,8 +334,8 @@ export function SummaryPanel({
           >
             {submitting ? "Сохранение…" : "Сохранить черновик"}
           </button>
-          <p className="text-center text-[11px] leading-snug text-ink-3">
-            Черновик не занимает оборудование — можно дособрать позже.
+          <p className="text-balance text-center text-[11px] leading-snug text-ink-3">
+            Черновик не занимает оборудование&nbsp;— можно дособрать позже.
           </p>
         </div>
       )}

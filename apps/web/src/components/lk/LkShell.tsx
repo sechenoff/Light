@@ -27,10 +27,12 @@ export function LkShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-surface text-ink">
       <header className="bg-inverse text-on-inverse">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <Link href="/lk" className="font-medium tracking-tight">
+          <Link href="/lk" className="inline-flex items-center min-h-10 sm:min-h-0 font-medium tracking-tight">
             Светобаза · Личный кабинет
           </Link>
-          <div className="flex items-center gap-3 text-sm text-surface/80">
+          {/* На тёмной шапке — on-inverse, а не surface: ночью surface тёмный,
+              и имя с «Выйти» терялись на bg-inverse. */}
+          <div className="flex items-center gap-3 text-sm text-on-inverse/80">
             <span className="hidden sm:inline">{me.client.name}</span>
             <button
               onClick={async () => {
@@ -41,7 +43,7 @@ export function LkShell({ children }: { children: ReactNode }) {
                 }
                 window.location.href = "/lk/login";
               }}
-              className="px-3 py-1 rounded-md border border-surface/30 hover:bg-surface/10"
+              className="inline-flex items-center h-10 sm:h-8 px-3 rounded border border-on-inverse/30 hover:bg-on-inverse/10 transition-colors"
             >
               Выйти
             </button>

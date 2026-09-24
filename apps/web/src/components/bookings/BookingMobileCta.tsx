@@ -30,8 +30,10 @@ export function BookingMobileCta({
   if (!booking || (userRole !== "SUPER_ADMIN" && userRole !== "WAREHOUSE")) return null;
   if (booking.status === "CANCELLED" || booking.status === "DRAFT" || booking.status === "PENDING_APPROVAL") return null;
 
+  // Правый отступ — место под плавающую кнопку «Сообщить» (fixed, right-4,
+  // z-40): без него она ложится поверх «PDF Акт». С sm у кнопки видна подпись.
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex gap-2 px-3 py-3 bg-surface border-t border-border shadow-lg no-print">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex gap-2 pl-3 pr-20 sm:pr-40 py-3 bg-surface border-t border-border shadow-lg no-print">
       {/* ₽ Платёж — primary. Не для архивных. */}
       {!isArchived && (userRole === "SUPER_ADMIN" ||
         ((booking.status === "ISSUED" || booking.status === "RETURNED") &&

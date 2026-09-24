@@ -76,6 +76,11 @@ export interface WorkstationShellProps {
   onLogout?: () => void;
   /** Кнопка «назад» в шапке (внутри под-потока, например чек-листа). */
   onBack?: () => void;
+  /**
+   * Стрелка «назад» только на мобильном: на десктопе раздел — равноправный
+   * таб верхней навигации, возвращаться «назад» из него некуда.
+   */
+  backMobileOnly?: boolean;
   /** Скрыть навигацию целиком (экран логина). */
   navHidden?: boolean;
   /** Левый list-слот (двухпанельные табы Выдача/Приёмка/В работе). */
@@ -100,6 +105,14 @@ const TABS: Array<{
   { key: "inwork", label: "В работе", icon: IconClock, badgeKey: "inwork", badgeTone: "amber" },
   { key: "journal", label: "Журнал", icon: IconChart },
 ];
+
+/**
+ * Липкий футер экрана над фиксированным нижним таб-баром (телефон/планшет).
+ * 54 = кнопка таб-бара 53 (pt-2 + иконка 21 + gap 2 + строка 16 + pb-1.5)
+ * + border-t 1. На десктопе таб-бара нет — футер прилипает к низу окна.
+ */
+export const STICKY_ABOVE_TAB_BAR =
+  "sticky bottom-[calc(54px_+_env(safe-area-inset-bottom))] z-20 lg:bottom-0";
 
 const BADGE_TONE: Record<string, string> = {
   accent: "bg-accent-bright",
@@ -153,6 +166,7 @@ export function WorkstationShell({
   workerName,
   onLogout,
   onBack,
+  backMobileOnly = false,
   navHidden = false,
   list,
   mobileList = "stack",
@@ -174,7 +188,9 @@ export function WorkstationShell({
     >
       {[...TABS, { key: "problems" as WorkstationTab, label: "Поломки", icon: IconWrench, badgeKey: "problems" as const, badgeTone: "amber" as const }].map(
         ({ key, label, icon: Icon, badgeKey, badgeTone }) => {
-          const isOn = key === "problems" ? tab === "problems" : activeNavKey === key;
+          // Сверху «Поломки» — отдельный таб, поэтому «Журнал» при нём не
+          // подсвечивается (в нижнем таб-баре — подсвечивается, см. activeNavKey).
+          const isOn = key === (tab === "count" ? "shift" : tab);
           return (
             <button
               key={key}
@@ -247,7 +263,9 @@ export function WorkstationShell({
               type="button"
               onClick={onBack}
               aria-label="Назад"
-              className="-ml-1 flex h-9 w-9 items-center justify-center rounded text-lg leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+              className={`-ml-1 flex h-9 w-9 items-center justify-center rounded text-lg leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-white ${
+                backMobileOnly ? "lg:hidden" : ""
+              }`}
             >
               ←
             </button>
@@ -295,15 +313,19 @@ export function WorkstationShell({
           {topTabs}
           <div className="flex w-full flex-1 pb-[68px] lg:pb-0">
             {twoPane ? (
-              <div className="flex-1 lg:grid lg:grid-cols-[minmax(280px,340px)_1fr]">
+              // min-w-0: на мобильном обёртка — flex-элемент строки, и без него
+              // её минимум = nowrap-ширина самого длинного truncate-текста.
+              <div className="min-w-0 flex-1 lg:grid lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
                 <aside
-                  className={`border-b border-border bg-surface-muted lg:overflow-y-auto lg:border-b-0 lg:border-r ${
+                  className={`border-border bg-surface-muted lg:overflow-y-auto lg:border-r ${
                     mobileList === "hidden" ? "hidden lg:block" : ""
                   }`}
                 >
                   {list}
                 </aside>
-                <main className="flex min-w-0 flex-1 flex-col bg-surface lg:overflow-y-auto">
+                {/* Без overflow: иначе main — скролл-контейнер без ограничения
+                    высоты, и sticky-футер чек-листа не прилипает к окну. */}
+                <main className="flex min-w-0 flex-1 flex-col bg-surface">
                   {detail}
                 </main>
               </div>

@@ -240,7 +240,7 @@ export default function AdminUsersPage() {
       <AdminShell>
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 bg-surface-muted rounded animate-pulse" />
+            <div key={i} className="h-10 bg-surface-subtle rounded animate-pulse" />
           ))}
         </div>
       </AdminShell>
@@ -267,13 +267,78 @@ export default function AdminUsersPage() {
   // admin-07: служебная запись _system_ не должна попадать в счётчики «Всего».
   const realUserCount = (users ?? []).filter((u) => u.id !== "_system_").length;
 
+  // Редактор роли — общий для строки таблицы и мобильной карточки. Обычная функция,
+  // а не компонент: вложенный компонент пересоздавался бы на каждом рендере и
+  // сбрасывал фокус select. В таблице select на своей строке, кнопки под ним —
+  // ширина колонки при входе в правку не меняется.
+  function renderRoleEditor(u: AdminUserRow, layout: "cell" | "row") {
+    const size = layout === "cell" ? "h-8" : "h-10";
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        <select
+          value={pendingRole ?? u.role}
+          onChange={(e) => setPendingRole(e.target.value as UserRole)}
+          aria-label={`Новая роль для ${u.username}`}
+          className={`${size} ${layout === "cell" ? "w-full" : "min-w-0 flex-1"} rounded border border-border bg-surface px-2 text-xs text-ink focus:outline-none focus:border-accent-bright`}
+          autoFocus
+        >
+          <option value="WAREHOUSE">Кладовщик</option>
+          <option value="TECHNICIAN">Техник</option>
+          <option value="COLLECTOR">Взыскание</option>
+          <option value="SUPER_ADMIN">Руководитель</option>
+        </select>
+        <button
+          onClick={() => applyRoleChange(u.id, u.role, pendingRole ?? u.role)}
+          className={`inline-flex ${size} min-w-8 items-center justify-center rounded px-2 text-xs font-medium text-accent-bright hover:bg-accent-soft`}
+        >
+          ОК
+        </button>
+        <button
+          onClick={() => {
+            setChangingRoleId(null);
+            setPendingRole(null);
+          }}
+          aria-label="Отмена смены роли"
+          className={`inline-flex ${size} min-w-8 items-center justify-center rounded px-2 text-xs text-ink-3 hover:bg-surface-muted`}
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  function renderAvatar(u: AdminUserRow) {
+    return (
+      <div
+        className={`w-[30px] h-[30px] rounded flex items-center justify-center shrink-0 ${AVATAR_BG[u.role]}`}
+      >
+        <span className="font-mono text-[11px] font-bold text-surface">
+          {getInitials(u.username)}
+        </span>
+      </div>
+    );
+  }
+
   return (
     // Бейдж счётчика не показываем, пока список ещё не загружен (иначе мигает «0»).
     <AdminShell counts={{ users: users === null ? undefined : realUserCount }}>
       <div className="space-y-6">
       {/* Header */}
       <div>
-        <SectionHeader eyebrow="Администрирование" title="Пользователи" />
+        <SectionHeader
+          eyebrow="Администрирование"
+          title="Пользователи"
+          actions={
+            <button
+              onClick={() => setShowCreate((v) => !v)}
+              className="min-h-10 bg-accent-bright hover:bg-accent text-surface font-medium rounded px-4 py-2 text-sm transition-colors"
+            >
+              {/* На телефоне полная подпись не помещается рядом с заголовком */}
+              <span className="sm:hidden">+ Добавить</span>
+              <span className="hidden sm:inline">+ Добавить пользователя</span>
+            </button>
+          }
+        />
         <p className="text-sm text-ink-2 mt-1">
           Управление доступом к системе. Только Руководитель видит эту страницу.
         </p>
@@ -298,7 +363,7 @@ export default function AdminUsersPage() {
         </div>
 
         {/* Role count pills */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN", "COLLECTOR"] as UserRole[]).map((role) => (
             <span key={role} className="inline-flex items-center gap-1">
               <RoleBadge role={role} />
@@ -308,14 +373,6 @@ export default function AdminUsersPage() {
             </span>
           ))}
         </div>
-
-        {/* Add button */}
-        <button
-          onClick={() => setShowCreate((v) => !v)}
-          className="ml-auto bg-accent-bright hover:bg-accent text-surface font-medium rounded-lg px-4 py-2 text-sm transition-colors"
-        >
-          + Добавить пользователя
-        </button>
       </div>
 
       {/* Create form */}
@@ -414,17 +471,18 @@ export default function AdminUsersPage() {
       {loadingUsers ? (
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 bg-surface-muted rounded-lg animate-pulse" />
+            <div key={i} className="h-12 bg-surface-subtle rounded-lg animate-pulse" />
           ))}
         </div>
       ) : filtered.length > 0 ? (
-        <div className="border border-border rounded-lg overflow-x-auto shadow-xs">
-          <table className="w-full min-w-[720px] text-sm">
+        <>
+        <div className="hidden md:block bg-surface border border-border rounded-lg overflow-x-auto shadow-xs">
+          <table className="w-full text-sm">
             <thead className="bg-surface-muted">
               <tr>
                 <th className="text-left px-4 py-2.5 eyebrow">Пользователь</th>
-                <th className="text-left px-4 py-2.5 eyebrow">Роль</th>
-                <th className="text-left px-4 py-2.5 eyebrow hidden md:table-cell">Создан</th>
+                <th className="w-[180px] text-left px-4 py-2.5 eyebrow">Роль</th>
+                <th className="text-left px-4 py-2.5 eyebrow hidden xl:table-cell">Создан</th>
                 <th className="text-left px-4 py-2.5 eyebrow hidden lg:table-cell">Статус</th>
                 <th className="text-right px-4 py-2.5 eyebrow">Действия</th>
               </tr>
@@ -439,63 +497,29 @@ export default function AdminUsersPage() {
                     {/* Avatar + name */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div
-                          className={`w-[30px] h-[30px] rounded flex items-center justify-center shrink-0 ${AVATAR_BG[u.role]}`}
-                        >
-                          <span className="font-mono text-[11px] font-bold text-white">
-                            {getInitials(u.username)}
-                          </span>
-                        </div>
+                        {renderAvatar(u)}
                         <div>
                           <div className="font-medium text-ink">{u.username}</div>
                           <div className="text-[11px] text-ink-3">{roleLabel(u.role)}</div>
                           <div className="flex flex-wrap gap-x-3 mt-1 text-xs">
-                            <Link className="text-accent-bright hover:underline py-1" href={`/admin/audit?userId=${encodeURIComponent(u.id)}`}>Действия сотрудника</Link>
-                            <Link className="text-accent-bright hover:underline py-1" href={`/admin/audit?entityType=AdminUser&entityId=${encodeURIComponent(u.id)}`}>Изменения аккаунта</Link>
+                            <Link className="text-accent-bright hover:underline py-1 whitespace-nowrap" href={`/admin/audit?userId=${encodeURIComponent(u.id)}`}>Действия сотрудника</Link>
+                            <Link className="text-accent-bright hover:underline py-1 whitespace-nowrap" href={`/admin/audit?entityType=AdminUser&entityId=${encodeURIComponent(u.id)}`}>Изменения аккаунта</Link>
                           </div>
                         </div>
                       </div>
                     </td>
 
                     {/* Role */}
-                    <td className="px-4 py-3">
+                    <td className="w-[180px] px-4 py-3">
                       {changingRoleId === u.id ? (
-                        <span className="inline-flex items-center gap-1">
-                          <select
-                            value={pendingRole ?? u.role}
-                            onChange={(e) => setPendingRole(e.target.value as UserRole)}
-                            className="text-xs border border-border rounded px-1 py-0.5 bg-surface"
-                            autoFocus
-                          >
-                            <option value="WAREHOUSE">Кладовщик</option>
-                            <option value="TECHNICIAN">Техник</option>
-                  <option value="COLLECTOR">Взыскание</option>
-                            <option value="SUPER_ADMIN">Руководитель</option>
-                          </select>
-                          <button
-                            onClick={() => applyRoleChange(u.id, u.role, pendingRole ?? u.role)}
-                            className="text-xs text-accent hover:underline"
-                          >
-                            ОК
-                          </button>
-                          <button
-                            onClick={() => {
-                              setChangingRoleId(null);
-                              setPendingRole(null);
-                            }}
-                            aria-label="Отмена смены роли"
-                            className="text-xs text-ink-3 hover:underline"
-                          >
-                            ✕
-                          </button>
-                        </span>
+                        renderRoleEditor(u, "cell")
                       ) : (
                         <RoleBadge role={u.role} />
                       )}
                     </td>
 
                     {/* Created */}
-                    <td className="px-4 py-3 hidden md:table-cell">
+                    <td className="px-4 py-3 hidden xl:table-cell">
                       <span className="mono-num text-xs text-ink-3">{formatDate(u.createdAt)}</span>
                     </td>
 
@@ -504,7 +528,7 @@ export default function AdminUsersPage() {
                       <button
                         onClick={() => handleToggleActive(u)}
                         title={u.isActive ? "Отключить доступ" : "Включить доступ"}
-                        className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium border transition-colors ${
+                        className={`inline-flex items-center gap-1 whitespace-nowrap text-[11px] px-2 py-0.5 rounded-full font-medium border transition-colors ${
                           u.isActive
                             ? "bg-emerald-soft text-emerald border-emerald-border hover:bg-emerald-soft/70"
                             : "bg-surface-muted text-ink-3 border-border hover:bg-surface"
@@ -552,6 +576,57 @@ export default function AdminUsersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Телефон: карточки вместо таблицы — роль и действия видны без прокрутки вбок */}
+        <ul className="md:hidden divide-y divide-border rounded-lg border border-border bg-surface shadow-xs">
+          {filtered.map((u) => (
+            <li key={u.id} className={`p-3 space-y-2 ${u.isActive ? "" : "opacity-60"}`}>
+              <div className="flex items-center gap-3">
+                {renderAvatar(u)}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium text-ink">{u.username}</div>
+                  <div className="text-[11px] text-ink-3">{u.isActive ? "активен" : "отключён"}</div>
+                </div>
+                <RoleBadge role={u.role} />
+              </div>
+              {changingRoleId === u.id && renderRoleEditor(u, "row")}
+              <div className="flex flex-wrap gap-x-4 text-xs">
+                <Link className="text-accent-bright hover:underline py-1 whitespace-nowrap" href={`/admin/audit?userId=${encodeURIComponent(u.id)}`}>Действия сотрудника</Link>
+                <Link className="text-accent-bright hover:underline py-1 whitespace-nowrap" href={`/admin/audit?entityType=AdminUser&entityId=${encodeURIComponent(u.id)}`}>Изменения аккаунта</Link>
+              </div>
+              <div className="grid grid-cols-2 gap-2 min-[360px]:grid-cols-4">
+                <button
+                  onClick={() => handleToggleActive(u)}
+                  className="min-h-10 rounded border border-border text-xs text-ink-2 hover:bg-surface-muted"
+                >
+                  {u.isActive ? "Отключить" : "Включить"}
+                </button>
+                <button
+                  onClick={() => setPwTarget({ id: u.id, username: u.username })}
+                  className="min-h-10 rounded border border-border text-xs text-ink-2 hover:bg-surface-muted"
+                >
+                  Пароль
+                </button>
+                <button
+                  onClick={() => {
+                    setChangingRoleId(u.id);
+                    setPendingRole(u.role);
+                  }}
+                  className="min-h-10 rounded border border-border text-xs text-ink-2 hover:bg-surface-muted"
+                >
+                  Роль
+                </button>
+                <button
+                  onClick={() => handleDelete(u)}
+                  className="min-h-10 rounded border border-rose-border text-xs text-rose hover:bg-rose-soft"
+                >
+                  Удалить
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+        </>
       ) : (
         <div className="text-center py-12 text-ink-3 text-sm border border-border rounded-lg bg-surface">
           {search ? "Ничего не найдено" : "Пользователей пока нет"}
@@ -572,6 +647,10 @@ export default function AdminUsersPage() {
         </div>
       )}
 
+      </div>
+
+      {/* Модалки — вне space-y-6: иначе fixed-подложка получает margin-top и сверху
+          остаётся незатемнённая полоса. */}
       {pwTarget && (
         <ChangePasswordModal
           username={pwTarget.username}
@@ -604,7 +683,6 @@ export default function AdminUsersPage() {
           }}
         />
       )}
-      </div>
     </AdminShell>
   );
 }

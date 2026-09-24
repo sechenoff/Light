@@ -100,7 +100,7 @@ export function ProblemsScreen({
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-5 lg:py-4">
+    <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-6 lg:py-4">
       <button
         type="button"
         onClick={() => setRegistering(true)}
@@ -124,7 +124,11 @@ export function ProblemsScreen({
             В ремонте{data ? ` · ${data.repairs.length}` : ""}
           </h3>
           {hasMainSession && (
-            <a href="/repair" className="text-[11.5px] text-accent-bright hover:underline">
+            // -my-2.5 возвращает высоту шапки: цель нажатия 40 px, а строка та же.
+            <a
+              href="/repair"
+              className="-my-2.5 -mr-1 inline-flex min-h-[40px] items-center px-1 text-[11.5px] text-accent-bright hover:underline"
+            >
               Мастерская →
             </a>
           )}
@@ -161,7 +165,7 @@ export function ProblemsScreen({
                     {r.equipmentName}
                     {r.quantity > 1 ? ` ×${r.quantity}` : ""}
                   </span>
-                  <span className="block truncate text-[11px] text-ink-3">
+                  <span className="line-clamp-2 break-words text-[11px] leading-snug text-ink-3 sm:line-clamp-1">
                     {r.reason}
                     {r.sourceProject ? ` · с приёмки «${r.sourceProject}»` : ""}
                     {r.photosCount > 0 ? ` · ${r.photosCount} фото` : ""}
@@ -217,13 +221,14 @@ export function ProblemsScreen({
                     {p.equipmentName}
                     {p.quantity > 1 ? ` ×${p.quantity}` : ""}
                   </span>
-                  <span className="block truncate text-[11px] text-ink-3">
+                  <span className="line-clamp-2 break-words text-[11px] leading-snug text-ink-3 sm:line-clamp-1">
                     {problemReasonLabel(p.reason)}
                     {p.sourceProject ? ` · ${p.sourceProject}` : ""}
                     {p.status === "EXPECTED" && p.expectedBackDate
                       ? ` · ждём ${shortDate(p.expectedBackDate)}`
                       : ""}
-                    {searchingDays > 0 ? ` · в розыске ${searchingDays} дн` : ""}
+                    {/* Неразрывный пробел: число при переносе не отрывается от «дн». */}
+                    {searchingDays > 0 ? ` · в розыске ${searchingDays}\u00a0дн` : ""}
                   </span>
                 </span>
                 <span

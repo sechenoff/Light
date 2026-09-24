@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiFetch } from "../../../src/lib/api";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { toast } from "../../../src/components/ToastProvider";
+import { formatRub } from "../../../src/lib/format";
 
 type EquipmentRow = {
   id: string;
@@ -47,6 +48,14 @@ const EMPTY_FORM: FormState = {
   rentalRatePerProject: "",
   comment: "",
 };
+
+// Явный фон и цвет текста: без них в ночной теме браузер заливает поле
+// системным серым. text-base на телефоне — чтобы iOS не зумил страницу при фокусе.
+const FIELD_TONE = "bg-surface text-ink placeholder:text-ink-3";
+const MODAL_FIELD = `rounded border border-border px-2 py-1.5 text-base sm:text-sm ${FIELD_TONE}`;
+// Липкая колонка «Действия» (с md; на телефоне 150 px из 341 под одну кнопку — много).
+const STICKY_ACTIONS =
+  "md:sticky md:right-0 md:after:absolute md:after:inset-y-0 md:after:left-0 md:after:w-px md:after:bg-border";
 
 function uniqueCategoriesFromEquipments(equipments: EquipmentRow[]): string[] {
   const seen = new Map<string, string>();
@@ -307,6 +316,7 @@ export default function EquipmentManagePage() {
   }
 
   return (
+    <>
     <div className="p-4 lg:p-6 space-y-4">
       {/* Шапка */}
       <div>
@@ -329,14 +339,14 @@ export default function EquipmentManagePage() {
 
       {/* Таблица */}
       <div className="rounded border border-border bg-surface overflow-hidden">
-        <div className="p-3 border-b border-border flex items-center justify-between gap-3">
+        <div className="p-3 border-b border-border flex flex-wrap items-center gap-2 sm:gap-3">
           <input
-            className="rounded border border-border px-2 py-1 text-sm w-full max-w-sm"
+            className={`w-full rounded border border-border px-2 py-1 text-base sm:w-auto sm:flex-1 sm:max-w-sm sm:text-sm ${FIELD_TONE}`}
             placeholder="Поиск..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <div className="flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-3">
             <span className="text-xs text-ink-3 whitespace-nowrap">
               {loading ? "Загрузка..." : savingOrder ? "Сохраняю порядок..." : `Позиций: ${rows.length}`}
             </span>
@@ -350,17 +360,20 @@ export default function EquipmentManagePage() {
           </div>
         </div>
         <div className="overflow-auto">
-          <table className="min-w-[1250px] w-full text-sm">
+          <table className="min-w-[880px] w-full text-sm">
             <thead className="bg-surface-subtle text-ink-2">
               <tr>
-                <th className="px-3 py-2 text-left w-[90px]">Порядок</th>
-                <th className="px-3 py-2 text-left">Категория</th>
-                <th className="px-3 py-2 text-left">Наименование</th>
-                <th className="px-3 py-2 text-right">Кол-во</th>
-                <th className="px-3 py-2 text-right">Смена</th>
-                <th className="px-3 py-2 text-right">2 смены</th>
-                <th className="px-3 py-2 text-right">Проект</th>
-                <th className="px-3 py-2 text-center w-[190px]">Действия</th>
+                {/* «Порядок» — перетаскивание мышью, на тач-экране не работает */}
+                <th className="hidden px-3 py-2 text-left font-medium whitespace-nowrap w-[90px] md:table-cell">Порядок</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Категория</th>
+                <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Наименование</th>
+                <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Кол-во</th>
+                <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Смена</th>
+                <th className="px-3 py-2 text-right font-medium whitespace-nowrap">2 смены</th>
+                <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Проект</th>
+                {/* «Действия» липкие справа: при горизонтальном скролле «Удалить» не уезжает.
+                    Разделитель — псевдоэлементом: border-l при border-collapse остаётся на месте. */}
+                <th className={`w-px whitespace-nowrap bg-surface-subtle px-3 py-2 text-center font-medium ${STICKY_ACTIONS}`}>Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -389,7 +402,7 @@ export default function EquipmentManagePage() {
                     setDragOverId(null);
                   }}
                 >
-                  <td className="px-3 py-2">
+                  <td className="hidden px-3 py-2 md:table-cell">
                     <span className="text-ink-3 cursor-grab select-none" title="Перетяните строку мышкой">
                       ⋮⋮
                     </span>
@@ -397,7 +410,7 @@ export default function EquipmentManagePage() {
                   <td className="px-3 py-2">
                     {inlineEditId === r.id ? (
                       <input
-                        className="w-full rounded border border-border px-2 py-1 text-sm"
+                        className={`w-full rounded border border-border px-2 py-1 text-sm ${FIELD_TONE}`}
                         value={inlineForm.category}
                         onChange={(e) => setInlineForm((p) => ({ ...p, category: e.target.value }))}
                       />
@@ -411,19 +424,19 @@ export default function EquipmentManagePage() {
                     {inlineEditId === r.id ? (
                       <div className="space-y-1">
                         <input
-                          className="w-full rounded border border-border px-2 py-1 text-sm"
+                          className={`w-full rounded border border-border px-2 py-1 text-sm ${FIELD_TONE}`}
                           value={inlineForm.name}
                           onChange={(e) => setInlineForm((p) => ({ ...p, name: e.target.value }))}
                         />
                         <div className="flex gap-1">
                           <input
-                            className="w-1/2 rounded border border-border px-2 py-1 text-xs"
+                            className={`w-1/2 rounded border border-border px-2 py-1 text-xs ${FIELD_TONE}`}
                             placeholder="Бренд"
                             value={inlineForm.brand}
                             onChange={(e) => setInlineForm((p) => ({ ...p, brand: e.target.value }))}
                           />
                           <input
-                            className="w-1/2 rounded border border-border px-2 py-1 text-xs"
+                            className={`w-1/2 rounded border border-border px-2 py-1 text-xs ${FIELD_TONE}`}
                             placeholder="Модель"
                             value={inlineForm.model}
                             onChange={(e) => setInlineForm((p) => ({ ...p, model: e.target.value }))}
@@ -450,7 +463,7 @@ export default function EquipmentManagePage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right mono-num whitespace-nowrap">
                     {/* eu-1: у UNIT-позиции количество = число единиц, правится только
                         через генерацию/удаление единиц. Поле read-only с ссылкой. */}
                     {r.stockTrackingMode === "UNIT" ? (
@@ -464,7 +477,7 @@ export default function EquipmentManagePage() {
                     ) : inlineEditId === r.id ? (
                       <div className="flex flex-col items-end gap-1">
                         <input
-                          className="w-20 rounded border border-border px-2 py-1 text-sm text-right"
+                          className={`w-20 rounded border border-border px-2 py-1 text-sm text-right ${FIELD_TONE}`}
                           type="number"
                           min={0}
                           value={inlineForm.totalQuantity}
@@ -473,7 +486,7 @@ export default function EquipmentManagePage() {
                         {/* Перевод COUNT→UNIT: после сохранения количество управляется
                             генерацией единиц. Обратный переход UNIT→COUNT не предлагаем. */}
                         <select
-                          className="w-28 rounded border border-border px-1 py-0.5 text-xs bg-surface"
+                          className={`w-28 rounded border border-border px-1 py-0.5 font-sans text-xs ${FIELD_TONE}`}
                           title="Режим учёта. Поштучный: количество = число единиц"
                           value={inlineForm.stockTrackingMode}
                           onChange={(e) =>
@@ -490,10 +503,10 @@ export default function EquipmentManagePage() {
                       <span>{r.totalQuantity}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right mono-num whitespace-nowrap">
                     {inlineEditId === r.id ? (
                       <input
-                        className="w-24 rounded border border-border px-2 py-1 text-sm text-right"
+                        className={`w-24 rounded border border-border px-2 py-1 text-sm text-right ${FIELD_TONE}`}
                         type="number"
                         min={0}
                         step="0.01"
@@ -501,15 +514,15 @@ export default function EquipmentManagePage() {
                         onChange={(e) => setInlineForm((p) => ({ ...p, rentalRatePerShift: e.target.value }))}
                       />
                     ) : isSuperAdmin ? (
-                      <button className="hover:underline" onClick={() => beginInlineEdit(r)}>{r.rentalRatePerShift}</button>
+                      <button className="hover:underline" onClick={() => beginInlineEdit(r)}>{formatRub(r.rentalRatePerShift)}</button>
                     ) : (
-                      <span>{r.rentalRatePerShift}</span>
+                      <span>{formatRub(r.rentalRatePerShift)}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right mono-num whitespace-nowrap">
                     {inlineEditId === r.id ? (
                       <input
-                        className="w-24 rounded border border-border px-2 py-1 text-sm text-right"
+                        className={`w-24 rounded border border-border px-2 py-1 text-sm text-right ${FIELD_TONE}`}
                         type="number"
                         min={0}
                         step="0.01"
@@ -519,16 +532,16 @@ export default function EquipmentManagePage() {
                       />
                     ) : isSuperAdmin ? (
                       <button className="hover:underline" onClick={() => beginInlineEdit(r)}>
-                        {r.rentalRateTwoShifts ?? <span className="text-ink-3">—</span>}
+                        {r.rentalRateTwoShifts != null ? formatRub(r.rentalRateTwoShifts) : <span className="text-ink-3">—</span>}
                       </button>
                     ) : (
-                      <span>{r.rentalRateTwoShifts ?? "—"}</span>
+                      <span>{r.rentalRateTwoShifts != null ? formatRub(r.rentalRateTwoShifts) : "—"}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right mono-num whitespace-nowrap">
                     {inlineEditId === r.id ? (
                       <input
-                        className="w-24 rounded border border-border px-2 py-1 text-sm text-right"
+                        className={`w-24 rounded border border-border px-2 py-1 text-sm text-right ${FIELD_TONE}`}
                         type="number"
                         min={0}
                         step="0.01"
@@ -538,13 +551,13 @@ export default function EquipmentManagePage() {
                       />
                     ) : isSuperAdmin ? (
                       <button className="hover:underline" onClick={() => beginInlineEdit(r)}>
-                        {r.rentalRatePerProject ?? <span className="text-ink-3">—</span>}
+                        {r.rentalRatePerProject != null ? formatRub(r.rentalRatePerProject) : <span className="text-ink-3">—</span>}
                       </button>
                     ) : (
-                      <span>{r.rentalRatePerProject ?? "—"}</span>
+                      <span>{r.rentalRatePerProject != null ? formatRub(r.rentalRatePerProject) : "—"}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={`px-3 py-2 ${dragOverId === r.id ? "bg-accent-soft" : "bg-surface"} ${STICKY_ACTIONS}`}>
                     <div className="flex items-center justify-center gap-2">
                       {inlineEditId === r.id ? (
                         <>
@@ -607,7 +620,10 @@ export default function EquipmentManagePage() {
           </table>
         </div>
       </div>
+    </div>
 
+      {/* Модалки — вне контейнера со space-y: иначе `> * + *` даёт fixed-оверлею
+          margin-top, и сверху остаётся полоса без затемнения. */}
       {/* Модал: добавление позиции */}
       {addModalOpen ? (
         <div
@@ -619,7 +635,7 @@ export default function EquipmentManagePage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-equipment-title"
-            className="w-full max-w-lg rounded-lg border border-border bg-surface shadow-xl overflow-hidden"
+            className="flex max-h-full w-full max-w-lg flex-col rounded-lg border border-border bg-surface shadow-xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -635,14 +651,18 @@ export default function EquipmentManagePage() {
               </button>
             </div>
 
-            <div className="px-4 py-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
+            {/* На телефоне поля идут в одну колонку и форма выше экрана —
+                прокручивается тело, шапка и кнопки остаются на месте. */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* min-w-0 по цепочке: иначе select не ужимается уже самой длинной
+                    опции, вылезает из колонки и прячет «+ Новая» под соседним полем. */}
+                <div className="flex min-w-0 flex-col gap-1">
                   <label className="text-xs text-ink-3">Категория *</label>
                   {addCategoryNew ? (
-                    <div className="flex gap-1">
+                    <div className="flex min-w-0 gap-1">
                       <input
-                        className="flex-1 rounded border border-border px-2 py-1.5 text-sm"
+                        className={`min-w-0 flex-1 ${MODAL_FIELD}`}
                         placeholder="Название новой категории"
                         autoFocus
                         value={addForm.category}
@@ -663,9 +683,9 @@ export default function EquipmentManagePage() {
                       )}
                     </div>
                   ) : (
-                    <div className="flex gap-1">
+                    <div className="flex min-w-0 gap-1">
                       <select
-                        className="flex-1 rounded border border-border px-2 py-1.5 text-sm"
+                        className={`min-w-0 flex-1 ${MODAL_FIELD}`}
                         value={addForm.category}
                         onChange={(e) => setAddForm((p) => ({ ...p, category: e.target.value }))}
                       >
@@ -689,7 +709,7 @@ export default function EquipmentManagePage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-ink-3">Наименование *</label>
                   <input
-                    className="rounded border border-border px-2 py-1.5 text-sm"
+                    className={MODAL_FIELD}
                     placeholder="Название позиции"
                     value={addForm.name}
                     onChange={(e) => setAddForm((p) => ({ ...p, name: e.target.value }))}
@@ -698,7 +718,7 @@ export default function EquipmentManagePage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-ink-3">Бренд</label>
                   <input
-                    className="rounded border border-border px-2 py-1.5 text-sm"
+                    className={MODAL_FIELD}
                     placeholder="например, Aputure"
                     value={addForm.brand}
                     onChange={(e) => setAddForm((p) => ({ ...p, brand: e.target.value }))}
@@ -707,7 +727,7 @@ export default function EquipmentManagePage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-ink-3">Модель</label>
                   <input
-                    className="rounded border border-border px-2 py-1.5 text-sm"
+                    className={MODAL_FIELD}
                     placeholder="например, LS 600d"
                     value={addForm.model}
                     onChange={(e) => setAddForm((p) => ({ ...p, model: e.target.value }))}
@@ -716,7 +736,7 @@ export default function EquipmentManagePage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-ink-3">Кол-во</label>
                   <input
-                    className="rounded border border-border px-2 py-1.5 text-sm"
+                    className={MODAL_FIELD}
                     type="number"
                     min={0}
                     value={addForm.totalQuantity}
@@ -726,7 +746,7 @@ export default function EquipmentManagePage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-ink-3">Режим учёта</label>
                   <select
-                    className="rounded border border-border px-2 py-1.5 text-sm bg-surface"
+                    className={MODAL_FIELD}
                     value={addForm.stockTrackingMode}
                     onChange={(e) =>
                       setAddForm((p) => ({ ...p, stockTrackingMode: e.target.value as "COUNT" | "UNIT" }))
@@ -744,7 +764,7 @@ export default function EquipmentManagePage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-ink-3">Ставка за смену</label>
                   <input
-                    className="rounded border border-border px-2 py-1.5 text-sm"
+                    className={MODAL_FIELD}
                     type="number"
                     min={0}
                     step="0.01"
@@ -755,7 +775,7 @@ export default function EquipmentManagePage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-ink-3">Ставка за 2 смены</label>
                   <input
-                    className="rounded border border-border px-2 py-1.5 text-sm"
+                    className={MODAL_FIELD}
                     type="number"
                     min={0}
                     step="0.01"
@@ -767,7 +787,7 @@ export default function EquipmentManagePage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-ink-3">Ставка за проект</label>
                   <input
-                    className="rounded border border-border px-2 py-1.5 text-sm"
+                    className={MODAL_FIELD}
                     type="number"
                     min={0}
                     step="0.01"
@@ -779,7 +799,7 @@ export default function EquipmentManagePage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-ink-3">Комментарий</label>
                   <input
-                    className="rounded border border-border px-2 py-1.5 text-sm"
+                    className={MODAL_FIELD}
                     placeholder="необязательно"
                     value={addForm.comment}
                     onChange={(e) => setAddForm((p) => ({ ...p, comment: e.target.value }))}
@@ -954,6 +974,6 @@ export default function EquipmentManagePage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

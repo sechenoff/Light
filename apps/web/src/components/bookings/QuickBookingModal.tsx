@@ -121,7 +121,7 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
       onClick={() => !saving && onClose()}
     >
       <div
-        className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-lg bg-surface p-6 shadow-lg"
         role="dialog"
         aria-modal="true"
         aria-label="Быстрая бронь"
@@ -139,7 +139,7 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
             onClick={onClose}
             disabled={saving}
             aria-label="Закрыть"
-            className="-mr-1 -mt-1 rounded p-1 text-ink-3 hover:bg-surface-muted hover:text-ink disabled:opacity-50"
+            className="-mr-2 -mt-2 flex h-10 w-10 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-surface-muted hover:text-ink disabled:opacity-50"
           >
             ✕
           </button>
@@ -168,7 +168,7 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
               onChange={(e) => setPhone(e.target.value)}
               disabled={saving}
               placeholder="+7 916 123-45-67"
-              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none"
+              className="min-h-10 w-full rounded border border-border-strong bg-surface px-3 py-2 text-base text-ink focus:border-accent-bright focus:outline-none focus:ring-[3px] focus:ring-accent-soft sm:text-sm"
             />
           </div>
         )}
@@ -192,7 +192,7 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
           disabled={saving}
           placeholder="40 000"
           aria-invalid={amount.trim() !== "" && !amountValid}
-          className="mono-num w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-lg font-semibold text-ink focus:border-accent-bright focus:outline-none"
+          className="mono-num w-full rounded border border-border-strong bg-surface px-3 py-2.5 text-lg font-semibold text-ink focus:border-accent-bright focus:outline-none focus:ring-[3px] focus:ring-accent-soft"
         />
         <div className="mt-1 min-h-[1rem] text-xs">
           {amount.trim() !== "" && !amountValid ? (
@@ -202,7 +202,7 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
           ) : null}
         </div>
 
-        <label htmlFor="quick-project" className="mb-1 mt-3 block text-sm text-ink-2">
+        <label htmlFor="quick-project" className="mb-1 mt-2 block text-sm text-ink-2">
           Проект <span className="text-ink-3">· опционально</span>
         </label>
         <input
@@ -212,14 +212,16 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
           onChange={(e) => setProjectName(e.target.value)}
           disabled={saving}
           placeholder="Без описания"
-          className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none"
+          className="min-h-10 w-full rounded border border-border-strong bg-surface px-3 py-2 text-base text-ink focus:border-accent-bright focus:outline-none focus:ring-[3px] focus:ring-accent-soft sm:text-sm"
         />
 
         {/* Даты свёрнуты: в типовом случае это сегодня→завтра */}
-        <div className="mt-4 rounded border border-dashed border-border-strong px-3 py-2">
+        <div
+          className={`mt-4 rounded border border-dashed border-border-strong px-3 ${datesOpen ? "py-2" : "py-0"}`}
+        >
           {datesOpen ? (
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
+            <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
+              <div className="min-w-0">
                 <label htmlFor="quick-start" className="mb-1 block text-xs text-ink-3">
                   Выдача
                 </label>
@@ -229,10 +231,10 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
                   value={dates.start}
                   onChange={(e) => setDates((d) => ({ ...d, start: e.target.value }))}
                   disabled={saving}
-                  className="w-full rounded border border-border bg-surface px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
+                  className="w-full min-w-0 rounded border border-border-strong bg-surface px-2 py-1.5 text-base text-ink focus:border-accent-bright focus:outline-none focus:ring-[3px] focus:ring-accent-soft sm:text-sm"
                 />
               </div>
-              <div className="flex-1">
+              <div className="min-w-0">
                 <label htmlFor="quick-end" className="mb-1 block text-xs text-ink-3">
                   Возврат
                 </label>
@@ -242,7 +244,7 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
                   value={dates.end}
                   onChange={(e) => setDates((d) => ({ ...d, end: e.target.value }))}
                   disabled={saving}
-                  className="w-full rounded border border-border bg-surface px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
+                  className="w-full min-w-0 rounded border border-border-strong bg-surface px-2 py-1.5 text-base text-ink focus:border-accent-bright focus:outline-none focus:ring-[3px] focus:ring-accent-soft sm:text-sm"
                 />
               </div>
             </div>
@@ -251,10 +253,10 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
               type="button"
               onClick={() => setDatesOpen(true)}
               disabled={saving}
-              className="flex w-full items-center justify-between text-left text-xs text-ink-3 hover:text-ink disabled:opacity-50"
+              className="flex min-h-10 w-full items-center justify-between text-left text-xs text-ink-3 hover:text-ink disabled:opacity-50"
             >
               <span>
-                Период: <span className="mono-num text-ink-2">сегодня → завтра</span>
+                Период: <span className="text-ink-2">сегодня → завтра</span>
               </span>
               <span className="text-accent">изменить даты</span>
             </button>
@@ -272,7 +274,7 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-muted disabled:opacity-50"
+            className="min-h-10 rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-muted disabled:opacity-50"
           >
             Отмена
           </button>
@@ -280,7 +282,7 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
             type="button"
             onClick={() => void handleSubmit()}
             disabled={!canSubmit}
-            className="rounded bg-accent-bright px-5 py-2 text-sm font-medium text-surface transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="min-h-10 rounded bg-accent-bright px-5 py-2 text-sm font-medium text-surface transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Создаю…" : "Создать бронь"}
           </button>

@@ -318,9 +318,10 @@ export function TaskArchivePage() {
 
       {/* Stats strip */}
       {!loading && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 bg-surface border border-border rounded-[10px] overflow-hidden mb-4">
-          <div className="px-5 py-4 border-r border-border flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium">
+        // Линии между ячейками и рядами рисует gap-px на подложке bg-border — без двойных рамок.
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border rounded-lg overflow-hidden mb-4">
+          <div className="bg-surface px-5 py-4 flex flex-col gap-1">
+            <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium leading-[1.3] min-h-[2.6em] xl:min-h-0">
               Выполнено всего
             </span>
             <span className="text-[22px] font-mono font-medium text-emerald tabular-nums">
@@ -331,8 +332,8 @@ export function TaskArchivePage() {
               {nextCursor ? "по загруженным записям" : "за всё время"}
             </span>
           </div>
-          <div className="px-5 py-4 border-r border-border flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium">
+          <div className="bg-surface px-5 py-4 flex flex-col gap-1">
+            <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium leading-[1.3] min-h-[2.6em] xl:min-h-0">
               За этот месяц
             </span>
             <span className="text-[22px] font-mono font-medium text-ink tabular-nums">
@@ -344,14 +345,14 @@ export function TaskArchivePage() {
                 : "пока ничего"}
             </span>
           </div>
-          <div className="px-5 py-4 border-r border-border flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium">
+          <div className="bg-surface px-5 py-4 flex flex-col gap-1">
+            <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium leading-[1.3] min-h-[2.6em] xl:min-h-0">
               Лидер месяца
             </span>
             {stats.topLeader ? (
               <span className="text-[15px] font-medium text-ink flex items-center gap-2 min-w-0">
                 <span
-                  className={`w-[26px] h-[26px] rounded-full ${leaderAvatarColor(stats.topLeaderId)} text-white text-xs font-semibold flex items-center justify-center shrink-0`}
+                  className={`w-[26px] h-[26px] rounded-full ${leaderAvatarColor(stats.topLeaderId)} text-surface text-xs font-semibold flex items-center justify-center shrink-0`}
                 >
                   {stats.topLeader.charAt(0).toUpperCase()}
                 </span>
@@ -366,8 +367,8 @@ export function TaskArchivePage() {
               </span>
             )}
           </div>
-          <div className="px-5 py-4 flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium">
+          <div className="bg-surface px-5 py-4 flex flex-col gap-1">
+            <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium leading-[1.3] min-h-[2.6em] xl:min-h-0">
               Среднее время закрытия
             </span>
             <span className="text-[22px] font-mono font-medium text-ink tabular-nums">
@@ -379,9 +380,9 @@ export function TaskArchivePage() {
       )}
 
       {/* Filter bar */}
-      <div className="bg-surface border border-border rounded-[10px] px-4 py-3 flex justify-between items-center gap-3 flex-wrap mb-4">
+      <div className="bg-surface border border-border rounded-lg px-4 py-3 flex flex-col items-stretch gap-3 mb-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         {/* Поиск */}
-        <div className="relative flex-1 min-w-[200px] max-w-[340px]">
+        <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[200px] sm:max-w-[340px]">
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] opacity-60 pointer-events-none">
             🔍
           </span>
@@ -390,19 +391,19 @@ export function TaskArchivePage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Поиск по названию…"
-            className="w-full text-[13px] pl-8 pr-3 py-2 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft"
+            className="w-full h-9 text-[13px] pl-8 pr-3 py-0 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft"
           />
         </div>
 
         {/* Правые фильтры */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:flex-wrap">
           {/* Дата от–до */}
-          <div className="flex items-center gap-1.5">
+          <div className="col-span-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5 sm:flex">
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="text-[13px] px-2.5 py-1.5 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
+              className="w-full min-w-0 sm:w-auto h-9 text-[13px] px-2.5 py-0 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
               title="Выполнено с"
             />
             <span className="text-xs text-ink-3">—</span>
@@ -410,17 +411,18 @@ export function TaskArchivePage() {
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="text-[13px] px-2.5 py-1.5 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
+              className="w-full min-w-0 sm:w-auto h-9 text-[13px] px-2.5 py-0 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
               title="Выполнено по"
             />
           </div>
 
-          {/* Исполнитель */}
+          {/* Исполнитель. Селекты рендерятся по наличию данных: если остался
+              один, even:last:col-span-2 растягивает его на обе колонки. */}
           {uniqueAssignees.length > 0 && (
             <select
               value={assigneeFilter}
               onChange={(e) => setAssigneeFilter(e.target.value)}
-              className="text-[13px] px-2.5 py-1.5 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
+              className="w-full sm:w-auto even:last:col-span-2 h-9 text-[13px] px-2.5 py-0 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
             >
               <option value="">Исполнитель</option>
               {uniqueAssignees.map(([id, name]) => (
@@ -434,7 +436,7 @@ export function TaskArchivePage() {
             <select
               value={creatorFilter}
               onChange={(e) => setCreatorFilter(e.target.value)}
-              className="text-[13px] px-2.5 py-1.5 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
+              className="w-full sm:w-auto even:last:col-span-2 h-9 text-[13px] px-2.5 py-0 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
             >
               <option value="">Автор</option>
               {uniqueCreators.map(([id, name]) => (
@@ -517,7 +519,7 @@ function ArchiveTaskRow({
   const creator = task.createdByUser;
 
   return (
-    <div className="grid grid-cols-[22px_minmax(0,1fr)] sm:grid-cols-[22px_minmax(0,1fr)_auto_auto_auto] gap-3.5 items-center px-4 sm:px-5 py-3 opacity-85 hover:bg-surface-muted hover:opacity-100 transition-all group">
+    <div className="grid grid-cols-[22px_minmax(0,1fr)] sm:grid-cols-[22px_minmax(0,1fr)_auto_auto_auto] gap-x-3 gap-y-3.5 sm:gap-3.5 items-center px-4 sm:px-5 py-3 opacity-85 hover:bg-surface-muted hover:opacity-100 transition-all group">
       {/* Зелёная галочка */}
       <span className="w-5 h-5 rounded-[6px] bg-emerald border-2 border-emerald text-surface text-xs font-bold flex items-center justify-center shrink-0">
         ✓
@@ -540,22 +542,27 @@ function ArchiveTaskRow({
         </div>
       </div>
 
-      {/* Исполнитель */}
-      <div className="col-start-2 min-w-0 sm:col-start-auto"><TaskAssigneePill user={task.assignedToUser} /></div>
+      {/* На телефоне исполнитель, время и «Вернуть» — одной строкой под названием;
+          на sm+ display:contents возвращает их в колонки 3–5 */}
+      <div className="col-start-2 flex flex-wrap items-center gap-x-1.5 gap-y-2 sm:contents">
+        {/* Исполнитель */}
+        <div className="min-w-0"><TaskAssigneePill user={task.assignedToUser} /></div>
 
-      {/* Время выполнения */}
-      <span className="col-start-2 sm:col-start-auto text-[11px] font-mono text-ink-3 whitespace-nowrap">
-        {formatTime(task.completedAt)}
-      </span>
+        {/* Время выполнения */}
+        <span className="text-[11px] font-mono text-ink-3 whitespace-nowrap">
+          {formatTime(task.completedAt)}
+        </span>
 
-      {/* Кнопка «Вернуть» — скрыта, появляется при hover */}
-      <button
-        onClick={() => void onReopen(task.id)}
-        aria-label={`Вернуть задачу «${task.title.trim() || "Без названия"}» в работу`}
-        className="col-start-2 sm:col-start-auto justify-self-start min-h-[44px] sm:min-h-0 text-xs font-medium px-2.5 py-1.5 rounded-md border border-border bg-surface text-ink-2 sm:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-accent-soft hover:text-accent-bright hover:border-accent-border inline-flex items-center gap-1 whitespace-nowrap"
-      >
-        ↩ Вернуть
-      </button>
+        {/* Кнопка «Вернуть» — на устройствах с мышью появляется при hover,
+            на тач-экранах видна всегда */}
+        <button
+          onClick={() => void onReopen(task.id)}
+          aria-label={`Вернуть задачу «${task.title.trim() || "Без названия"}» в работу`}
+          className="sm:justify-self-start min-h-[44px] sm:min-h-0 text-xs font-medium px-2 sm:px-2.5 py-1.5 rounded-md border border-border bg-surface text-ink-2 [@media(hover:hover)]:sm:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-accent-soft hover:text-accent-bright hover:border-accent-border inline-flex items-center gap-1 whitespace-nowrap"
+        >
+          ↩ Вернуть
+        </button>
+      </div>
     </div>
   );
 }

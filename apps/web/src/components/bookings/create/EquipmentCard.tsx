@@ -159,17 +159,18 @@ export function EquipmentCard({
   }
 
   return (
-    <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden mb-3.5">
+    <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden">
       {/* Eyebrow header — matches ClientProjectCard / DatesCard style */}
       <div className="px-5 py-3 border-b border-border bg-surface-muted flex items-center justify-between">
         <h3 className="eyebrow text-ink">3. Оборудование</h3>
-        <span className="font-mono text-[12px] text-ink-2">
+        <span className="text-[12px] text-ink-2">
           {totalPositions > 0 ? (
             <>
               <span className="font-semibold text-ink">
-                {totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")}
+                <span className="mono-num">{totalPositions}</span>{" "}
+                {pluralize(totalPositions, "позиция", "позиции", "позиций")}
               </span>{" "}
-              · {formatMoneyRubWhole(totalPrice)} ₽
+              · <span className="mono-num">{formatMoneyRubWhole(totalPrice)} ₽</span>
             </>
           ) : (
             "нет позиций"
@@ -236,8 +237,9 @@ export function EquipmentCard({
             onClick={() => setAiOpen(true)}
             className="flex h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright"
           >
-            <span className="hidden sm:inline">Заявка от гафера</span>
-            <span className="sm:hidden">Заявка</span>
+            {/* Короткая подпись и на 1024–1279: колонка формы там узкая. */}
+            <span className="hidden sm:inline lg:hidden xl:inline">Заявка от гафера</span>
+            <span className="sm:hidden lg:inline xl:hidden">Заявка</span>
             <span className="rounded bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-ink-3">AI</span>
           </button>
         </div>

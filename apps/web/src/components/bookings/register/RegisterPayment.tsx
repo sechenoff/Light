@@ -76,12 +76,13 @@ export function PaymentBreakdown({
             </dd>
           </>
         )}
-        <dt className="border-t border-border pt-2 text-ink-2">
-          Осталось получить
-        </dt>
-        <dd className="border-t border-border pt-2 text-right font-mono font-semibold text-ink">
-          {r.financeState === "UNPRICED" ? "—" : formatRub(r.amountOutstanding)}
-        </dd>
+        {/* Группа dt/dd в обёртке — чтобы линия шла одним отрезком, без разрыва на gap-x сетки. */}
+        <div className="col-span-2 flex items-baseline justify-between gap-3 border-t border-border pt-2">
+          <dt className="min-w-0 text-ink-2">Осталось получить</dt>
+          <dd className="text-right font-mono font-semibold text-ink">
+            {r.financeState === "UNPRICED" ? "—" : formatRub(r.amountOutstanding)}
+          </dd>
+        </div>
         {Number(r.creditAmount) > 0 && (
           <>
             <dt className="text-ink-2">
@@ -159,13 +160,15 @@ export function PaymentState({
         ref={refs.setReference}
         {...getReferenceProps()}
         aria-label={`Сумма и оплата: ${r.projectName}`}
-        className={`w-full max-w-sm rounded-lg px-2 py-2 text-left transition hover:bg-accent-soft/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${centered ? "mx-auto" : ""}`}
+        className={`w-full max-w-sm rounded-lg px-2 py-2 transition hover:bg-accent-soft/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${centered ? "mx-auto text-center" : "text-left"}`}
       >
-        <span className="flex items-center justify-between gap-2 text-[10px] text-ink-3">
+        <span
+          className={`flex items-center gap-1 text-[11px] text-ink-3 ${centered ? "justify-center" : "justify-between"}`}
+        >
           <span>{totalLabel(r)}</span>
           <span
             aria-hidden="true"
-            className="flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px]"
+            className="flex h-5 w-5 items-center justify-center rounded-full border border-border text-[11px]"
           >
             i
           </span>
@@ -178,7 +181,9 @@ export function PaymentState({
         <span className="mt-1 block">
           <PaymentBadge row={r} />
         </span>
-        <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-2">
+        <span
+          className={`mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-2 ${centered ? "justify-center" : ""}`}
+        >
           <span>
             Получено{" "}
             <span className="whitespace-nowrap font-mono">
@@ -207,7 +212,7 @@ export function PaymentState({
               style={floatingStyles}
               {...getFloatingProps()}
               aria-label={`Расчёты: ${r.projectName}`}
-              className="z-[100] max-h-[min(80dvh,520px)] w-[360px] max-w-[calc(100vw-24px)] overflow-y-auto rounded-xl border border-border bg-surface p-4 text-left text-ink shadow-xl"
+              className="z-[100] max-h-[min(80dvh,520px)] w-[360px] max-w-[calc(100vw-24px)] overflow-y-auto rounded-lg border border-border bg-surface p-4 text-left text-ink shadow-sm"
             >
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div className="min-w-0">

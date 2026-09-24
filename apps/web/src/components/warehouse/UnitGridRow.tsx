@@ -108,10 +108,12 @@ export function UnitGridRow({
   const allAccepted = accepted === totalQty;
   const hasIssue = repair > 0 || problem > 0;
 
-  let railClass = "border-l-4 border-transparent";
-  if (problem > 0) railClass = "border-l-4 border-rose";
-  else if (repair > 0) railClass = "border-l-4 border-amber";
-  else if (allAccepted) railClass = "border-l-4 border-emerald";
+  // Полоса статуса — inset-тенью, как у строки выдачи (IssueRow): рамка
+  // border-border остаётся по всем сторонам, раскладка не сдвигается.
+  let railClass = "";
+  if (problem > 0) railClass = "shadow-[inset_3px_0_0_rgb(var(--c-rose))]";
+  else if (repair > 0) railClass = "shadow-[inset_3px_0_0_rgb(var(--c-amber))]";
+  else if (allAccepted) railClass = "shadow-[inset_3px_0_0_rgb(var(--c-emerald))]";
 
   let bgClass = "bg-surface";
   if (problem > 0) bgClass = "bg-rose-soft/30";
@@ -119,7 +121,7 @@ export function UnitGridRow({
   else if (allAccepted) bgClass = "bg-emerald-soft/30";
 
   return (
-    <div className={`rounded-lg border border-border p-3 ${railClass} ${bgClass}`}>
+    <div className={`rounded-lg border border-border px-2.5 py-3 lg:px-3 ${railClass} ${bgClass}`}>
       {/* Header — name + bucket pills + bulk-accept */}
       <div className="mb-3 flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">

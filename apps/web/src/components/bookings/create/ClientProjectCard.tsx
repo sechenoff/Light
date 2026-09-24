@@ -21,7 +21,7 @@ type ClientProjectCardProps = {
 };
 
 const INPUT_CLS =
-  "w-full rounded border border-border-strong px-3 py-2 text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft";
+  "w-full rounded border border-border-strong px-3 py-2 text-base leading-5 sm:text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft";
 
 export function ClientProjectCard({
   clientName,
@@ -47,7 +47,7 @@ export function ClientProjectCard({
     // («Недавние клиенты») режется по нижней границе карточки. Скругление
     // верхних углов шапки — через rounded-t (радиус минус 1px бордюра), а не
     // клиппингом контейнера.
-    <div className="bg-surface border border-border rounded-md shadow-xs mb-3.5">
+    <div className="bg-surface border border-border rounded-md shadow-xs">
       <div className="px-5 py-3 border-b border-border bg-surface-muted rounded-t-[5px]">
         <h3 className="eyebrow text-ink">1. Клиент и проект</h3>
       </div>
@@ -105,7 +105,7 @@ export function ClientProjectCard({
             <span className="text-ink-3 italic text-[11px]">опционально</span>
           </label>
           <input
-            className="w-full rounded border border-border-strong px-3 py-2 text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
+            className="w-full rounded border border-border-strong px-3 py-2 text-base leading-5 sm:text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
             value={projectName}
             onChange={(e) => onProjectNameChange(e.target.value)}
             placeholder="Клип «Лето» · Артист Иванов"

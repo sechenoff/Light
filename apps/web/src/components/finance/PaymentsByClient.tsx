@@ -157,11 +157,11 @@ export function PaymentsByClient({ filter }: Props) {
             <div key={client.id} className="border border-border rounded-lg overflow-hidden shadow-xs">
               {/* Client header */}
               <button
-                className="w-full flex items-center justify-between px-5 py-3.5 bg-surface hover:bg-surface-subtle text-left transition-colors"
+                className="w-full flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-3 bg-surface hover:bg-surface-subtle text-left transition-colors sm:flex-nowrap sm:px-5 sm:py-3.5"
                 onClick={() => toggleExpand(client.id)}
                 aria-expanded={isOpen}
               >
-                <div className="flex items-center gap-4">
+                <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
                   <span
                     className={`text-ink-3 text-xs transition-transform ${isOpen ? "rotate-90" : ""}`}
                   >
@@ -169,15 +169,20 @@ export function PaymentsByClient({ filter }: Props) {
                   </span>
                   <div>
                     <span className="text-sm font-semibold text-ink">{client.name}</span>
-                    <span className="ml-2 text-xs text-ink-3">
+                    <span className="ml-2 text-xs text-ink-3 whitespace-nowrap">
                       {client.bookingCount} {client.bookingCount === 1 ? "бронь" : client.bookingCount <= 4 ? "брони" : "броней"}
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-6">
-                  {/* Mini progress — 5-bucket approximation to avoid inline style */}
-                  <div className="flex items-center gap-2 text-xs text-ink-2">
-                    <div className="h-1.5 bg-surface-subtle rounded-full overflow-hidden w-20">
+                {/* На телефоне — второй строкой под именем: «оплачено / начислено» слева,
+                    долг справа; на sm+ колонки фиксированной минимальной ширины, чтобы
+                    полосы и суммы у всех клиентов стояли на одной вертикали. */}
+                <div className="flex w-full items-baseline justify-between gap-3 pl-6 sm:w-auto sm:items-center sm:justify-end sm:gap-6 sm:pl-0">
+                  {/* Mini progress — 5-bucket approximation to avoid inline style.
+                      Только с xl: на 640–1279 полоса отнимала у имени место, и оно
+                      рвалось на две строки; долю там читают по «оплачено / начислено». */}
+                  <div className="flex min-w-0 items-center gap-2 text-xs text-ink-2">
+                    <div className="hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-surface-subtle xl:block">
                       <div
                         className={`h-full rounded-full ${
                           paidPct >= 100 ? "w-full bg-emerald" :
@@ -189,14 +194,16 @@ export function PaymentsByClient({ filter }: Props) {
                         }`}
                       />
                     </div>
-                    <span className="mono-num">{formatRub(client.totalPaid)} / {formatRub(client.totalBilled)}</span>
+                    <span className="mono-num sm:min-w-[210px] sm:whitespace-nowrap sm:text-right">{formatRub(client.totalPaid)} / {formatRub(client.totalBilled)}</span>
                   </div>
                   {/* Outstanding */}
-                  {outstanding > 0 ? (
-                    <span className="text-sm mono-num font-semibold text-rose">{formatRub(client.totalOutstanding)} долг</span>
-                  ) : (
-                    <StatusPill variant="ok" label="Оплачено" />
-                  )}
+                  <div className="flex shrink-0 justify-end whitespace-nowrap sm:min-w-[170px]">
+                    {outstanding > 0 ? (
+                      <span className="text-sm mono-num font-semibold text-rose">{formatRub(client.totalOutstanding)} долг</span>
+                    ) : (
+                      <StatusPill variant="ok" label="Оплачено" />
+                    )}
+                  </div>
                 </div>
               </button>
 
@@ -245,24 +252,24 @@ export function PaymentsByClient({ filter }: Props) {
       </div>
 
       {/* Totals footer */}
-      <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border border-border rounded-lg bg-surface shadow-xs">
-        <div className="px-4 py-3">
+      <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border shadow-xs xl:grid-cols-4">
+        <div className="min-w-0 bg-surface px-3 py-3 sm:px-4">
           <p className="eyebrow mb-0.5">Клиентов</p>
-          <p className="text-lg font-semibold text-ink mono-num">{data.totals.clientCount}</p>
+          <p className="text-base sm:text-lg whitespace-nowrap font-semibold text-ink mono-num">{data.totals.clientCount}</p>
         </div>
-        <div className="px-4 py-3">
+        <div className="min-w-0 bg-surface px-3 py-3 sm:px-4">
           <p className="eyebrow mb-0.5">Начислено</p>
-          <p className="text-lg font-semibold text-ink mono-num">{formatRub(data.totals.billed)}</p>
+          <p className="text-base sm:text-lg whitespace-nowrap font-semibold text-ink mono-num">{formatRub(data.totals.billed)}</p>
         </div>
-        <div className="px-4 py-3">
+        <div className="min-w-0 bg-surface px-3 py-3 sm:px-4">
           <p className="eyebrow mb-0.5">К получению</p>
-          <p className={`text-lg font-semibold mono-num ${Number(data.totals.outstanding) > 0 ? "text-rose" : "text-ink"}`}>
+          <p className={`text-base sm:text-lg whitespace-nowrap font-semibold mono-num ${Number(data.totals.outstanding) > 0 ? "text-rose" : "text-ink"}`}>
             {formatRub(data.totals.outstanding)}
           </p>
         </div>
-        <div className="px-4 py-3">
+        <div className="min-w-0 bg-surface px-3 py-3 sm:px-4">
           <p className="eyebrow mb-0.5">Средний долг</p>
-          <p className="text-lg font-semibold text-ink mono-num">{formatRub(data.totals.averageDebt)}</p>
+          <p className="text-base sm:text-lg whitespace-nowrap font-semibold text-ink mono-num">{formatRub(data.totals.averageDebt)}</p>
         </div>
       </div>
 

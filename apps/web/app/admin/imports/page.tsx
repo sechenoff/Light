@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
 import { toast } from "@/components/ToastProvider";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { SectionHeader } from "@/components/SectionHeader";
 import { UploadStep } from "@/components/admin/imports/UploadStep";
 import { AnalysisProgress } from "@/components/admin/imports/AnalysisProgress";
 import { OwnCatalogReview } from "@/components/admin/imports/OwnCatalogReview";
@@ -389,6 +390,11 @@ function ImportsPageInner() {
       if (row) {
         rebindSourceName = row.sourceName;
         rebindCurrentEquipmentId = row.equipmentId;
+      } else {
+        // «Привязать к каталогу» у несопоставленной строки: без этого шапка модалки
+        // выходила пустой — «Изменить связь для «»».
+        const unmatched = competitorResult.comparison.unmatched.find((r) => r.id === rebindRowId);
+        if (unmatched) rebindSourceName = unmatched.sourceName;
       }
     }
   }
@@ -408,24 +414,27 @@ function ImportsPageInner() {
       <div className="space-y-6">
 
       {/* Page header */}
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-lg font-semibold text-ink">Импорт цен</h1>
-        {step !== "upload" && (
-          <button
-            type="button"
-            onClick={() => {
-              setStep("upload");
-              setSession(null);
-              setOwnResult(null);
-              setCompetitorResult(null);
-              setError(null);
-            }}
-            className="text-sm text-ink-2 hover:text-ink border border-border rounded-lg px-3 py-1.5 hover:bg-surface-muted transition-colors"
-          >
-            ← Новый импорт
-          </button>
-        )}
-      </div>
+      <SectionHeader
+        eyebrow="Администрирование"
+        title="Импорт прайсов"
+        actions={
+          step !== "upload" ? (
+            <button
+              type="button"
+              onClick={() => {
+                setStep("upload");
+                setSession(null);
+                setOwnResult(null);
+                setCompetitorResult(null);
+                setError(null);
+              }}
+              className="text-sm text-ink-2 hover:text-ink border border-border rounded-lg px-3 py-1.5 hover:bg-surface-muted transition-colors"
+            >
+              ← Новый импорт
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Error banner */}
       {error && (
@@ -502,6 +511,10 @@ function ImportsPageInner() {
         </div>
       )}
 
+      </div>
+
+      {/* Модалки — вне space-y-6: иначе fixed-подложка получает margin-top и сверху
+          остаётся незатемнённая полоса. */}
       {/* Apply confirmation modal */}
       <ApplyConfirmModal
         open={confirmApplyOpen}
@@ -520,7 +533,6 @@ function ImportsPageInner() {
           onClose={() => setRebindRowId(null)}
         />
       )}
-      </div>
     </AdminShell>
   );
 }

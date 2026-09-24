@@ -72,8 +72,8 @@ function GenerateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm bg-surface rounded-2xl border border-border shadow-lg p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4">
+      <div className="w-full max-w-sm bg-surface rounded-lg border border-border shadow-lg p-6">
         <h2 className="text-base font-semibold text-ink mb-4">Сгенерировать единицы</h2>
         <label className="block text-sm text-ink-2 mb-1">Количество единиц</label>
         <input
@@ -82,9 +82,9 @@ function GenerateModal({
           max={100}
           value={count}
           onChange={(e) => setCount(Math.max(1, parseInt(e.target.value) || 1))}
-          className="w-full rounded border border-border-strong px-3 py-2 text-sm mb-4"
+          className="w-full rounded border border-border-strong bg-surface px-3 py-2 text-base text-ink sm:text-sm mb-4"
         />
-        {error && <p className="text-xs text-rose-600 mb-3">{error}</p>}
+        {error && <p className="text-xs text-rose mb-3">{error}</p>}
         <div className="flex gap-2 justify-end">
           <button
             type="button"
@@ -148,8 +148,8 @@ function EditModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md bg-surface rounded-2xl border border-border shadow-lg p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4">
+      <div className="w-full max-w-md bg-surface rounded-lg border border-border shadow-lg p-6">
         <h2 className="text-base font-semibold text-ink mb-4">Редактировать единицу</h2>
         {/* eu-5: показываем серийный номер вместо штрихкода */}
         <p className="text-xs text-ink-2 mb-4">{unit.serialNumber ? `С/н ${unit.serialNumber}` : "Без серийного номера"}</p>
@@ -160,14 +160,14 @@ function EditModal({
           value={serialNumber}
           onChange={(e) => setSerialNumber(e.target.value)}
           placeholder="не указан"
-          className="w-full rounded border border-border-strong px-3 py-2 text-sm mb-3"
+          className="w-full rounded border border-border-strong bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-3 sm:text-sm mb-3"
         />
 
         <label className="block text-sm text-ink-2 mb-1">Статус</label>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as UnitStatus)}
-          className="w-full rounded border border-border-strong px-3 py-2 text-sm mb-1 bg-surface"
+          className="w-full rounded border border-border-strong bg-surface px-3 py-2 text-base text-ink sm:text-sm mb-1"
         >
           {/* eu-6: «Выдана» руками не ставится — только через выдачу по брони.
               Опция видна лишь когда единица уже выдана (чтобы не ломать правку с/н и комментария). */}
@@ -187,10 +187,10 @@ function EditModal({
           onChange={(e) => setComment(e.target.value)}
           placeholder="необязательно"
           rows={2}
-          className="w-full rounded border border-border-strong px-3 py-2 text-sm mb-4 resize-none"
+          className="w-full rounded border border-border-strong bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-3 sm:text-sm mb-4 resize-none"
         />
 
-        {error && <p className="text-xs text-rose-600 mb-3">{error}</p>}
+        {error && <p className="text-xs text-rose mb-3">{error}</p>}
         <div className="flex gap-2 justify-end">
           <button
             type="button"
@@ -244,15 +244,15 @@ function DeleteConfirm({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm bg-surface rounded-2xl border border-border shadow-lg p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4">
+      <div className="w-full max-w-sm bg-surface rounded-lg border border-border shadow-lg p-6">
         <h2 className="text-base font-semibold text-ink mb-2">Удалить единицу?</h2>
         {/* eu-5: идентифицируем по серийному номеру, не по штрихкоду */}
         <p className="text-sm text-ink-2 mb-1">
           {unit.serialNumber ? `Серийный номер: ${unit.serialNumber}` : "Единица без серийного номера"}
         </p>
         <p className="text-xs text-ink-3 mb-4">Это действие необратимо.</p>
-        {error && <p className="text-xs text-rose-600 mb-3">{error}</p>}
+        {error && <p className="text-xs text-rose mb-3">{error}</p>}
         <div className="flex gap-2 justify-end">
           <button
             type="button"
@@ -265,7 +265,7 @@ function DeleteConfirm({
             type="button"
             onClick={handleDelete}
             disabled={loading}
-            className="rounded bg-rose-600 text-white px-4 py-2 text-sm hover:bg-rose-700 disabled:opacity-50"
+            className="rounded bg-rose text-surface px-4 py-2 text-sm hover:bg-rose/90 disabled:opacity-50"
           >
             {loading ? "Удаление..." : "Удалить"}
           </button>
@@ -363,7 +363,7 @@ export default function UnitsPage() {
       </div>
 
       {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
+      <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
           {equipment ? (
             <>
@@ -378,19 +378,20 @@ export default function UnitsPage() {
             <h1 className="text-xl font-semibold text-ink-3">Загрузка...</h1>
           )}
         </div>
-        <div className="flex gap-2 flex-wrap">
+        {/* На телефоне кнопки — столбиком на всю ширину, а не лесенкой разной длины */}
+        <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
           <button
             type="button"
             onClick={handlePrintAll}
             disabled={printingAll || units.length === 0}
-            className="rounded border border-border-strong bg-surface px-3 py-2 text-sm text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
+            className="inline-flex h-10 items-center justify-center rounded border border-border-strong bg-surface px-3 text-sm text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
           >
             {printingAll ? "Загрузка..." : "Печать всех этикеток (PDF)"}
           </button>
           <button
             type="button"
             onClick={() => setShowGenerate(true)}
-            className="rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent transition-colors"
+            className="inline-flex h-10 items-center justify-center rounded border border-transparent bg-accent-bright px-4 text-sm text-surface hover:bg-accent transition-colors"
           >
             Сгенерировать единицы
           </button>
@@ -399,7 +400,7 @@ export default function UnitsPage() {
 
       {/* Error */}
       {error && (
-        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="mb-4 rounded-lg border border-rose-border bg-rose-soft px-4 py-3 text-sm text-rose">
           {error}
         </div>
       )}
@@ -411,7 +412,7 @@ export default function UnitsPage() {
 
       {/* Empty */}
       {!loading && !error && units.length === 0 && (
-        <div className="py-12 text-center text-ink-2 border border-border rounded-xl bg-surface">
+        <div className="py-12 text-center text-ink-2 border border-border rounded-lg bg-surface">
           <p className="mb-2">Единицы ещё не созданы</p>
           <p className="text-sm text-ink-3">Нажмите «Сгенерировать единицы» чтобы добавить</p>
         </div>
@@ -459,7 +460,7 @@ export default function UnitsPage() {
                         <button
                           type="button"
                           onClick={() => setDeleteUnit(unit)}
-                          className="text-xs rounded border border-rose-200 px-2 py-1 text-rose-600 hover:bg-rose-50"
+                          className="text-xs rounded border border-rose-border px-2 py-1 text-rose hover:bg-rose-soft"
                         >
                           Удалить
                         </button>
@@ -477,7 +478,7 @@ export default function UnitsPage() {
       {!loading && units.length > 0 && (
         <div className="md:hidden space-y-3">
           {units.map((unit) => (
-            <div key={unit.id} className="rounded-xl border border-border bg-surface p-4">
+            <div key={unit.id} className="rounded-lg border border-border bg-surface p-4">
               {/* eu-5: заголовок карточки — серийный номер, не штрихкод. */}
               <div className="flex items-start justify-between mb-2">
                 <span className="text-sm font-medium text-ink">
@@ -488,19 +489,19 @@ export default function UnitsPage() {
               {unit.comment && (
                 <p className="text-xs text-ink-3 mb-3">{unit.comment}</p>
               )}
-              <div className="flex gap-2 flex-wrap mt-3">
+              <div className="flex gap-2 mt-3">
                 <button
                   type="button"
                   onClick={() => handlePrintUnit(unit)}
                   disabled={printingUnit === unit.id}
-                  className="text-xs rounded border border-border px-2 py-1.5 text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
+                  className="h-10 flex-auto text-xs rounded border border-border px-2 text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
                 >
                   {printingUnit === unit.id ? "..." : "Печать этикетки"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditUnit(unit)}
-                  className="text-xs rounded border border-border px-2 py-1.5 text-ink-2 hover:bg-surface-subtle"
+                  className="h-10 flex-auto text-xs rounded border border-border px-2 text-ink-2 hover:bg-surface-subtle"
                 >
                   Изменить
                 </button>
@@ -508,7 +509,7 @@ export default function UnitsPage() {
                   <button
                     type="button"
                     onClick={() => setDeleteUnit(unit)}
-                    className="text-xs rounded border border-rose-200 px-2 py-1.5 text-rose-600 hover:bg-rose-50"
+                    className="h-10 flex-auto text-xs rounded border border-rose-border px-2 text-rose hover:bg-rose-soft"
                   >
                     Удалить
                   </button>
