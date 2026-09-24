@@ -324,7 +324,7 @@ function InvoicesPage() {
   const draftSelectedCount = invoices.filter((inv) => selected.has(inv.id) && inv.status === "DRAFT").length;
 
   return (
-    <div className="min-h-screen">
+    <div>
       <FinanceTabNav />
 
       <div className="p-4 lg:p-6">
@@ -486,6 +486,13 @@ function InvoicesPage() {
                         <td className="px-3 py-3">
                           <div className="font-medium text-ink">{inv.booking.client.name}</div>
                           <div className="text-[11px] text-ink-3 mt-0.5 truncate max-w-[160px]">{inv.booking.projectName}</div>
+                          {/* Колонки «Бронь» и «Тип» появляются только с xl — до этого тип и ссылка на бронь живут здесь */}
+                          <div className="xl:hidden mt-0.5 whitespace-nowrap text-[11px] text-ink-3">
+                            {KIND_LABELS[inv.kind]} ·{" "}
+                            <Link href={`/bookings/${inv.booking.id}`} className="font-mono text-accent hover:underline">
+                              #{inv.booking.id.slice(-6)}
+                            </Link>
+                          </div>
                         </td>
                         <td className="hidden px-3 py-3 xl:table-cell">
                           <Link href={`/bookings/${inv.booking.id}`} className="text-[11px] text-accent hover:underline font-mono">

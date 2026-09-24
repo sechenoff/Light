@@ -95,8 +95,9 @@ function KpiCard({
   const valueColor = tone === "ok" ? "text-emerald" : tone === "alert" ? "text-rose" : "text-ink";
   const inner = (
     <div className="border border-border bg-surface rounded-lg px-3 py-3 shadow-xs h-full sm:px-5 sm:py-4">
-      {/* min-h-8 на телефоне: eyebrow в две строки не сдвигает сумму в ряду 2×2 */}
-      <p className="eyebrow mb-2 min-h-8 sm:min-h-0">{eyebrow}</p>
+      {/* min-h-8 на телефоне: eyebrow в две строки не сдвигает сумму в ряду 2×2;
+          до 360 px карточки в одну колонку, там держать строку незачем */}
+      <p className="eyebrow mb-2 min-[360px]:min-h-8 sm:min-h-0">{eyebrow}</p>
       <p className={`mono-num text-[16px] font-semibold ${valueColor} leading-tight sm:text-[22px]`}>{value}</p>
       {sub && <p className="text-[11.5px] text-ink-2 mt-1.5">{sub}</p>}
     </div>
@@ -161,7 +162,7 @@ function FinancePageInner() {
   // только «Счета», сюда попадает лишь прямым URL — показываем заглушку.
   if (!isSA) {
     return (
-      <div className="pb-10 min-h-screen">
+      <div className="pb-10">
         <FinanceTabNav />
         <div className="p-4 lg:p-6">
           <div className="bg-surface border border-border rounded-lg px-6 py-14 text-center shadow-xs">
@@ -195,7 +196,7 @@ function FinancePageInner() {
   const hasAttention = data.topDebtors.length > 0 || data.upcomingWeek.length > 0;
 
   return (
-    <div className="pb-10 min-h-screen">
+    <div className="pb-10">
       <FinanceTabNav debtCount={data.debtorClientsCount} />
 
       <div className="p-4 lg:p-6">
@@ -227,7 +228,7 @@ function FinancePageInner() {
         </div>
 
         {/* KPI strip: три метрики за период + долг-снимок */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-3.5 mb-4">
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-3.5 mb-4">
           <KpiCard
             eyebrow={`Получено · ${PERIOD_LABELS[period].toLowerCase()}`}
             value={formatRub(earned)}

@@ -74,6 +74,8 @@ export function TopRankedSection({ title, rows, rowKey, emptyText }: TopRankedSe
   // У «Проблемных позиций» пустая ячейка остаётся нарочно: держит показатели
   // строк на одной вертикали, когда сумма ремонта есть не у всех.
   const hasTrail = rowKey !== "deadStock";
+  // На телефоне название во всю ширину, под ним показатель слева и сумма
+  // справа: в трёх колонках nowrap-показатель зажимал название в 4–7 строк.
   return (
     <section className="bg-surface border border-border rounded-lg p-3 sm:p-4 shadow-xs mb-4">
       <header className="flex items-center justify-between mb-3">
@@ -92,13 +94,16 @@ export function TopRankedSection({ title, rows, rowKey, emptyText }: TopRankedSe
                   hasTrail ? "sm:grid-cols-[1fr_auto_auto]" : "sm:grid-cols-[1fr_auto]"
                 }`}
               >
-                <Link href={`/equipment/${r.id}/units`} className="min-w-0 text-sm text-ink hover:text-accent">
+                <Link
+                  href={`/equipment/${r.id}/units`}
+                  className="col-span-2 min-w-0 text-sm text-ink hover:text-accent sm:col-span-1"
+                >
                   <div>{r.name}</div>
                   <div className="text-xs text-ink-3">{r.category}</div>
                 </Link>
-                <div className="text-sm text-right whitespace-nowrap">{renderPrimary(r, rowKey)}</div>
+                <div className="text-sm whitespace-nowrap sm:text-right">{renderPrimary(r, rowKey)}</div>
                 {hasTrail && (
-                  <div className="col-span-2 text-xs text-ink-3 sm:col-span-1 sm:min-w-[6rem] sm:text-right">
+                  <div className="text-xs text-ink-3 text-right sm:min-w-[6rem]">
                     {trail ?? ""}
                   </div>
                 )}

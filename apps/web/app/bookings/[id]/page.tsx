@@ -544,7 +544,7 @@ export default function BookingDetailPage() {
   if ((booking as { mode?: string } | null)?.mode === "PROJECT") return <ProjectBookingDetail bookingId={id} />;
 
   return (
-    <div className="p-4 lg:p-6 pb-24 md:pb-6">
+    <div className="p-4 lg:p-6 md:pb-6">
       {/* Parent top-bar — hidden when ApprovalReviewView is rendered; that view brings its own header.
           Сам заголовок брони отрисован ниже в Hero-секции (по мокапу v2) — здесь только
           breadcrumb-style ссылки и action-кнопки, чтобы не было дубля заголовка. */}

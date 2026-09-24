@@ -120,9 +120,7 @@ export function VehiclesDashboard() {
   const canEdit = user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
 
   return (
-    // Нижний запас — под плавающую кнопку «Сообщить»: без него она закрывала
-    // «Открыть карточку →» последней машины.
-    <div className="p-4 pb-20 lg:p-6 lg:pb-24 space-y-4">
+    <div className="p-4 lg:p-6 space-y-4">
       {/* Шапка раздела — как у «Ремонтов» и в мокапе (concept-editorial): h1
           Condensed 24 px с линией снизу, а не h2 секции. */}
       <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-b border-border pb-3">

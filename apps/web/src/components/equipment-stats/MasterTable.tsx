@@ -93,7 +93,7 @@ export function MasterTable({ rows }: MasterTableProps) {
                   className={
                     c.key === "name"
                       ? "p-0 sticky left-0 z-[1] bg-surface-muted"
-                      : c.key === "category"
+                      : c.key === "category" || c.key === "revenuePerStorageUnit"
                         ? "p-0 hidden xl:table-cell"
                         : "p-0"
                   }
@@ -136,7 +136,9 @@ export function MasterTable({ rows }: MasterTableProps) {
                 <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{r.bookingsCount}</td>
                 <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{r.qtyShifts}</td>
                 <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{formatRub(r.revenueRub)}</td>
-                <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{formatRub(r.revenuePerStorageUnit)}</td>
+                {/* «₽/ед. склада» — только с xl: на 768–1279 без неё таблица не влезает,
+                    а доходность на единицу и так есть отдельной секцией выше. */}
+                <td className="hidden xl:table-cell px-3 py-2 text-right mono-num whitespace-nowrap">{formatRub(r.revenuePerStorageUnit)}</td>
                 <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{r.repairCount}</td>
                 <td className="px-3 py-2 text-right mono-num whitespace-nowrap">{r.problemCount}</td>
               </tr>

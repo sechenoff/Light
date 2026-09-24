@@ -325,7 +325,7 @@ export function BookingRegister() {
         margin-top всем соседям со специфичностью 0,3,0 и сдвигал fixed-оверлеи
         и <dialog> на 16 px вниз. */}
     <div
-      className="min-w-0 space-y-4 p-4 pb-32 lg:p-6 lg:pb-32"
+      className="min-w-0 space-y-4 p-4 pb-12 lg:p-6 lg:pb-8"
       data-booking-register
     >
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -830,7 +830,7 @@ export function BookingRegister() {
                           <th className="px-3 py-3">Получено</th>
                         </>
                       )}
-                      <th className={`${expanded ? "min-w-[200px]" : "min-w-[280px]"} px-3 py-3`}>Сумма / оплата</th>
+                      <th className={`${expanded ? "min-w-[170px]" : "min-w-[280px]"} px-3 py-3`}>Сумма / оплата</th>
                       <th className="px-3 py-3">Срок оплаты</th>
                       <th className={`px-3 py-3 ${expanded ? "sticky right-0 bg-surface-subtle shadow-[inset_1px_0_0] shadow-border" : ""}`}>Действия</th>
                     </tr>
@@ -875,7 +875,7 @@ export function BookingRegister() {
                             </td>
                           </>
                         )}
-                        <td className={`${expanded ? "min-w-[200px]" : "min-w-[280px]"} px-3 py-4 align-middle`}>{money(r)}</td>
+                        <td className={`${expanded ? "min-w-[170px]" : "min-w-[280px]"} px-3 py-4 align-middle`}>{money(r)}</td>
                         <td className="min-w-[130px] px-3 py-4 align-middle">
                           <DueDate row={r} />
                         </td>

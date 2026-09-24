@@ -298,8 +298,10 @@ function LoadingSkeleton() {
 
 // ── Sidebar content ───────────────────────────────────────────────────────────
 
-/** Высота затухания у нижнего края меню (2rem в mask-image у nav). */
-const NAV_FADE_PX = 32;
+/** Высота затухания у нижнего края меню (4rem в mask-image у nav). Больше
+ *  шага пункта (≈38 px): иначе на части высот окна ни одна строка не попадает
+ *  в зону затухания, и меню выглядит законченным, хотя ниже есть разделы. */
+const NAV_FADE_PX = 64;
 
 function SidebarContent({
   pathname,
@@ -379,11 +381,11 @@ function SidebarContent({
       </div>
 
       {/* Nav items. Нижний край затухает (маска по альфе, цвет в градиенте не
-          виден) — признак, что меню прокручивается дальше; pb-8 = высоте
+          виден) — признак, что меню прокручивается дальше; pb-16 = высоте
           затухания, чтобы в конце прокрутки последний пункт был виден целиком. */}
       <nav
         ref={navRef}
-        className="relative flex-1 overflow-y-auto overscroll-contain pt-4 pb-8 px-3 space-y-4 [mask-image:linear-gradient(to_bottom,black_calc(100%_-_2rem),transparent)]"
+        className="relative flex-1 overflow-y-auto overscroll-contain pt-4 pb-16 px-3 space-y-4 [mask-image:linear-gradient(to_bottom,black_calc(100%_-_4rem),transparent)]"
       >
         {sections.map((section) => (
           <div key={section.title}>
@@ -492,6 +494,19 @@ function StaffShell({ pathname, children }: { pathname: string; children: React.
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  // Окно доросло до lg (поворот планшета, растяжение окна): скрим и мобильный
+  // aside скрыты через lg:hidden, но открытое меню держало бы блокировку
+  // прокрутки и фокус. Закрываем — useDialog сам всё снимет. 1024px = lg.
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return; // jsdom
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setMobileOpen(false);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   // Запас под плавающую кнопку «Сообщить» (fixed, её верх — на 60 px от низа
   // экрана, на lg — на 68 px): без него в конце прокрутки она закрывает

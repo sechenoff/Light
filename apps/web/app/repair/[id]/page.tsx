@@ -356,8 +356,7 @@ export default function RepairDetailPage() {
       : "Ремонт ведёт техник. Ваше отсюда — подобрать подмену и следить за сроком.";
 
   return (
-    // Нижний запас — под плавающую кнопку «Сообщить».
-    <div className="p-4 pb-20 lg:p-6 lg:pb-24">
+    <div className="p-4 lg:p-6">
       <Link
         href="/repair"
         className="inline-flex min-h-8 items-center text-xs font-semibold text-accent-bright hover:text-accent hover:underline"

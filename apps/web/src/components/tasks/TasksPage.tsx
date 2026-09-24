@@ -232,8 +232,7 @@ export function TasksPage() {
 
   return (
     <>
-      {/* pb-24 — запас под плавающую кнопку «Сообщить», иначе она накрывает промо-карточку архива. */}
-      <div className="p-4 pb-24 lg:p-6 lg:pb-24 space-y-4 w-full">
+      <div className="p-4 lg:p-6 space-y-4 w-full">
         {/* Заголовок: eyebrow + h1 + кнопка */}
         <div className="flex items-start justify-between gap-4">
           <div>

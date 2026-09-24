@@ -12,7 +12,7 @@ function NewBillPage() {
   const params = useSearchParams();
   const bookingId = params.get("bookingId");
   return (
-    <div className="min-h-screen">
+    <div>
       <FinanceTabNav />
       <BillEditor mode="create" bookingId={bookingId} />
     </div>

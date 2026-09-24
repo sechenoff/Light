@@ -111,11 +111,13 @@ const SCROLL_END_TOLERANCE = 4;
 export function AdminTabNav({ counts }: AdminTabNavProps) {
   const pathname = usePathname();
   const navRef = useRef<HTMLElement>(null);
+  const [hasMoreLeft, setHasMoreLeft] = useState(false);
   const [hasMoreRight, setHasMoreRight] = useState(false);
 
   const updateFade = useCallback(() => {
     const nav = navRef.current;
     if (!nav) return;
+    setHasMoreLeft(nav.scrollLeft > SCROLL_END_TOLERANCE);
     setHasMoreRight(nav.scrollLeft + nav.clientWidth < nav.scrollWidth - SCROLL_END_TOLERANCE);
   }, []);
 
@@ -159,13 +161,20 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
     // а не вся страница (иначе горизонтальный overflow всех /admin-страниц).
     // Линию под табами рисует обёртка в AdminShell (на всю ширину полосы);
     // -mb-px кладёт ленту на неё, и подчёркивание активной вкладки её перекрывает.
-    // Затухание справа — только пока правее действительно есть вкладки.
+    // Затухание — с той стороны, где есть ещё вкладки: после автопрокрутки к
+    // активной слева тоже остаются скрытые, и без маски там торчал обрубок подписи.
     <nav
       ref={navRef}
       onScroll={updateFade}
       aria-label="Разделы админки"
       className={`-mb-px flex overflow-x-auto ${
-        hasMoreRight ? "[mask-image:linear-gradient(to_right,black_calc(100%_-_32px),transparent)]" : ""
+        hasMoreLeft && hasMoreRight
+          ? "[mask-image:linear-gradient(to_right,transparent,black_32px,black_calc(100%_-_32px),transparent)]"
+          : hasMoreRight
+            ? "[mask-image:linear-gradient(to_right,black_calc(100%_-_32px),transparent)]"
+            : hasMoreLeft
+              ? "[mask-image:linear-gradient(to_right,transparent,black_32px)]"
+              : ""
       }`}
     >
       {tabs.map((tab) => {

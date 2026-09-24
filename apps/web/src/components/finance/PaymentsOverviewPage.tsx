@@ -359,7 +359,7 @@ export function PaymentsOverviewPage() {
   });
 
   return (
-    <div className="pb-10 min-h-screen">
+    <div className="pb-10">
       <FinanceTabNav />
 
       <div className="p-4 lg:p-6">

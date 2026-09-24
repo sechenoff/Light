@@ -111,6 +111,8 @@ export default function LkBookingDetailPage() {
         </div>
         {/* До sm — список: пять колонок в 340 px не помещаются. Сумма строки =
             цена × количество, поэтому подпись «N × цена» сходится с суммой.
+            В режиме проекта цена — ставка за смену, а сумма — за весь период
+            строки, поэтому к подписи дописано «/ смена».
             До xl категория (в режиме проекта — период) идёт подписью под названием:
             отдельной колонкой длинные категории рвались на 2–3 строки. */}
         <ul className="sm:hidden divide-y divide-border">
@@ -123,7 +125,7 @@ export default function LkBookingDetailPage() {
               <div className="shrink-0 text-right">
                 <p className="mono-num text-sm whitespace-nowrap">{formatRub(Number(it.lineSum))}</p>
                 <p className="mono-num text-xs text-ink-2 whitespace-nowrap">
-                  {it.quantity} × {formatRub(Number(it.unitPrice))}
+                  {it.quantity} × {formatRub(Number(it.unitPrice))}{b.mode === "PROJECT" ? " / смена" : ""}
                 </p>
               </div>
             </li>

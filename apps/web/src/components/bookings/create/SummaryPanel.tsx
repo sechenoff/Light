@@ -313,7 +313,7 @@ export function SummaryPanel({
             {submitting ? "Сохранение…" : "Сохранить черновик"}
           </button>
           <p className="text-balance text-center text-[11px] leading-snug text-ink-3">
-            Черновик не занимает оборудование — можно дособрать позже.
+            Черновик не занимает оборудование&nbsp;— можно дособрать позже.
           </p>
         </div>
       ) : (
@@ -335,7 +335,7 @@ export function SummaryPanel({
             {submitting ? "Сохранение…" : "Сохранить черновик"}
           </button>
           <p className="text-balance text-center text-[11px] leading-snug text-ink-3">
-            Черновик не занимает оборудование — можно дособрать позже.
+            Черновик не занимает оборудование&nbsp;— можно дособрать позже.
           </p>
         </div>
       )}

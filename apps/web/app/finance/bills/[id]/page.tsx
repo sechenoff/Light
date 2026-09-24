@@ -11,7 +11,7 @@ import { BillEditor } from "../../../../src/components/finance/BillEditor";
 function BillPage() {
   const params = useParams<{ id: string }>();
   return (
-    <div className="min-h-screen">
+    <div>
       <FinanceTabNav />
       <BillEditor mode="edit" billId={params.id} />
     </div>

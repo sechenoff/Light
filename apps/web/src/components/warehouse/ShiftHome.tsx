@@ -157,7 +157,7 @@ function TimelineRow({
       </span>
       <span className="min-w-0 flex-1">
         <span
-          className={`line-clamp-2 break-words text-[13px] font-medium leading-snug sm:line-clamp-1 ${done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
+          className={`line-clamp-2 break-words text-[13px] font-medium leading-snug sm:line-clamp-1 xl:line-clamp-2 ${done ? "text-ink-3 line-through decoration-ink-3/40" : "text-ink"}`}
         >
           {entry.clientName || "Клиент"} · {entry.projectName}
         </span>
@@ -295,11 +295,14 @@ export function ShiftHome({
 
       {countCard}
 
+      {/* Подзаголовок относится к обеим колонкам — он над сеткой, чтобы KPI
+          и «План на сегодня» начинались с одной высоты. */}
+      <h2 className="text-sm font-medium text-ink">Обычные брони · сводка смены</h2>
+
       {/* С 1280 px — две колонки, как в мокапе 05: слева сводка и действия,
           справа план дня. Порядок DOM = мобильный порядок. */}
       <div className="flex flex-col gap-3 xl:grid xl:grid-cols-2 xl:items-start">
         <div className="flex min-w-0 flex-col gap-3">
-          <h2 className="text-sm font-medium text-ink">Обычные брони · сводка смены</h2>
           {/* KPI */}
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-lg border border-border bg-surface px-3 py-2.5 shadow-xs">

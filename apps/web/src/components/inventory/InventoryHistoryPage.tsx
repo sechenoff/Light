@@ -101,7 +101,7 @@ export function InventoryHistoryPage() {
   const open = items?.find((i) => i.status === "OPEN");
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] p-4 pb-24 lg:p-6 lg:pb-24">
+    <div className="mx-auto w-full max-w-[1240px] p-4 lg:p-6">
       <PageHead title="История инвентаризаций" sub="все пересчёты склада — с итогами и актами" />
       <div className="mt-3">
         <WarehouseSubnav active="history" badges={open ? { inventory: `№ ${open.number} · идёт` } : undefined} />

@@ -67,7 +67,7 @@ export function BookingRowMenu({ items, ariaLabel = "Ещё действия" }:
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex h-10 w-10 items-center justify-center rounded text-ink-3 hover:bg-surface-muted hover:text-ink transition-colors"
+        className="flex h-10 w-10 xl:h-8 xl:w-8 items-center justify-center rounded text-ink-3 hover:bg-surface-muted hover:text-ink transition-colors"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
           <circle cx="12" cy="5" r="1.6" />

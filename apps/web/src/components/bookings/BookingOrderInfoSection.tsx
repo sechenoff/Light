@@ -50,9 +50,15 @@ export function BookingOrderInfoSection({
           <dd className="min-w-0 break-words font-medium">{booking.projectName}</dd>
         )}
         <dt className="text-ink-3">Период:</dt>
+        {/* Дата со временем неразрывна: перенос — только после тире. */}
         <dd className="min-w-0 break-words font-medium">
-          {new Date(booking.startDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })} —{" "}
-          {new Date(booking.endDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
+          <span className="whitespace-nowrap">
+            {new Date(booking.startDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
+          </span>{" "}
+          —{" "}
+          <span className="whitespace-nowrap">
+            {new Date(booking.endDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
+          </span>
         </dd>
         {booking.comment ? (
           <>

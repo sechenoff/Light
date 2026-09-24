@@ -75,8 +75,8 @@ function WorkersTab() {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    if (!newName.trim() || newPin.length !== 4) {
-      setAddError("Введите имя и 4-значный PIN");
+    if (!newName.trim() || newPin.length !== 6) {
+      setAddError("Введите имя и 6-значный PIN");
       return;
     }
     setAddLoading(true);
@@ -113,8 +113,8 @@ function WorkersTab() {
   }
 
   async function handleResetPin(id: string) {
-    if (resetPinValue.length !== 4) {
-      setResetPinError("PIN должен быть 4-значным");
+    if (resetPinValue.length !== 6) {
+      setResetPinError("PIN должен быть 6-значным");
       return;
     }
     setResetPinLoading(true);
@@ -166,9 +166,9 @@ function WorkersTab() {
             type="password"
             inputMode="numeric"
             autoComplete="off"
-            placeholder="PIN (4 цифры)"
+            placeholder="PIN (6 цифр)"
             value={newPin}
-            maxLength={4}
+            maxLength={6}
             onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
             className="min-h-10 rounded border border-border px-3 py-2 text-sm bg-surface text-ink w-[120px] focus:outline-none focus:border-accent-bright"
           />
@@ -337,9 +337,9 @@ function WorkersTab() {
               inputMode="numeric"
               autoComplete="off"
               autoFocus
-              placeholder="Новый PIN (4 цифры)"
+              placeholder="Новый PIN (6 цифр)"
               value={resetPinValue}
-              maxLength={4}
+              maxLength={6}
               onChange={(e) => setResetPinValue(e.target.value.replace(/\D/g, ""))}
               className="w-full h-10 rounded border border-border bg-surface px-3 py-2 text-sm text-ink mb-3 focus:outline-none focus:border-accent-bright"
             />

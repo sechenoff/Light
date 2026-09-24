@@ -594,7 +594,7 @@ export default function AdminUsersPage() {
                 <Link className="text-accent-bright hover:underline py-1 whitespace-nowrap" href={`/admin/audit?userId=${encodeURIComponent(u.id)}`}>Действия сотрудника</Link>
                 <Link className="text-accent-bright hover:underline py-1 whitespace-nowrap" href={`/admin/audit?entityType=AdminUser&entityId=${encodeURIComponent(u.id)}`}>Изменения аккаунта</Link>
               </div>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-2 min-[360px]:grid-cols-4">
                 <button
                   onClick={() => handleToggleActive(u)}
                   className="min-h-10 rounded border border-border text-xs text-ink-2 hover:bg-surface-muted"

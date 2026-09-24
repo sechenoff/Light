@@ -14,9 +14,11 @@ export default function LkLayout({ children }: { children: ReactNode }) {
 
   if (isAuthRoute) {
     return (
-      <div className="min-h-screen bg-surface text-ink flex items-center justify-center px-4">
+      // <main> — ориентир для читалки экрана: AppShell эти страницы не
+      // оборачивает, а сами они рендерят обычные div.
+      <main className="min-h-screen bg-surface text-ink flex items-center justify-center px-4">
         {children}
-      </div>
+      </main>
     );
   }
 

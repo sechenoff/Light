@@ -125,7 +125,7 @@ export function ProjectBookingDetail({ bookingId }: { bookingId: string }) {
       })),
   ].sort((a, b) => a.date.localeCompare(b.date))[0];
   return (
-    <div className="p-4 pb-24 lg:p-6">
+    <div className="p-4 lg:p-6">
       <Link href={listHref} className="text-sm text-ink-3">
         ← К списку бронирований
       </Link>

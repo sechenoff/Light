@@ -189,9 +189,7 @@ function VehicleDetailView() {
   const unitMeta = USAGE_UNIT_META[unit] ?? USAGE_UNIT_META.KM;
 
   return (
-    // Нижний запас — под плавающую кнопку «Сообщить»: без него она лежала на
-    // журнале ТО.
-    <div className="p-4 pb-20 lg:p-6 lg:pb-24">
+    <div className="p-4 lg:p-6">
       <Link
         className="inline-flex min-h-8 items-center text-xs font-semibold text-accent-bright hover:text-accent hover:underline"
         href="/vehicles"
@@ -215,9 +213,10 @@ function VehicleDetailView() {
         )}
       </header>
 
-      {/* Показатели: 2×2 до 1024, дальше — четыре в ряд (было 3 + одинокий
-          «Гос. номер» во втором ряду). */}
-      <section className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Показатели: 2×2 до 1280, дальше — четыре в ряд (было 3 + одинокий
+          «Гос. номер» во втором ряду). На 1024 четыре колонки уже узки для
+          «Последнее ТО / ремонт» — подпись переносилась и сбивала значение. */}
+      <section className="mt-4 grid grid-cols-2 xl:grid-cols-4 gap-3">
         <Card
           label={unitMeta.counterLabel === "Пробег" ? "Текущий пробег" : "Наработка"}
           value={formatCounter(vehicle.currentMileage, unit)}
@@ -400,7 +399,9 @@ function Card({
 }) {
   return (
     <div className="rounded-lg border border-border bg-surface px-3 py-3 shadow-xs">
-      <p className="eyebrow">{label}</p>
+      {/* На телефоне колонка ~166 px: длинная подпись уходит во вторую строку,
+          поэтому у всех подписей резервируем две — значения в ряду на одной линии. */}
+      <p className="eyebrow leading-[1.3] min-h-[2.6em] sm:min-h-0">{label}</p>
       <p className={`mt-1 text-lg text-ink ${valueClass ?? ""}`}>{value}</p>
       {sub && <p className="mt-0.5 text-xs text-ink-3">{sub}</p>}
     </div>

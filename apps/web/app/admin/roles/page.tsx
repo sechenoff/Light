@@ -86,7 +86,7 @@ export default function AdminRolesPage() {
 
   return (
     <AdminShell>
-      <div className="space-y-6 pb-8">
+      <div className="space-y-6">
 
       {/* Заголовок */}
       <SectionHeader eyebrow="Справочник" title="Матрица прав" />
@@ -233,13 +233,14 @@ function MatrixTableRow({ row }: { row: MatrixRow }) {
         <div className="text-sm font-medium text-ink">{row.capability}</div>
         {row.hint && <div className="text-[11.5px] text-ink-3 mt-0.5">{row.hint}</div>}
       </td>
-      {ROLE_KEYS.map((key) => {
+      {ROLE_KEYS.map((key, i) => {
         const roleKey =
           key === "SUPER_ADMIN" ? "super" : key === "WAREHOUSE" ? "warehouse" : key === "TECHNICIAN" ? "technician" : "collector";
         // У взыскания ячейка задаётся только там, где доступ есть; остальное — «нет».
         const cell = row[roleKey] ?? { level: "none" as const, label: "нет" };
         return (
-          <td key={key} className={`px-3 xl:px-5 py-3 text-center align-middle border-l border-border ${ROLE_CELL_BG[key]}`}>
+          // Линию слева от первой роли рисует тень закреплённой «Функции» — своя граница удвоила бы её.
+          <td key={key} className={`px-3 xl:px-5 py-3 text-center align-middle ${i > 0 ? "border-l border-border" : ""} ${ROLE_CELL_BG[key]}`}>
             <StatusPill variant={cell.level} label={cell.label} />
           </td>
         );

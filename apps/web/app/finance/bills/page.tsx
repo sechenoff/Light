@@ -95,7 +95,7 @@ function BillsPage() {
   const paidSum = Number(data?.sums?.PAID ?? 0);
 
   return (
-    <div className="min-h-screen">
+    <div>
       <FinanceTabNav />
 
       <div className="p-4 lg:p-6">
@@ -152,10 +152,12 @@ function BillsPage() {
 
         {/* Фильтры */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
+          {/* min-w — под плейсхолдер целиком: на 320 px селект года уходит на вторую строку,
+              а не обрезает подсказку */}
           <input
             type="search"
-            placeholder="🔍 контрагент, ИНН или № счёта"
-            className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink sm:flex-none sm:min-w-[240px]"
+            placeholder="🔍 контрагент, ИНН, № счёта"
+            className="min-w-[224px] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink sm:flex-none sm:min-w-[240px]"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -220,7 +222,12 @@ function BillsPage() {
                         </td>
                         <td className="mono-num whitespace-nowrap px-3 py-2.5 text-ink-2">{fmtDate(b.date)}</td>
                         <td className="min-w-[160px] px-3 py-2.5">
-                          <div className="line-clamp-2 font-medium text-ink" title={b.payer.legalName ?? b.clientName}>{b.payer.legalName ?? b.clientName}</div>
+                          {/* До xl колонка узкая, и две строки съедает «Общество с ограниченной…» —
+                              показываем короткое имя клиента, юрлицо остаётся в title */}
+                          <div className="line-clamp-2 font-medium text-ink" title={b.payer.legalName ?? b.clientName}>
+                            <span className="xl:hidden">{b.clientName}</span>
+                            <span className="hidden xl:inline">{b.payer.legalName ?? b.clientName}</span>
+                          </div>
                           {b.payer.inn && <div className="font-mono text-[11px] text-ink-3">ИНН {b.payer.inn}</div>}
                         </td>
                         {/* truncate — на внутреннем div: на самой ячейке он не ограничивал ширину колонки */}

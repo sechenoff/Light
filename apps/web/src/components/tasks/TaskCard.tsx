@@ -274,7 +274,8 @@ export function TaskCard({
               variant={pillVariant}
               label={formatDueDate(task.dueDate)}
             />
-          ) : (
+          ) : task.urgent && !isDone ? null : (
+            // Срочная задача без срока стоит в «Сегодня» (groupTasks) — плашка «без даты» там противоречила бы группе.
             <span className="hidden sm:inline-flex items-center rounded border border-dashed border-border px-2 py-0.5 font-mono text-xs text-ink-3 whitespace-nowrap">
               без даты
             </span>

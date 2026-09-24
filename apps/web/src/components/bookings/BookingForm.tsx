@@ -1662,8 +1662,11 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         {/* Right column: Discount, Summary, Transport */}
         {/* Своя прокрутка и липкость — только на lg, где колонка стоит справа.
             Ниже lg она идёт потоком под формой. top-[104px] = шапка формы
-            (≈92 px) + зазор; pb-16 даёт докрутить низ выше кнопки «Сообщить». */}
-        <div className="flex flex-col gap-3.5 self-start lg:sticky lg:top-[104px] lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto lg:pb-16">
+            (≈92 px) + зазор; pb-16 даёт докрутить низ выше кнопки «Сообщить».
+            max-h = 100vh − 224: top 104 + lg:pb-24 у <main> (96) + нижнее поле
+            сетки lg:p-6 (24). Иначе в конце страницы низ ячейки грида не даёт
+            колонке встать на 104 px, и она уезжает под шапку формы. */}
+        <div className="flex flex-col gap-3.5 self-start lg:sticky lg:top-[104px] lg:max-h-[calc(100vh-224px)] lg:overflow-y-auto lg:pb-16">
           <DiscountCard value={discountPercent} onChange={setDiscountPercent} />
           <PaymentFormCard
             value={paymentForm}

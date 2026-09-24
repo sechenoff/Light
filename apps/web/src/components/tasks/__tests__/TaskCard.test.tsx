@@ -82,6 +82,32 @@ describe("TaskCard", () => {
     expect(card.className).toMatch(/before:bg-rose/);
   });
 
+  it("shows «без даты» for a task without due date", () => {
+    render(
+      <TaskCard
+        task={makeTask({ dueDate: null, urgent: false })}
+        onComplete={vi.fn()}
+        onReopen={vi.fn()}
+        onUpdate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("без даты")).toBeInTheDocument();
+  });
+
+  it("hides «без даты» for an urgent open task without due date (it is grouped into «Сегодня»)", () => {
+    render(
+      <TaskCard
+        task={makeTask({ dueDate: null, urgent: true })}
+        onComplete={vi.fn()}
+        onReopen={vi.fn()}
+        onUpdate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("без даты")).not.toBeInTheDocument();
+  });
+
   it("toggles urgent flag via ⋯ menu when not urgent", () => {
     const onUpdate = vi.fn();
     render(

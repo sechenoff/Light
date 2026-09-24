@@ -198,9 +198,7 @@ export default function RepairQueuePage() {
   }
 
   return (
-    // Нижний запас — под плавающую кнопку «Сообщить» (60 / 68 px от низа),
-    // иначе она закрывает последнюю ссылку страницы.
-    <div className="p-4 pb-20 lg:p-6 lg:pb-24">
+    <div className="p-4 lg:p-6">
       {/* ── Шапка ── */}
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-3">
         <div>

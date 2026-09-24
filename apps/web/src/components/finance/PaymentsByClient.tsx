@@ -178,9 +178,11 @@ export function PaymentsByClient({ filter }: Props) {
                     долг справа; на sm+ колонки фиксированной минимальной ширины, чтобы
                     полосы и суммы у всех клиентов стояли на одной вертикали. */}
                 <div className="flex w-full items-baseline justify-between gap-3 pl-6 sm:w-auto sm:items-center sm:justify-end sm:gap-6 sm:pl-0">
-                  {/* Mini progress — 5-bucket approximation to avoid inline style */}
+                  {/* Mini progress — 5-bucket approximation to avoid inline style.
+                      Только с xl: на 640–1279 полоса отнимала у имени место, и оно
+                      рвалось на две строки; долю там читают по «оплачено / начислено». */}
                   <div className="flex min-w-0 items-center gap-2 text-xs text-ink-2">
-                    <div className="hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-surface-subtle sm:block">
+                    <div className="hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-surface-subtle xl:block">
                       <div
                         className={`h-full rounded-full ${
                           paidPct >= 100 ? "w-full bg-emerald" :

@@ -70,7 +70,7 @@ export function AvailabilityCheck({
     <ul className="space-y-1.5">
       {items.map((item) => (
         <li key={item.equipmentId} className="flex items-center justify-between gap-2 text-xs">
-          <span className="min-w-0 text-ink-2 truncate">{item.name}</span>
+          <span title={item.name} className="min-w-0 text-ink-2 line-clamp-2 break-words">{item.name}</span>
           <div className="flex items-center gap-2 shrink-0">
             <span className="min-w-10 text-right text-ink-3 mono-num">
               {item.occupiedQuantity}/{item.totalQuantity}

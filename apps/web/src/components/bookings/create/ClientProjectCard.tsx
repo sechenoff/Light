@@ -21,7 +21,7 @@ type ClientProjectCardProps = {
 };
 
 const INPUT_CLS =
-  "w-full rounded border border-border-strong px-3 py-2 text-base sm:text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft";
+  "w-full rounded border border-border-strong px-3 py-2 text-base leading-5 sm:text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft";
 
 export function ClientProjectCard({
   clientName,
@@ -105,7 +105,7 @@ export function ClientProjectCard({
             <span className="text-ink-3 italic text-[11px]">опционально</span>
           </label>
           <input
-            className="w-full rounded border border-border-strong px-3 py-2 text-base sm:text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
+            className="w-full rounded border border-border-strong px-3 py-2 text-base leading-5 sm:text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
             value={projectName}
             onChange={(e) => onProjectNameChange(e.target.value)}
             placeholder="Клип «Лето» · Артист Иванов"

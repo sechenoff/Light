@@ -378,9 +378,11 @@ export default function BookingsArchivePage() {
         )}
         {rows && rows.length > 0 && (
           <>
-            {/* Мобильный вид — карточки; таблица 960 px — с md. «Выбрать все»
-                продублирован здесь: в таблице он живёт в скрытой шапке. */}
-            <label className="flex min-h-10 items-center gap-3 border-b border-border px-3 text-xs text-ink-2 md:hidden">
+            {/* До 1280 — карточки; таблица 960 px — с xl, как в реестре броней:
+                на 768–1279 с сайдбаром она не помещалась, и «Действия» уезжали
+                за край. «Выбрать все» продублирован здесь: в таблице он живёт
+                в скрытой шапке. */}
+            <label className="flex min-h-10 items-center gap-3 border-b border-border px-3 text-xs text-ink-2 xl:hidden">
               <input
                 type="checkbox"
                 className="h-4 w-4 cursor-pointer accent-accent-bright"
@@ -392,7 +394,7 @@ export default function BookingsArchivePage() {
               />
               Выбрать все на странице
             </label>
-            <ul className="divide-y divide-border md:hidden">
+            <ul className="divide-y divide-border xl:hidden">
               {rows.map((r) => {
                 const project = projectTitle(r);
                 return (
@@ -455,7 +457,7 @@ export default function BookingsArchivePage() {
               })}
             </ul>
 
-            <div className="hidden overflow-auto md:block">
+            <div className="hidden overflow-auto xl:block">
               <table className="min-w-[960px] w-full text-sm">
                 <thead className="bg-surface-subtle text-ink-2 border-b border-border">
                   <tr>
@@ -478,7 +480,10 @@ export default function BookingsArchivePage() {
                     <th className="text-left px-3 py-2 font-medium">Статус</th>
                     <th className="text-right px-3 py-2 font-medium">Сумма</th>
                     <th className="text-left px-3 py-2 font-medium">Архивировано</th>
-                    <th className="px-3 py-2 font-medium">Действия</th>
+                    {/* Ширина — под три кнопки в ряд. На 1280 таблице её не
+                        хватает, и кнопки переносятся (flex-wrap ниже), а не
+                        уезжают за край под горизонтальную прокрутку. */}
+                    <th className="w-[22rem] px-3 py-2 font-medium">Действия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -522,7 +527,7 @@ export default function BookingsArchivePage() {
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Link
                             href={`/bookings/${r.id}`}
                             className="whitespace-nowrap text-xs text-accent-bright hover:text-accent font-medium"

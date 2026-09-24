@@ -69,7 +69,7 @@ export default function LkEstimatesPage() {
                   href={e.pdfUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center min-h-10 sm:min-h-0 text-sm text-accent-bright underline"
+                  className="inline-flex items-center min-h-10 -my-2.5 sm:min-h-0 sm:my-0 text-sm text-accent-bright underline"
                 >
                   Скачать PDF
                 </a>

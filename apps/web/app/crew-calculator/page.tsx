@@ -345,8 +345,9 @@ function RoleRow({
 
           {/* Total — колонка зарезервирована и у пустой строки, чтобы степперы стояли
               в одну вертикаль. На телефоне пустую не держим: иначе каждая строка
-              пустого состояния уходила бы в две с висящим посередине степпером. */}
-          <div className={`min-w-28 text-right ${isActive ? "" : "hidden sm:block"}`}>
+              пустого состояния уходила бы в две с висящим посередине степпером.
+              То же на lg до 1100 px: колонка 5/12 там слишком узкая для запаса. */}
+          <div className={`min-w-28 text-right ${isActive ? "" : "hidden sm:block lg:hidden min-[1100px]:block"}`}>
             {isActive && breakdown ? (
               <>
                 <div className="text-sm font-semibold text-ink mono-num whitespace-nowrap">

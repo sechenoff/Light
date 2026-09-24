@@ -17,9 +17,8 @@ export function EquipmentStatsPage() {
   const { data, error, loading, retry } = useEquipmentStats();
 
   return (
-    // pb-24 — запас под плавающую кнопку «Сообщить» (AdminShell здесь нет).
-    // Раздельные px/pt, а не p-4 + pb-24: lg:p-6 из медиазапроса перебил бы pb-24.
-    <div className="px-4 pt-4 pb-24 lg:px-6 lg:pt-6 space-y-6">
+    // Нижний запас под кнопку «Сообщить» даёт <main> в AppShell — здесь не дублировать.
+    <div className="p-4 lg:p-6 space-y-6">
       <SectionHeader
         eyebrow="Аналитика"
         title="Статистика техники"

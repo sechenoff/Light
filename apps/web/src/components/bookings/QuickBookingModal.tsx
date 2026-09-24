@@ -220,7 +220,7 @@ export function QuickBookingModal({ open, onClose, onCreated }: Props) {
           className={`mt-4 rounded border border-dashed border-border-strong px-3 ${datesOpen ? "py-2" : "py-0"}`}
         >
           {datesOpen ? (
-            <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
               <div className="min-w-0">
                 <label htmlFor="quick-start" className="mb-1 block text-xs text-ink-3">
                   Выдача

@@ -416,12 +416,13 @@ export function TaskArchivePage() {
             />
           </div>
 
-          {/* Исполнитель */}
+          {/* Исполнитель. Селекты рендерятся по наличию данных: если остался
+              один, even:last:col-span-2 растягивает его на обе колонки. */}
           {uniqueAssignees.length > 0 && (
             <select
               value={assigneeFilter}
               onChange={(e) => setAssigneeFilter(e.target.value)}
-              className="w-full sm:w-auto h-9 text-[13px] px-2.5 py-0 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
+              className="w-full sm:w-auto even:last:col-span-2 h-9 text-[13px] px-2.5 py-0 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
             >
               <option value="">Исполнитель</option>
               {uniqueAssignees.map(([id, name]) => (
@@ -435,7 +436,7 @@ export function TaskArchivePage() {
             <select
               value={creatorFilter}
               onChange={(e) => setCreatorFilter(e.target.value)}
-              className="w-full sm:w-auto h-9 text-[13px] px-2.5 py-0 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
+              className="w-full sm:w-auto even:last:col-span-2 h-9 text-[13px] px-2.5 py-0 border border-border rounded-md bg-surface text-ink focus:border-accent focus:outline-none"
             >
               <option value="">Автор</option>
               {uniqueCreators.map(([id, name]) => (

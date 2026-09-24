@@ -546,7 +546,7 @@ function DebtsPageInner() {
   return (
     // Нижний отступ растёт под липкую панель выбора — иначе она накрывает
     // последние строки реестра ровно тогда, когда по ним и работают.
-    <div className={`min-h-screen ${selectedRows.length > 0 ? "pb-28" : "pb-10"}`}>
+    <div className={selectedRows.length > 0 ? "pb-28" : "pb-10"}>
       {/* До загрузки счётчика не передаём: иначе кэш вкладок запомнил бы 0 */}
       <FinanceTabNav debtCount={data ? totalClients : undefined} />
 
@@ -564,12 +564,12 @@ function DebtsPageInner() {
               <strong className="mono-num text-ink whitespace-nowrap">{formatRub(totalOutstanding)}</strong>
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-shrink-0">
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2 sm:flex sm:flex-shrink-0">
             {legacyMode && currentUser?.user?.role === "SUPER_ADMIN" && (
               <button
                 type="button"
                 onClick={() => setImportOpen(true)}
-                className="col-span-2 inline-flex h-10 items-center justify-center whitespace-nowrap px-3 text-[12px] font-medium rounded border border-accent-border bg-accent-soft text-accent-bright hover:bg-accent-border sm:h-9 sm:px-3.5"
+                className="min-[360px]:col-span-2 inline-flex h-10 items-center justify-center whitespace-nowrap px-3 text-[12px] font-medium rounded border border-accent-border bg-accent-soft text-accent-bright hover:bg-accent-border sm:h-9 sm:px-3.5"
               >
                 + Импортировать смету
               </button>
@@ -595,28 +595,28 @@ function DebtsPageInner() {
                 }
                 setReportOpen(true);
               }}
-              className={`inline-flex h-10 items-center justify-center whitespace-nowrap px-3 text-[12px] font-semibold rounded border sm:h-9 sm:px-3.5 ${
+              className={`inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap px-3 text-[12px] font-semibold rounded border sm:h-9 sm:px-3.5 ${
                 selectedRows.length > 0
                   ? "border-accent-bright bg-accent-bright text-surface hover:opacity-90"
                   : "border-border bg-surface text-ink-2 hover:bg-surface-subtle"
               }`}
             >
               Сформировать отчёт
-              {selectedRows.length > 0 && <span className="mono-num"> · {selectedRows.length}</span>}
+              {selectedRows.length > 0 && <span className="mono-num">· {selectedRows.length}</span>}
             </button>
           </div>
         </div>
 
         {/* KPI strip — 4 cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-4 gap-3 mb-5">
           <div className="bg-surface border border-border rounded-lg px-3 py-3 sm:px-4">
-            <p className="eyebrow text-ink-3 mb-0.5 min-h-8 sm:min-h-0">Всего к получению</p>
+            <p className="eyebrow text-ink-3 mb-0.5 min-[360px]:min-h-8 sm:min-h-0">Всего к получению</p>
             <p className={`mono-num text-[16px] lg:text-[17px] font-semibold ${Number(totalOutstanding) > 0 ? "text-rose" : "text-ink"}`}>
               {formatRub(totalOutstanding)}
             </p>
           </div>
           <div className="bg-surface border border-border rounded-lg px-3 py-3 sm:px-4">
-            <p className="eyebrow text-ink-3 mb-0.5 min-h-8 sm:min-h-0">Просрочено</p>
+            <p className="eyebrow text-ink-3 mb-0.5 min-[360px]:min-h-8 sm:min-h-0">Просрочено</p>
             <p className={`mono-num text-[16px] lg:text-[17px] font-semibold ${Number(totalOverdue) > 0 ? "text-rose" : "text-ink"}`}>
               {formatRub(totalOverdue)}
             </p>
@@ -625,7 +625,7 @@ function DebtsPageInner() {
             )}
           </div>
           <div className="bg-surface border border-border rounded-lg px-3 py-3 sm:px-4">
-            <p className="eyebrow text-ink-3 mb-0.5 min-h-8 sm:min-h-0">Частично оплачено</p>
+            <p className="eyebrow text-ink-3 mb-0.5 min-[360px]:min-h-8 sm:min-h-0">Частично оплачено</p>
             <p className="mono-num text-[16px] lg:text-[17px] font-semibold text-ink">{partialCount}</p>
             {partialCount > 0 && (
               <p className="text-[11px] text-ink-2 mt-0.5">
@@ -634,7 +634,7 @@ function DebtsPageInner() {
             )}
           </div>
           <div className="bg-surface border border-border rounded-lg px-3 py-3 sm:px-4">
-            <p className="eyebrow text-ink-3 mb-0.5 min-h-8 sm:min-h-0">Висит 60+ дней</p>
+            <p className="eyebrow text-ink-3 mb-0.5 min-[360px]:min-h-8 sm:min-h-0">Висит 60+ дней</p>
             <p className={`mono-num text-[16px] lg:text-[17px] font-semibold ${over60Sum > 0 ? "text-rose" : "text-ink"}`}>
               {formatRub(over60Sum)}
             </p>

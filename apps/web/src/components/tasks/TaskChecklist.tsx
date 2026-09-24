@@ -45,7 +45,7 @@ export function TaskChecklist({ items, canEdit, canToggle, onAdd, onToggle, onDe
 
       <ul className="space-y-1.5">
         {items.map((i) => (
-          <li key={i.id} className="group flex items-start gap-2.5 py-1 sm:py-0">
+          <li key={i.id} className="group flex items-start gap-2.5 py-1 lg:py-0">
             {/* before:-inset-2 — зона нажатия ~34 px без изменения раскладки строки */}
             <button
               role="checkbox"

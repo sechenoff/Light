@@ -19,7 +19,7 @@ function combine(date: string, time: string): string {
 }
 
 const INPUT_CLS =
-  "w-full min-w-0 rounded border border-border-strong px-3 py-2 text-base sm:text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft";
+  "w-full min-w-0 rounded border border-border-strong px-3 py-2 text-base leading-5 sm:text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft";
 
 export function DatesCard({
   pickupLocal,
@@ -42,15 +42,17 @@ export function DatesCard({
       </div>
       <div className="p-5">
         {/* На телефоне подпись «Выдача»/«Возврат» уходит строкой выше полей:
-            третья колонка не даёт нативным date/time-полям уместиться в 375 px. */}
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-2 items-center sm:grid-cols-[72px_minmax(0,1fr)_minmax(0,1fr)]">
+            третья колонка не даёт нативным date/time-полям уместиться в 375 px.
+            Уже 375 px и две колонки тесны (≈117 px на поле при нужных ≈136) —
+            там дата и время идут друг под другом, заголовки колонок прячем. */}
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-3 gap-y-2 items-center min-[375px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:grid-cols-[72px_minmax(0,1fr)_minmax(0,1fr)]">
           {/* Column headers */}
           <div className="hidden sm:block" />
-          <span className="eyebrow text-ink-3">Дата</span>
-          <span className="eyebrow text-ink-3">Время</span>
+          <span className="hidden min-[375px]:block eyebrow text-ink-3">Дата</span>
+          <span className="hidden min-[375px]:block eyebrow text-ink-3">Время</span>
 
           {/* Выдача row */}
-          <span className="col-span-2 text-[12.5px] text-ink-2 sm:col-span-1">Выдача</span>
+          <span className="text-[12.5px] text-ink-2 min-[375px]:col-span-2 sm:col-span-1">Выдача</span>
           <input
             type="date"
             className={INPUT_CLS}
@@ -65,7 +67,7 @@ export function DatesCard({
           />
 
           {/* Возврат row */}
-          <span className="col-span-2 text-[12.5px] text-ink-2 sm:col-span-1">Возврат</span>
+          <span className="text-[12.5px] text-ink-2 min-[375px]:col-span-2 sm:col-span-1">Возврат</span>
           <input
             type="date"
             className={INPUT_CLS}
