@@ -1,5 +1,6 @@
 import Decimal from "decimal.js";
 
+import type { LineOrdering } from "../lineOrder";
 import { computeSurcharge, formatPercent } from "../paymentForm";
 
 import { buildSmetaFromPersistedEstimate } from "./buildDocument";
@@ -66,17 +67,21 @@ export function buildFullSmeta(args: {
   agreedTotal?: MoneyLike | null;
   /** Процент надбавки за безнал (null — наличные). База — main + addon + транспорт. */
   surchargePercent?: Decimal | null;
+  /** Порядок каталога для строк обеих смет (lineOrder.ts); без него — порядок добавления. */
+  ordering?: LineOrdering | null;
 }): SmetaFullExportDocument {
   const mainDoc = buildSmetaFromPersistedEstimate({
     booking: args.booking,
     estimate: { ...args.main, kind: "MAIN" },
     org: args.org ?? null,
+    ordering: args.ordering ?? null,
   });
   const addonDoc = args.addon
     ? buildSmetaFromPersistedEstimate({
         booking: args.booking,
         estimate: { ...args.addon, kind: "ADDON" },
         org: args.org ?? null,
+        ordering: args.ordering ?? null,
       })
     : null;
   const transport = buildTransportSection(args.booking.vehicles);

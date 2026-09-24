@@ -49,7 +49,6 @@ import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
 import { VehicleMileagePanel } from "./VehicleMileagePanel";
 import { isScanApiError } from "./types";
 import type {
-  ChecklistItem,
   ChecklistState,
   CompletePayload,
   CompleteResult,
@@ -60,6 +59,7 @@ import type {
   VehicleMileageEntry,
 } from "./types";
 import { pluralize } from "../../lib/format";
+import { groupByCategory } from "../../lib/groupByCategory";
 
 // ── Local outcome state ──────────────────────────────────────────────────────
 
@@ -72,26 +72,6 @@ interface UnitOutcome {
 }
 
 type OutcomeMap = Record<string, UnitOutcome>;
-
-interface CategoryGroup {
-  category: string;
-  items: ChecklistItem[];
-}
-
-/** Stable category grouping in first-seen order (server already sorts items). */
-function groupByCategory(items: ChecklistItem[]): CategoryGroup[] {
-  const order: string[] = [];
-  const map = new Map<string, ChecklistItem[]>();
-  for (const item of items) {
-    const key = item.category || "Без категории";
-    if (!map.has(key)) {
-      map.set(key, []);
-      order.push(key);
-    }
-    map.get(key)!.push(item);
-  }
-  return order.map((category) => ({ category, items: map.get(category)! }));
-}
 
 /** Every UNIT unit id across the checklist (one row each). */
 function allUnitIds(state: ChecklistState): string[] {
@@ -225,8 +205,9 @@ export function ReturnChecklist({
     };
   }, [sessionId, openSession]);
 
+  // Группы категорий в порядке первого появления: порядок строк задаёт сервер.
   const groups = useMemo(
-    () => (state ? groupByCategory(state.items) : []),
+    () => (state ? groupByCategory(state.items, (item) => item.category) : []),
     [state],
   );
 

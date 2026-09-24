@@ -206,13 +206,16 @@ export function addSmetaSheetToWorkbook(
     grouped.get(key)!.push(line);
   }
 
+  // № — в порядке печати, как в PDF: строки перегруппированы по категориям.
+  let printedIndex = 0;
   for (const category of order) {
     bandRow(sheet, row, category);
     row++;
     const items = grouped.get(category)!;
     items.forEach((line, i) => {
       const r = sheet.getRow(row);
-      r.getCell(1).value = line.index;
+      printedIndex += 1;
+      r.getCell(1).value = printedIndex;
       r.getCell(1).font = { size: 9, color: { argb: XC.faint } };
       r.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
 

@@ -8,6 +8,7 @@ export type {
 export {
   buildSmetaExportDocument,
   buildSmetaFromPersistedEstimate,
+  loadSmetaLineOrdering,
   smetaOrgFromSettings,
 } from "./buildDocument";
 export { buildFullSmeta, buildTransportSection } from "./buildFullDocument";

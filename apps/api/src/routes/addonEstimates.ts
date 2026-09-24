@@ -5,11 +5,13 @@ import { HttpError } from "../utils/errors";
 import { serializeEstimateForJson } from "../utils/serializeDecimal";
 import {
   buildSmetaFromPersistedEstimate,
+  loadSmetaLineOrdering,
   writeSmetaPdf,
   writeSmetaXlsx,
   smetaOrgFromSettings,
 } from "../services/smetaExport";
 import { getSettings } from "../services/organizationService";
+import { estimateLineKey, sortLinesByCatalogAsync } from "../services/lineOrder";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 
 const router = express.Router();
@@ -27,7 +29,9 @@ router.get("/:bookingId", async (req, res, next) => {
       res.json({ addon: null });
       return;
     }
-    res.json({ addon: serializeEstimateForJson(addon) });
+    // Строки добора — в порядке каталога, как в основной смете и в PDF.
+    const lines = await sortLinesByCatalogAsync(addon.lines, estimateLineKey);
+    res.json({ addon: serializeEstimateForJson({ ...addon, lines }) });
   } catch (err) {
     next(err);
   }
@@ -49,6 +53,7 @@ router.get("/:bookingId/export/pdf", async (req, res, next) => {
       booking: addon.booking,
       estimate: addon,
       org: smetaOrgFromSettings(await getSettings()),
+      ordering: await loadSmetaLineOrdering(addon),
     });
     const human = buildBookingHumanName({
       startDate: addon.booking.startDate,
@@ -77,6 +82,7 @@ router.get("/:bookingId/export/xlsx", async (req, res, next) => {
       booking: addon.booking,
       estimate: addon,
       org: smetaOrgFromSettings(await getSettings()),
+      ordering: await loadSmetaLineOrdering(addon),
     });
     const human = buildBookingHumanName({
       startDate: addon.booking.startDate,

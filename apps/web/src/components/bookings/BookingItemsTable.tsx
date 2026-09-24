@@ -1,6 +1,9 @@
 "use client";
 
+import { Fragment } from "react";
 import { formatMoneyRub } from "@/lib/format";
+import { groupByCategory } from "@/lib/groupByCategory";
+import { CategoryBandHeading, CategoryBandRow } from "./CategoryBand";
 import type { RetroEditItem } from "./useRetroEdit";
 
 // Таблица «Позиции брони» (фаза 4.10, вынос из bookings/[id]/page.tsx,
@@ -8,6 +11,9 @@ import type { RetroEditItem } from "./useRetroEdit";
 // показываются прямо здесь (сопоставление по equipmentId, затем по имени).
 // В retro-режиме источник правды — retroEdits.items (степперы кол-ва, пометка
 // на удаление, подсветка изменений, live-пересчёт суммы строки).
+// Позиции сгруппированы по категориям: полоса-заголовок перед группой, колонки
+// «Категория» нет. Порядок строк задаёт сервер (каталожный), группы — в порядке
+// первого появления; добавленная «задним числом» строка встаёт в свою группу.
 
 export type ItemsTableBooking = {
   items: Array<{
@@ -74,10 +80,10 @@ export function BookingItemsTable({
   }
   const showPrices = estLines.length > 0;
   // В retro-edit добавляется столбец «✕» (delete) + цены в таблице отображаются read-only.
-  const colCount = (showPrices ? 5 : 3) + (retroEditMode ? 1 : 0);
+  const colCount = (showPrices ? 4 : 2) + (retroEditMode ? 1 : 0);
   // Источник правды для рендера: либо живые items, либо retro-edits.
   // В retro-edits сохранены original quantities — нужно для подсветки изменений.
-  const displayItems = retroEditMode && retroItems
+  const displayItems: RetroEditItem[] = retroEditMode && retroItems
     ? retroItems
     : booking.items.map((it) => ({
         id: it.id,
@@ -91,6 +97,7 @@ export function BookingItemsTable({
         _added: false,
       }));
   const isEmpty = displayItems.length === 0;
+  const groups = groupByCategory(displayItems, (it) => it.equipment?.category ?? it.customCategory);
 
   // Цена строки общая для таблицы и мобильного списка.
   function priceFor(it: { equipmentId: string | null; equipment?: { name: string } | null; customName?: string | null }) {
@@ -113,7 +120,7 @@ export function BookingItemsTable({
   return (
     <div className="xl:col-span-8 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
       <div className="px-4 py-3 border-b border-border bg-surface-subtle flex items-center justify-between gap-2">
-        <p className="eyebrow">Позиции брони ({displayItems.filter((i) => !(i as any)._deleted).length})</p>
+        <p className="eyebrow">Позиции брони ({displayItems.filter((i) => !i._deleted).length})</p>
         {retroEditMode && (
           <button
             type="button"
@@ -128,44 +135,48 @@ export function BookingItemsTable({
         <p className="px-4 py-6 text-center text-sm text-ink-3">Нет позиций</p>
       ) : (
       <>
-      {/* До md — список строк вместо таблицы: пять колонок в 340 px не влезают,
+      {/* До md — список строк вместо таблицы: четыре колонки в 340 px не влезают,
           а горизонтальный скролл прятал количество и сумму. В режиме «задним
           числом» остаётся таблица — там степперы и ✕ по строкам. */}
       {!retroEditMode && (
-        <ul className="divide-y divide-border md:hidden print:hidden">
-          {displayItems.map((it) => {
-            const { price, addon } = priceFor(it);
-            return (
-              <li key={it.id} className="px-4 py-3">
-                <p className="text-sm font-medium text-ink break-words">
-                  {it.equipment?.name ?? it.customName ?? "—"}
-                </p>
-                <p className="mt-0.5 text-xs text-ink-3">
-                  {it.equipment?.category ?? it.customCategory ?? "—"}
-                  {addon && (
-                    <span className="ml-1 text-accent" title="Добавлено поверх согласованной сметы">
-                      · добор ×{addon.quantity}
-                    </span>
-                  )}
-                </p>
-                <div className="mt-1.5 flex items-baseline justify-between gap-3 text-sm">
-                  {showPrices ? (
-                    <>
-                      <span className="mono-num text-ink-2">
-                        {it.quantity} × {price ? formatMoneyRub(price.unitPrice) : "—"}
-                      </span>
-                      <span className="mono-num font-medium text-ink whitespace-nowrap">
-                        {price ? formatMoneyRub(price.lineSum) : "—"}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="mono-num text-ink-2">{it.quantity} шт.</span>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="md:hidden print:hidden">
+          {groups.map((group) => (
+            <Fragment key={group.category}>
+              <CategoryBandHeading category={group.category} />
+              <ul className="divide-y divide-border">
+                {group.items.map((it) => {
+                  const { price, addon } = priceFor(it);
+                  return (
+                    <li key={it.id} className="px-4 py-3">
+                      <p className="text-sm font-medium text-ink break-words">
+                        {it.equipment?.name ?? it.customName ?? "—"}
+                      </p>
+                      {addon && (
+                        <p className="mt-0.5 text-xs text-accent" title="Добавлено поверх согласованной сметы">
+                          добор ×{addon.quantity}
+                        </p>
+                      )}
+                      <div className="mt-1.5 flex items-baseline justify-between gap-3 text-sm">
+                        {showPrices ? (
+                          <>
+                            <span className="mono-num text-ink-2">
+                              {it.quantity} × {price ? formatMoneyRub(price.unitPrice) : "—"}
+                            </span>
+                            <span className="mono-num font-medium text-ink whitespace-nowrap">
+                              {price ? formatMoneyRub(price.lineSum) : "—"}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="mono-num text-ink-2">{it.quantity} шт.</span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Fragment>
+          ))}
+        </div>
       )}
       {/* Вертикального окна нет: список разворачивается целиком, страница скроллится сама.
           По горизонтали скролл оставлен страховкой для режима «задним числом» на узких
@@ -175,7 +186,6 @@ export function BookingItemsTable({
         <table className="min-w-[860px] md:min-w-0 print:min-w-0 w-full text-sm">
           <thead className="bg-surface-subtle text-ink-2 border-b border-border">
             <tr>
-              <th className="text-left px-3 py-2 first:pl-4 last:pr-4 font-medium whitespace-nowrap">Категория</th>
               <th className="text-left px-3 py-2 first:pl-4 last:pr-4 font-medium whitespace-nowrap">Наименование</th>
               <th className="px-3 py-2 first:pl-4 last:pr-4 w-[100px] font-medium text-right whitespace-nowrap">Кол-во</th>
               {showPrices && <th className="px-3 py-2 first:pl-4 last:pr-4 w-[120px] font-medium text-right whitespace-nowrap">Цена</th>}
@@ -183,106 +193,109 @@ export function BookingItemsTable({
               {retroEditMode && <th className="px-3 py-2 first:pl-4 last:pr-4 w-[40px] no-print"></th>}
             </tr>
           </thead>
-          <tbody>
-            {displayItems.map((it) => {
-              const { price, addon } = priceFor(it);
-              const anyIt = it as RetroEditItem;
-              const qtyChanged =
-                retroEditMode &&
-                anyIt.originalQuantity !== undefined &&
-                anyIt.quantity !== anyIt.originalQuantity &&
-                !anyIt._added;
-              const rowClass = anyIt._deleted
-                ? "border-t border-border bg-rose-soft"
-                : anyIt._added
-                  ? "border-t border-border bg-emerald-soft"
-                  : qtyChanged
-                    ? "border-t border-border bg-amber-soft"
-                    : "border-t border-border";
-              return (
-                <tr key={it.id} className={rowClass}>
-                  <td className="px-3 py-2 first:pl-4 last:pr-4 text-ink-2">{it.equipment?.category ?? it.customCategory ?? "—"}</td>
-                  <td className="px-3 py-2 first:pl-4 last:pr-4">
-                    <div className={`font-medium text-ink ${anyIt._deleted ? "line-through text-ink-3" : ""}`}>
-                      {it.equipment?.name ?? it.customName ?? "—"}
-                    </div>
-                    <div className="text-xs text-ink-3">
-                      {it.equipment?.brand ? it.equipment.brand : ""} {it.equipment?.model ? `· ${it.equipment.model}` : ""}
-                      {qtyChanged && (
-                        <span className="text-amber ml-1">
-                          · было {anyIt.originalQuantity} → стало {anyIt.quantity}
-                        </span>
+          {groups.map((group) => (
+            <tbody key={group.category}>
+              <CategoryBandRow category={group.category} colSpan={colCount} />
+              {group.items.map((it) => {
+                const { price, addon } = priceFor(it);
+                const qtyChanged =
+                  retroEditMode &&
+                  it.originalQuantity !== undefined &&
+                  it.quantity !== it.originalQuantity &&
+                  !it._added;
+                const rowClass = it._deleted
+                  ? "border-t border-border bg-rose-soft"
+                  : it._added
+                    ? "border-t border-border bg-emerald-soft"
+                    : qtyChanged
+                      ? "border-t border-border bg-amber-soft"
+                      : "border-t border-border";
+                return (
+                  <tr key={it.id} className={rowClass}>
+                    <td className="px-3 py-2 first:pl-4 last:pr-4">
+                      <div className={`font-medium text-ink ${it._deleted ? "line-through text-ink-3" : ""}`}>
+                        {it.equipment?.name ?? it.customName ?? "—"}
+                      </div>
+                      <div className="text-xs text-ink-3">
+                        {it.equipment?.brand ? it.equipment.brand : ""} {it.equipment?.model ? `· ${it.equipment.model}` : ""}
+                        {qtyChanged && (
+                          <span className="text-amber ml-1">
+                            · было {it.originalQuantity} → стало {it.quantity}
+                          </span>
+                        )}
+                        {it._added && <span className="text-emerald ml-1">· новая позиция</span>}
+                        {addon && !retroEditMode && (
+                          <span className="text-accent ml-1" title="Добавлено поверх согласованной сметы">
+                            · добор ×{addon.quantity}
+                          </span>
+                        )}
+                        {it._deleted && <span className="text-rose ml-1">· к удалению</span>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 first:pl-4 last:pr-4 text-right mono-num">
+                      {retroEditMode ? (
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={it.quantity}
+                          disabled={it._deleted}
+                          onChange={(e) =>
+                            onUpdateQty(it.id, Number(e.target.value) || 0)
+                          }
+                          className="w-16 text-right rounded border border-amber-border bg-surface px-1 py-0.5 mono-num text-sm focus:outline-none focus:ring-1 focus:ring-amber disabled:bg-rose-soft disabled:text-ink-3"
+                        />
+                      ) : (
+                        <span className="font-medium">{it.quantity}</span>
                       )}
-                      {anyIt._added && <span className="text-emerald ml-1">· новая позиция</span>}
-                      {addon && !retroEditMode && (
-                        <span className="text-accent ml-1" title="Добавлено поверх согласованной сметы">
-                          · добор ×{addon.quantity}
-                        </span>
-                      )}
-                      {anyIt._deleted && <span className="text-rose ml-1">· к удалению</span>}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 first:pl-4 last:pr-4 text-right mono-num">
-                    {retroEditMode ? (
-                      <input
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={anyIt.quantity}
-                        disabled={anyIt._deleted}
-                        onChange={(e) =>
-                          onUpdateQty(it.id, Number(e.target.value) || 0)
-                        }
-                        className="w-16 text-right rounded border border-amber-border bg-surface px-1 py-0.5 mono-num text-sm focus:outline-none focus:ring-1 focus:ring-amber disabled:bg-rose-soft disabled:text-ink-3"
-                      />
-                    ) : (
-                      <span className="font-medium">{it.quantity}</span>
+                    </td>
+                    {showPrices && (
+                      <td className="px-3 py-2 first:pl-4 last:pr-4 text-right mono-num text-ink-2">
+                        {price ? formatMoneyRub(price.unitPrice) : "—"}
+                      </td>
                     )}
-                  </td>
-                  {showPrices && (
-                    <td className="px-3 py-2 first:pl-4 last:pr-4 text-right mono-num text-ink-2">
-                      {price ? formatMoneyRub(price.unitPrice) : "—"}
-                    </td>
-                  )}
-                  {showPrices && (
-                    <td className={`px-3 py-2 first:pl-4 last:pr-4 text-right mono-num font-medium ${qtyChanged ? "text-amber" : "text-ink"}`}>
-                      {price
-                        ? retroEditMode && !anyIt._deleted
-                          // Live-пересчёт суммы строки при правке кол-ва:
-                          // цена за смену × текущее кол-во (бэкенд пересчитает
-                          // окончательно на сохранении, но оператор видит эффект сразу).
-                          ? formatMoneyRub(String(Number(price.unitPrice) * anyIt.quantity))
-                          : formatMoneyRub(price.lineSum)
-                        : "—"}
-                    </td>
-                  )}
-                  {retroEditMode && (
-                    <td className="px-3 py-2 first:pl-4 last:pr-4 text-center no-print">
-                      <button
-                        type="button"
-                        onClick={() => onToggleDeleted(it.id)}
-                        aria-label={anyIt._deleted ? "Вернуть строку" : "Удалить строку"}
-                        title={anyIt._deleted ? "Вернуть строку" : "Удалить строку"}
-                        className={`text-base ${anyIt._deleted ? "text-accent-bright hover:text-accent" : "text-rose hover:text-rose/80"}`}
-                      >
-                        {anyIt._deleted ? "↩" : "✕"}
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-            {/* Пустая таблица остаётся только в режиме «задним числом» —
-                туда добавляют позиции кнопкой в шапке. До md таблица шире
-                экрана (min-w 860), поэтому подпись прижата влево, иначе её не видно. */}
-            {isEmpty ? (
+                    {showPrices && (
+                      <td className={`px-3 py-2 first:pl-4 last:pr-4 text-right mono-num font-medium ${qtyChanged ? "text-amber" : "text-ink"}`}>
+                        {price
+                          ? retroEditMode && !it._deleted
+                            // Live-пересчёт суммы строки при правке кол-ва:
+                            // цена за смену × текущее кол-во (бэкенд пересчитает
+                            // окончательно на сохранении, но оператор видит эффект сразу).
+                            ? formatMoneyRub(String(Number(price.unitPrice) * it.quantity))
+                            : formatMoneyRub(price.lineSum)
+                          : "—"}
+                      </td>
+                    )}
+                    {retroEditMode && (
+                      <td className="px-3 py-2 first:pl-4 last:pr-4 text-center no-print">
+                        <button
+                          type="button"
+                          onClick={() => onToggleDeleted(it.id)}
+                          aria-label={it._deleted ? "Вернуть строку" : "Удалить строку"}
+                          title={it._deleted ? "Вернуть строку" : "Удалить строку"}
+                          className={`text-base ${it._deleted ? "text-accent-bright hover:text-accent" : "text-rose hover:text-rose/80"}`}
+                        >
+                          {it._deleted ? "↩" : "✕"}
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          ))}
+          {/* Пустая таблица остаётся только в режиме «задним числом» —
+              туда добавляют позиции кнопкой в шапке. До md таблица шире
+              экрана (min-w 860), поэтому подпись прижата влево, иначе её не видно. */}
+          {isEmpty ? (
+            <tbody>
               <tr>
                 <td className="px-4 py-6 text-left md:text-center text-ink-3" colSpan={colCount}>
                   Нет позиций
                 </td>
               </tr>
-            ) : null}
-          </tbody>
+            </tbody>
+          ) : null}
         </table>
       </div>
       </>

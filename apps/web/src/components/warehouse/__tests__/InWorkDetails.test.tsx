@@ -4,11 +4,11 @@
  * Verifies:
  *  - Renders booking items + finance breakdown
  *  - «← Принять обратно» button calls onAcceptBack(bookingId)
- *  - Loading state
+ *  - Items grouped by category (eyebrow above each group, server order)
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { InWorkDetails } from "../InWorkDetails";
 import { scanApi } from "../api";
 
@@ -72,6 +72,27 @@ describe("InWorkDetails", () => {
     expect(
       screen.getByRole("button", { name: /Принять обратно/i }),
     ).toBeInTheDocument();
+  });
+
+  it("groups items by category in first-seen order, eyebrow above each group", async () => {
+    vi.mocked(scanApi.getInWorkDetails).mockResolvedValue({
+      ...fixtureDetails,
+      items: [
+        { ...fixtureDetails.items[0], bookingItemId: "g1", equipmentName: "C-Stand", category: "Грип" },
+        { ...fixtureDetails.items[0], bookingItemId: "s1", equipmentName: "Aputure 600d", category: "Свет" },
+        { ...fixtureDetails.items[1], bookingItemId: "s2", equipmentName: "SkyPanel S60", category: "Свет" },
+      ],
+    });
+    render(<InWorkDetails bookingId="b1" onAcceptBack={vi.fn()} />);
+    await screen.findByText("Test project");
+    const lists = screen.getAllByRole("list");
+    expect(lists.map((l) => l.previousElementSibling?.textContent)).toEqual(["Грип", "Свет"]);
+    expect(within(lists[1]).getAllByRole("listitem").map((li) => li.firstElementChild?.textContent)).toEqual([
+      "Aputure 600d",
+      "SkyPanel S60",
+    ]);
+    // Счётчик в заголовке — по позициям, а не по группам.
+    expect(screen.getByText("Оборудование (3)")).toBeInTheDocument();
   });
 
   it("«← Принять обратно» calls onAcceptBack with bookingId", async () => {

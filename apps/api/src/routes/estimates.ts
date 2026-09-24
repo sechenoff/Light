@@ -3,7 +3,14 @@ import express from "express";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { serializeEquipmentForJson, serializeEstimateForJson } from "../utils/serializeDecimal";
-import { buildSmetaFromPersistedEstimate, writeSmetaPdf, writeSmetaXlsx, smetaOrgFromSettings } from "../services/smetaExport";
+import {
+  buildSmetaFromPersistedEstimate,
+  loadSmetaLineOrdering,
+  writeSmetaPdf,
+  writeSmetaXlsx,
+  smetaOrgFromSettings,
+} from "../services/smetaExport";
+import { bookingItemKey, estimateLineKey, loadLineOrdering, sortLinesByCatalog } from "../services/lineOrder";
 import { getSettings } from "../services/organizationService";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 
@@ -19,13 +26,21 @@ router.get("/:estimateId", async (req, res, next) => {
       },
     });
     if (!estimate) throw new HttpError(404, "Estimate not found.");
+    // Строки сметы и позиции брони — в порядке каталога, один порядок на оба списка.
+    const ordering = await loadLineOrdering([
+      ...estimate.lines.map((l) => l.equipmentId),
+      ...estimate.booking.items.map((it) => it.equipmentId),
+    ]);
     res.json({
       estimate: {
-        ...serializeEstimateForJson(estimate),
+        ...serializeEstimateForJson({
+          ...estimate,
+          lines: sortLinesByCatalog(estimate.lines, estimateLineKey, ordering),
+        }),
         booking: {
           ...estimate.booking,
           discountPercent: estimate.booking.discountPercent?.toString() ?? null,
-          items: estimate.booking.items.map((it) => ({
+          items: sortLinesByCatalog(estimate.booking.items, bookingItemKey, ordering).map((it) => ({
             ...it,
             equipment: it.equipment ? serializeEquipmentForJson(it.equipment) : null,
           })),
@@ -52,6 +67,7 @@ router.get("/:estimateId/export/xlsx", async (req, res, next) => {
       booking: estimate.booking,
       estimate,
       org: smetaOrgFromSettings(await getSettings()),
+      ordering: await loadSmetaLineOrdering(estimate),
     });
     const human = buildBookingHumanName({
       startDate: estimate.booking.startDate,
@@ -79,6 +95,7 @@ router.get("/:estimateId/export/pdf", async (req, res, next) => {
       booking: estimate.booking,
       estimate,
       org: smetaOrgFromSettings(await getSettings()),
+      ordering: await loadSmetaLineOrdering(estimate),
     });
     const human = buildBookingHumanName({
       startDate: estimate.booking.startDate,

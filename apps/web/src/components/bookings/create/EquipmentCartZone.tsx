@@ -4,6 +4,8 @@ import { useState } from "react";
 
 import { formatMoneyRubWhole } from "../../../lib/format";
 import { toast } from "../../ToastProvider";
+import { CATEGORY_BAND_TEXT } from "../CategoryBand";
+import { EMPTY_CATALOG_ORDER, groupCartItems, type CatalogOrder } from "./cartOrder";
 import { EditablePrice, ListPriceBadge, RevertPriceButton } from "./EditablePrice";
 import { maxReasonFor } from "./maxReason";
 import { RemoveItemConfirm } from "./RemoveItemConfirm";
@@ -20,6 +22,10 @@ import type { CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogI
 // каждая свои ветки по типу позиции. Двойной рендер в проекте — канон
 // (см. /finance/payments, /bookings), но его цена — расхождение веток по
 // набору полей; общая модель строки эту цену снимает.
+//
+// Строки сгруппированы по категориям в порядке каталога (см. cartOrder.ts),
+// перед каждой группой — полоса с названием, как в каталоге выше. Свои и
+// «вне каталога» позиции — последней группой, в порядке добавления.
 
 type Props = {
   selected: Map<string, CatalogSelectedItem>;
@@ -47,6 +53,11 @@ type Props = {
    */
   onChangeNegotiatedRate?: (equipmentId: string, rate: number | null) => void;
   onOpenCustomModal: () => void;
+  /**
+   * Ранги каталога для группировки. Не передан — группы по первому
+   * добавлению категории, строки внутри в порядке добавления.
+   */
+  catalogOrder?: CatalogOrder;
 };
 
 /** Действующая ставка за смену: договорная, если есть, иначе прайсовая. */
@@ -107,6 +118,15 @@ type CartRow = {
   onPriceChange: ((next: number | null) => void) | undefined;
 };
 
+/** Группа строк под одной полосой: категория каталога или произвольные позиции. */
+type CartSection = { key: string; title: string; rows: CartRow[] };
+
+/** Полоса группы — тот же вид, что у полос категорий в каталоге и в карточке брони. */
+const BAND_TEXT = CATEGORY_BAND_TEXT;
+
+function BandCount({ count }: { count: number }) {
+  return <span className="ml-1 font-mono">· {count}</span>;
+}
 
 function Stepper({
   qty,
@@ -215,29 +235,31 @@ export function EquipmentCartZone({
   onRemoveOffCatalog,
   onChangeNegotiatedRate,
   onOpenCustomModal,
+  catalogOrder = EMPTY_CATALOG_ORDER,
 }: Props) {
-  const rows: CartRow[] = [
-    ...Array.from(selected.values()).map<CartRow>((it) => ({
-      key: `eq-${it.equipmentId}`,
-      name: it.name,
-      badge: null,
-      quantity: it.quantity,
-      atMax: it.quantity >= it.availableQuantity,
-      maxReason: maxReasonFor(it.availableQuantity, it.quantity),
-      stepperTone: "emerald",
-      rate: rateOf(it),
-      listRate: it.negotiatedRatePerShift != null ? Number(it.dailyPrice) : null,
-      perShift: true,
-      shiftFactor: shifts,
-      sum: rateOf(it) * it.quantity * shifts,
-      adjustment: adjustments?.get(it.equipmentId),
-      onDec: () => onChangeQty(it.equipmentId, it.quantity - 1),
-      onInc: () => onChangeQty(it.equipmentId, it.quantity + 1),
-      onRemove: () => onRemove(it.equipmentId),
-      onPriceChange: onChangeNegotiatedRate
-        ? (next) => onChangeNegotiatedRate(it.equipmentId, next)
-        : undefined,
-    })),
+  const catalogRow = (it: CatalogSelectedItem): CartRow => ({
+    key: `eq-${it.equipmentId}`,
+    name: it.name,
+    badge: null,
+    quantity: it.quantity,
+    atMax: it.quantity >= it.availableQuantity,
+    maxReason: maxReasonFor(it.availableQuantity, it.quantity),
+    stepperTone: "emerald",
+    rate: rateOf(it),
+    listRate: it.negotiatedRatePerShift != null ? Number(it.dailyPrice) : null,
+    perShift: true,
+    shiftFactor: shifts,
+    sum: rateOf(it) * it.quantity * shifts,
+    adjustment: adjustments?.get(it.equipmentId),
+    onDec: () => onChangeQty(it.equipmentId, it.quantity - 1),
+    onInc: () => onChangeQty(it.equipmentId, it.quantity + 1),
+    onRemove: () => onRemove(it.equipmentId),
+    onPriceChange: onChangeNegotiatedRate
+      ? (next) => onChangeNegotiatedRate(it.equipmentId, next)
+      : undefined,
+  });
+
+  const customRows: CartRow[] = [
     ...customItems.map<CartRow>((it) => ({
       key: `custom-${it.tempId}`,
       name: it.name,
@@ -279,6 +301,18 @@ export function EquipmentCartZone({
     })),
   ];
 
+  const sections: CartSection[] = [
+    ...groupCartItems(selected.values(), catalogOrder).map((g) => ({
+      key: `cat-${g.category}`,
+      title: g.category.trim() || "Без категории",
+      rows: g.items.map(catalogRow),
+    })),
+    ...(customRows.length > 0
+      ? [{ key: "custom", title: "Произвольные позиции", rows: customRows }]
+      : []),
+  ];
+  const rowCount = sections.reduce((n, section) => n + section.rows.length, 0);
+
   const total = computeCartTotal(selected, customItems, shifts);
 
   // «−» на количестве 1 убирал позицию молча, и промах пальцем стоил дорого:
@@ -291,7 +325,7 @@ export function EquipmentCartZone({
   const header = (
     <div className="flex items-center justify-between px-5 pb-2.5 pt-2.5">
       <span className="font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-3">
-        Состав заявки{rows.length > 0 && <span className="ml-1 font-mono text-emerald">· {rows.length}</span>}
+        Состав заявки{rowCount > 0 && <span className="ml-1 font-mono text-emerald">· {rowCount}</span>}
       </span>
       <button
         type="button"
@@ -303,7 +337,7 @@ export function EquipmentCartZone({
     </div>
   );
 
-  if (rows.length === 0) {
+  if (rowCount === 0) {
     return (
       <div>
         {header}
@@ -343,81 +377,91 @@ export function EquipmentCartZone({
               </th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((row) => {
-              const isHardUnavail = row.adjustment?.kind === "unavailable";
-              return (
-                <tr
-                  key={row.key}
-                  className={`border-b border-border ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
-                >
-                  <td className="py-2 pl-5 pr-3">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="font-medium text-ink">{row.name}</span>
-                      {row.badge && <Badge badge={row.badge} />}
-                      {row.listRate != null && <ListPriceBadge value={row.listRate} />}
-                    </div>
-                    <AdjustmentNote adjustment={row.adjustment} />
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {isHardUnavail ? (
-                      // Прибавлять нечего, но количество показать обязаны:
-                      // с прочерком строка читалась «— × 14 500 × 2 = 29 000»,
-                      // и было не видно, за сколько единиц выставлены деньги.
-                      <span className="mono-num font-semibold text-rose">{row.quantity}</span>
-                    ) : (
-                      <Stepper
-                        qty={row.quantity}
-                        atMax={row.atMax}
-                        maxReason={row.maxReason}
-                        tone={row.stepperTone}
-                        name={row.name}
-                        onDec={decOrConfirm(row)}
-                        onInc={row.onInc}
-                      />
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <span className="inline-flex items-center justify-end gap-1">
-                      {row.onPriceChange && row.listRate != null && (
-                        <RevertPriceButton
-                          onClick={() => row.onPriceChange?.(null)}
-                          label={`Вернуть прайсовую цену: ${row.name}`}
-                        />
-                      )}
-                      {row.rate == null ? (
-                        <span className="mono-num text-ink-3">—</span>
-                      ) : row.onPriceChange ? (
-                        <EditablePrice
-                          value={row.rate}
-                          listValue={row.listRate ?? row.rate}
-                          isNegotiated={row.listRate != null}
-                          onChange={row.onPriceChange}
-                          ariaLabel={`Цена за смену: ${row.name}`}
-                          className="-mr-[7px]"
-                        />
+          {/* Группа категории — свой <tbody>: полоса-заголовок озвучивается
+              скринридером как заголовок строк группы (scope="rowgroup"). */}
+          {sections.map((section) => (
+            <tbody key={section.key}>
+              <tr data-cart-band className="border-b border-border bg-surface-subtle">
+                <th scope="rowgroup" colSpan={6} className={`py-1.5 pl-5 pr-5 text-left ${BAND_TEXT}`}>
+                  {section.title}
+                  <BandCount count={section.rows.length} />
+                </th>
+              </tr>
+              {section.rows.map((row) => {
+                const isHardUnavail = row.adjustment?.kind === "unavailable";
+                return (
+                  <tr
+                    key={row.key}
+                    className={`border-b border-border ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
+                  >
+                    <td className="py-2 pl-5 pr-3">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-medium text-ink">{row.name}</span>
+                        {row.badge && <Badge badge={row.badge} />}
+                        {row.listRate != null && <ListPriceBadge value={row.listRate} />}
+                      </div>
+                      <AdjustmentNote adjustment={row.adjustment} />
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {isHardUnavail ? (
+                        // Прибавлять нечего, но количество показать обязаны:
+                        // с прочерком строка читалась «— × 14 500 × 2 = 29 000»,
+                        // и было не видно, за сколько единиц выставлены деньги.
+                        <span className="mono-num font-semibold text-rose">{row.quantity}</span>
                       ) : (
-                        <span className="mono-num font-semibold text-ink">
-                          {formatMoneyRubWhole(row.rate)}
-                        </span>
+                        <Stepper
+                          qty={row.quantity}
+                          atMax={row.atMax}
+                          maxReason={row.maxReason}
+                          tone={row.stepperTone}
+                          name={row.name}
+                          onDec={decOrConfirm(row)}
+                          onInc={row.onInc}
+                        />
                       )}
-                    </span>
-                  </td>
-                  {/* У своей позиции цена задана за всю бронь: «1» здесь
-                      читалось бы как «оплачена одна смена из трёх». */}
-                  <td className="mono-num px-3 py-2 text-right text-ink-3">
-                    {row.perShift ? row.shiftFactor : "—"}
-                  </td>
-                  <td className="mono-num whitespace-nowrap px-3 py-2 text-right font-semibold text-ink">
-                    {row.sum == null ? <span className="text-ink-3">—</span> : formatMoneyRubWhole(row.sum)}
-                  </td>
-                  <td className="py-2 pl-3 pr-5">
-                    <RemoveButton name={row.name} onClick={row.onRemove} />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <span className="inline-flex items-center justify-end gap-1">
+                        {row.onPriceChange && row.listRate != null && (
+                          <RevertPriceButton
+                            onClick={() => row.onPriceChange?.(null)}
+                            label={`Вернуть прайсовую цену: ${row.name}`}
+                          />
+                        )}
+                        {row.rate == null ? (
+                          <span className="mono-num text-ink-3">—</span>
+                        ) : row.onPriceChange ? (
+                          <EditablePrice
+                            value={row.rate}
+                            listValue={row.listRate ?? row.rate}
+                            isNegotiated={row.listRate != null}
+                            onChange={row.onPriceChange}
+                            ariaLabel={`Цена за смену: ${row.name}`}
+                            className="-mr-[7px]"
+                          />
+                        ) : (
+                          <span className="mono-num font-semibold text-ink">
+                            {formatMoneyRubWhole(row.rate)}
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                    {/* У своей позиции цена задана за всю бронь: «1» здесь
+                        читалось бы как «оплачена одна смена из трёх». */}
+                    <td className="mono-num px-3 py-2 text-right text-ink-3">
+                      {row.perShift ? row.shiftFactor : "—"}
+                    </td>
+                    <td className="mono-num whitespace-nowrap px-3 py-2 text-right font-semibold text-ink">
+                      {row.sum == null ? <span className="text-ink-3">—</span> : formatMoneyRubWhole(row.sum)}
+                    </td>
+                    <td className="py-2 pl-3 pr-5">
+                      <RemoveButton name={row.name} onClick={row.onRemove} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          ))}
           <tfoot>
             <tr className="border-t-2 border-ink">
               <th scope="row" colSpan={4} className="py-2.5 pl-5 pr-3 text-left font-semibold text-ink">
@@ -436,79 +480,88 @@ export function EquipmentCartZone({
           Пять колонок в 375 px не помещаются, поэтому название со счётчиком
           идут первой полосой, арифметика — второй. Видна также на 1024–1279,
           где колонка формы сжата сайдбарами (см. комментарий у таблицы).
-          Данные и действия те же: обе раскладки собираются из одного `rows`. */}
+          Данные и действия те же: обе раскладки собираются из одних `sections`. */}
       <div className="px-3 pb-2.5 md:hidden lg:block xl:hidden">
-        {rows.map((row) => {
-          const isHardUnavail = row.adjustment?.kind === "unavailable";
-          return (
-            <div
-              key={row.key}
-              className={`grid grid-cols-[6px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 gap-y-1 rounded-md px-2 py-1.5 ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
-            >
-              <span
-                aria-hidden="true"
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${isHardUnavail ? "bg-rose" : row.stepperTone === "indigo" ? "bg-indigo" : "bg-emerald"}`}
-              />
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                  {/* Две строки вместо truncate: многоточие съедало модель, и похожие
-                      позиции («52XT (Bl…» / «52XT (Bl…») было не различить. */}
-                  <span title={row.name} className="line-clamp-2 min-w-0 hyphens-auto break-words text-[13px] font-medium leading-snug text-ink">
-                    {row.name}
-                  </span>
-                  {row.badge && <Badge badge={row.badge} />}
-                </div>
-                <AdjustmentNote adjustment={row.adjustment} />
-              </div>
-              {isHardUnavail ? (
-                <span />
-              ) : (
-                <Stepper
-                  qty={row.quantity}
-                  atMax={row.atMax}
-                  maxReason={row.maxReason}
-                  tone={row.stepperTone}
-                  name={row.name}
-                  onDec={decOrConfirm(row)}
-                  onInc={row.onInc}
-                />
-              )}
-              <RemoveButton name={row.name} onClick={row.onRemove} />
-              {row.rate != null && (
-                <span className="col-start-2 col-end-[-1] row-start-2 flex flex-wrap items-center gap-1.5 whitespace-nowrap font-mono text-[12px] text-ink-2">
-                  {row.onPriceChange ? (
-                    <EditablePrice
-                      value={row.rate}
-                      listValue={row.listRate ?? row.rate}
-                      isNegotiated={row.listRate != null}
-                      onChange={row.onPriceChange}
-                      ariaLabel={`Цена за смену: ${row.name}`}
-                      className="-ml-[7px]"
-                    />
+        {sections.map((section) => (
+          <div key={section.key} className="mt-1.5 first:mt-0">
+            {/* Полоса во всю ширину карточки, как у категорий каталога. */}
+            <h4 data-cart-band className={`-mx-3 mb-1 border-y border-border bg-surface-subtle px-5 py-1.5 ${BAND_TEXT}`}>
+              {section.title}
+              <BandCount count={section.rows.length} />
+            </h4>
+            {section.rows.map((row) => {
+              const isHardUnavail = row.adjustment?.kind === "unavailable";
+              return (
+                <div
+                  key={row.key}
+                  className={`grid grid-cols-[6px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 gap-y-1 rounded-md px-2 py-1.5 ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${isHardUnavail ? "bg-rose" : row.stepperTone === "indigo" ? "bg-indigo" : "bg-emerald"}`}
+                  />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                      {/* Две строки вместо truncate: многоточие съедало модель, и похожие
+                          позиции («52XT (Bl…» / «52XT (Bl…») было не различить. */}
+                      <span title={row.name} className="line-clamp-2 min-w-0 hyphens-auto break-words text-[13px] font-medium leading-snug text-ink">
+                        {row.name}
+                      </span>
+                      {row.badge && <Badge badge={row.badge} />}
+                    </div>
+                    <AdjustmentNote adjustment={row.adjustment} />
+                  </div>
+                  {isHardUnavail ? (
+                    <span />
                   ) : (
-                    <span className="font-semibold text-ink">{formatMoneyRubWhole(row.rate)}</span>
-                  )}
-                  <span className="text-ink-3">
-                    {row.perShift && "/см"} × {row.quantity}
-                    {row.shiftFactor > 1 && <> × {row.shiftFactor} см</>} =
-                  </span>
-                  <span className="font-semibold text-ink">
-                    {formatMoneyRubWhole(row.sum ?? 0)} ₽
-                  </span>
-                  {row.listRate != null && <ListPriceBadge value={row.listRate} />}
-                  {/* ↺ — в конце полосы: слева от цены место занимает
-                      отрицательный отступ поля. */}
-                  {row.onPriceChange && row.listRate != null && (
-                    <RevertPriceButton
-                      onClick={() => row.onPriceChange?.(null)}
-                      label={`Вернуть прайсовую цену: ${row.name}`}
+                    <Stepper
+                      qty={row.quantity}
+                      atMax={row.atMax}
+                      maxReason={row.maxReason}
+                      tone={row.stepperTone}
+                      name={row.name}
+                      onDec={decOrConfirm(row)}
+                      onInc={row.onInc}
                     />
                   )}
-                </span>
-              )}
-            </div>
-          );
-        })}
+                  <RemoveButton name={row.name} onClick={row.onRemove} />
+                  {row.rate != null && (
+                    <span className="col-start-2 col-end-[-1] row-start-2 flex flex-wrap items-center gap-1.5 whitespace-nowrap font-mono text-[12px] text-ink-2">
+                      {row.onPriceChange ? (
+                        <EditablePrice
+                          value={row.rate}
+                          listValue={row.listRate ?? row.rate}
+                          isNegotiated={row.listRate != null}
+                          onChange={row.onPriceChange}
+                          ariaLabel={`Цена за смену: ${row.name}`}
+                          className="-ml-[7px]"
+                        />
+                      ) : (
+                        <span className="font-semibold text-ink">{formatMoneyRubWhole(row.rate)}</span>
+                      )}
+                      <span className="text-ink-3">
+                        {row.perShift && "/см"} × {row.quantity}
+                        {row.shiftFactor > 1 && <> × {row.shiftFactor} см</>} =
+                      </span>
+                      <span className="font-semibold text-ink">
+                        {formatMoneyRubWhole(row.sum ?? 0)} ₽
+                      </span>
+                      {row.listRate != null && <ListPriceBadge value={row.listRate} />}
+                      {/* ↺ — в конце полосы: слева от цены место занимает
+                          отрицательный отступ поля. */}
+                      {row.onPriceChange && row.listRate != null && (
+                        <RevertPriceButton
+                          onClick={() => row.onPriceChange?.(null)}
+                          label={`Вернуть прайсовую цену: ${row.name}`}
+                        />
+                      )}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
         <div className="mt-1 flex items-center justify-between border-t-2 border-ink px-2 pt-2">
           <span className="text-[13px] font-semibold text-ink">Сумма позиций</span>
           <span className="mono-num text-[15px] font-bold text-ink">{formatMoneyRubWhole(total)} ₽</span>

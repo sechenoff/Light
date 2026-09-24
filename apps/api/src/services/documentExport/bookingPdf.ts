@@ -15,6 +15,62 @@ import { prisma } from "../../prisma";
 import { getSettings } from "../organizationService";
 import { renderInvoicePdf, coalesceWithEnv, type InvoiceLine } from "./invoice/renderInvoicePdf";
 import { renderActPdf, type ActLine } from "./act/renderActPdf";
+import { bookingItemKey, estimateLineKey, loadLineOrdering, sortLinesByCatalog } from "../lineOrder";
+
+type MoneyLike = { toString(): string };
+
+/** Бронь в той форме, из которой собираются строки счёта и акта. */
+export type BookingDocumentLinesSource = {
+  estimates?: Array<{
+    kind: string;
+    lines: Array<{
+      equipmentId: string | null;
+      categorySnapshot: string;
+      nameSnapshot: string;
+      quantity: number;
+      unitPrice: MoneyLike;
+      lineSum: MoneyLike;
+    }>;
+  }>;
+  items: Array<{
+    equipmentId: string | null;
+    customName: string | null;
+    quantity: number;
+    equipment: { category: string; name: string; rentalRatePerShift: MoneyLike } | null;
+  }>;
+};
+
+/**
+ * Строки счёта / акта по брони: из MAIN-сметы, а у легаси-брони без снапшота —
+ * из позиций брони по прайсу за смену. Строки идут в порядке каталога
+ * (lineOrder.ts), номер присваивается после сортировки. Общий для
+ * `/api/bookings/:id/{invoice,act}.pdf`, `/api/invoices/:id/pdf` и ЛК.
+ */
+export async function bookingDocumentLines(booking: BookingDocumentLinesSource): Promise<InvoiceLine[]> {
+  const mainEstimate = booking.estimates?.find((e) => e.kind === "MAIN");
+  if (mainEstimate) {
+    const ordering = await loadLineOrdering(mainEstimate.lines.map((l) => l.equipmentId));
+    return sortLinesByCatalog(mainEstimate.lines, estimateLineKey, ordering).map((l, i) => ({
+      index: i + 1,
+      name: l.nameSnapshot,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice.toString(),
+      lineSum: l.lineSum.toString(),
+    }));
+  }
+  const ordering = await loadLineOrdering(booking.items.map((it) => it.equipmentId));
+  return sortLinesByCatalog(booking.items, bookingItemKey, ordering).map((item, i) => {
+    const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
+    const lineSum = new Decimal(rate.toString()).mul(item.quantity);
+    return {
+      index: i + 1,
+      name: item.equipment?.name ?? item.customName ?? "—",
+      quantity: item.quantity,
+      unitPrice: rate.toString(),
+      lineSum: lineSum.toString(),
+    };
+  });
+}
 
 /**
  * Builds and renders the booking's invoice/estimate PDF.
@@ -41,7 +97,7 @@ export async function buildBookingEstimatePdf(bookingId: string): Promise<Buffer
   const invoiceNumber = `LR-DRAFT-${booking.id.slice(0, 8).toUpperCase()}`;
   const invoiceDate = new Date().toLocaleDateString("ru-RU");
 
-  let lines: InvoiceLine[];
+  const lines: InvoiceLine[] = await bookingDocumentLines(booking);
   let subtotal: string;
   let discountPercent: string | null = null;
   let discountAmount: string | null = null;
@@ -49,13 +105,6 @@ export async function buildBookingEstimatePdf(bookingId: string): Promise<Buffer
 
   const mainEstimate = booking.estimates?.find((e) => e.kind === "MAIN");
   if (mainEstimate) {
-    lines = mainEstimate.lines.map((l, i) => ({
-      index: i + 1,
-      name: l.nameSnapshot,
-      quantity: l.quantity,
-      unitPrice: l.unitPrice.toString(),
-      lineSum: l.lineSum.toString(),
-    }));
     subtotal = mainEstimate.subtotal.toString();
     if (mainEstimate.discountPercent && new Decimal(mainEstimate.discountPercent.toString()).greaterThan(0)) {
       discountPercent = mainEstimate.discountPercent.toString();
@@ -63,17 +112,6 @@ export async function buildBookingEstimatePdf(bookingId: string): Promise<Buffer
     }
     totalAfterDiscount = mainEstimate.totalAfterDiscount.toString();
   } else {
-    lines = booking.items.map((item, i) => {
-      const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
-      const lineSum = new Decimal(rate.toString()).mul(item.quantity);
-      return {
-        index: i + 1,
-        name: item.equipment?.name ?? item.customName ?? "—",
-        quantity: item.quantity,
-        unitPrice: rate.toString(),
-        lineSum: lineSum.toString(),
-      };
-    });
     subtotal = booking.finalAmount.toString();
     totalAfterDiscount = booking.finalAmount.toString();
   }
@@ -120,30 +158,11 @@ export async function buildBookingActPdf(bookingId: string): Promise<Buffer> {
     return renderActPdf({ actNumber, actDate, clientName: booking.client.name, lines, totalAmount: p.booking.finalAmount.toString() }, org);
   }
 
+  actLines = await bookingDocumentLines(booking);
   const mainEstimate = booking.estimates?.find((e) => e.kind === "MAIN");
-  if (mainEstimate) {
-    actLines = mainEstimate.lines.map((l, i) => ({
-      index: i + 1,
-      name: l.nameSnapshot,
-      quantity: l.quantity,
-      unitPrice: l.unitPrice.toString(),
-      lineSum: l.lineSum.toString(),
-    }));
-    totalAmount = mainEstimate.totalAfterDiscount.toString();
-  } else {
-    actLines = booking.items.map((item, i) => {
-      const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
-      const lineSum = new Decimal(rate.toString()).mul(item.quantity);
-      return {
-        index: i + 1,
-        name: item.equipment?.name ?? item.customName ?? "—",
-        quantity: item.quantity,
-        unitPrice: rate.toString(),
-        lineSum: lineSum.toString(),
-      };
-    });
-    totalAmount = booking.finalAmount.toString();
-  }
+  totalAmount = mainEstimate
+    ? mainEstimate.totalAfterDiscount.toString()
+    : booking.finalAmount.toString();
 
   return renderActPdf(
     { actNumber, actDate, clientName: booking.client.name, lines: actLines, totalAmount },

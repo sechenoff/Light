@@ -17,6 +17,7 @@ import { recomputeBookingFinance } from "./finance";
 import { recomputeAddonEstimate } from "./addonEstimate";
 import { findAddonConflict } from "./addonAvailability";
 import { getLostCountByEquipmentMap, getRepairCountByEquipmentMap } from "./availability";
+import { bookingItemKey, loadLineOrdering, sortLinesByCatalog } from "./lineOrder";
 import { HttpError } from "../utils/errors";
 import Decimal from "decimal.js";
 
@@ -199,9 +200,10 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
   // количества — из totalQuantity вычитаем открытые потеряшки и активные
   // безъюнитные ремонты, как это делает витрина (getAvailability). Иначе
   // чек-лист выдачи предлагает добрать то, что лежит в мастерской.
-  const [lostByEquipment, inRepairByEquipment] = await Promise.all([
+  const [lostByEquipment, inRepairByEquipment, lineOrdering] = await Promise.all([
     getLostCountByEquipmentMap(equipmentIds),
     getRepairCountByEquipmentMap(equipmentIds),
+    loadLineOrdering(equipmentIds),
   ]);
   const physicalStockOf = (equipmentId: string | null, totalQuantity: number): number => {
     if (!equipmentId) return 0;
@@ -245,7 +247,13 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
   let totalItems = 0;
   let checkedItems = 0;
 
-  for (const bi of session.booking.items) {
+  // Порядок каталога: кладовщик комплектует бронь категория за категорией, а
+  // киоск (PIN-вход) порядок категорий сам запросить не может — берёт наш.
+  // Произвольные позиции («Добавлено на месте») — в конце; createdAt из
+  // выборки остаётся запасным ключом, сортировка стабильная.
+  const orderedItems = sortLinesByCatalog(session.booking.items, bookingItemKey, lineOrdering);
+
+  for (const bi of orderedItems) {
     const mode = bi.equipment?.stockTrackingMode as "COUNT" | "UNIT" | undefined ?? "COUNT";
     const isExtra = !bi.equipmentId || bi.customName != null;
 
