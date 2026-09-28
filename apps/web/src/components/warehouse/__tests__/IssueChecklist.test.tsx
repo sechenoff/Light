@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ChecklistState, CompleteResult } from "../types";
 import type { UseScanSessionResult } from "../useScanSession";
+import { _resetChecklistDraftsForTests } from "../useChecklistDraft";
 
 // ── Mock useScanSession ──────────────────────────────────────────────────────
 // The real hook makes network calls; here we drive `state` directly. The
@@ -157,6 +158,8 @@ function defaultCompleteResult(): CompleteResult {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Черновик чек-листа живёт в модуле по sessionId — между тестами не делится.
+  _resetChecklistDraftsForTests();
   mockState = state();
   mockLoading = false;
   mockError = null;
@@ -712,9 +715,9 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
     expect(checkedToggle).toHaveAttribute("aria-pressed", "true");
     expect(checkedToggle).toHaveTextContent(/Выдано/);
 
-    // The row container (toggle's grandparent — wraps stepper + toggle) picks
-    // up the emerald border + soft tint when checked.
-    const rowContainer = checkedToggle.closest("div.flex.flex-wrap");
+    // Карточка строки (вокруг степпера, отметки и подсказок) получает
+    // зелёную кромку и подложку, когда строка отмечена.
+    const rowContainer = checkedToggle.closest("[data-issue-row]");
     expect(rowContainer?.className || "").toMatch(/emerald/);
 
     // The other row stays untouched.

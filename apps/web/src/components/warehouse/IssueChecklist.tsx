@@ -1,378 +1,103 @@
 "use client";
 
 /**
- * ISSUE checklist — the operator's «выдача» screen (post-Task-14 UX).
+ * Чек-лист выдачи — экран кладовщика «выдача».
  *
- * UX shape (per user's words 2026-05-22):
- *  - Each row has an unbounded stepper `[−] N [+]` (no `/M` separator).
- *    `min=0`, `max = bi.quantity + bi.addCap` — operator can bump a 10-bag row
- *    up to 12 without opening «+ Добор».
- *  - No per-row commit buttons («Выдать N» / «Не выдаём»). The stepper IS the
- *    state — value === intended actual quantity.
- *  - Visual diff vs `originalQuantity`:
- *      N === origQty (or N === bi.quantity when origQty=0) → neutral
- *      N <  origQty                                        → «−X» amber
- *      N >  origQty                                        → «+X» emerald
- *      N === 0                                             → row dimmed
- *  - Sticky live finance block at viewport bottom:
- *      Согласовано       <main_original>
- *      Снято на выдаче  −<removal>      (only if N < origQty for some row)
- *      Дополнительно   +<addon_actual>  (only if N > origQty for some row)
- *      ────────────
- *      Итого             <final_amount>
- *      [ Готово, выдать ]
- *  - «Готово, выдать» bundles deltas into `issuanceAdjustments` (only rows
- *    where intended ≠ bi.quantity) and POSTs /complete in one shot — no
- *    intermediate сверка screen.
- *  - «+ Добор» (top-right chip) opens AddonSearch — but the picker hides
- *    rows whose equipmentId is already in the booking (operator should use
- *    the stepper instead).
+ * Каждая позиция брони — строка со степпером `[−] N [+]` (N — сколько реально
+ * грузим) и отметкой «Выдано» (грузчик унёс). Разница с согласованным видна
+ * пилюлей, внизу — живой блок финансов и «Готово, выдать»: корректировки
+ * уходят одним `/complete` без промежуточной сверки.
  *
- * The phase machine is `checklist → submitting → result` — сверка is dropped
- * because the live finance block makes it redundant («лишние движения и
- * лишние нажатия мышкой» — the user's exact complaint about pre-Task-14 UX).
+ * Что изменилось (PR «Выдача и приёмка»):
+ *  - Черновик на сервере (P6). Степпер, отметки и «под ответственность»
+ *    сохраняются через `useChecklistDraft` (800 мс) и восстанавливаются из
+ *    `/state` — смена раздела, «←», перезагрузка и второй планшет больше не
+ *    теряют погруженное. В черновик попадают только строки, отличные от плана.
+ *  - Один потолок (P4). Степпер упирается в свободное (`addCap`); если вещь
+ *    держит чужая бронь, под серым «+» — у кого занято и «Добрать под
+ *    ответственность» (потолок `ackCap`, `acknowledgedConflict` в `/complete`).
+ *  - Защита от устаревшего экрана (P3, P14). `/complete` получает
+ *    `itemsVersion` и `draftRevision`; коды `SESSION_*` показывают
+ *    `SessionClosedNotice`, `CHECKLIST_OUTDATED` перечитывает чек-лист и
+ *    заново применяет черновик, `ISSUE_TOO_EARLY` спрашивает «Выдать заранее»
+ *    (P12), строки ×0 без единой выдачи — «Нечего выдавать» (P5).
+ *  - Финансы от снимка сметы (P16), счётчик доборов по строкам сверх
+ *    исходного и договорной итог (P17, P22).
  *
- * Data: `useScanSession` (already wired upstream by page.tsx — operation ISSUE).
- *  - The hook provides the canonical checklist state (items + per-unit metadata).
- *  - Per-bookingItem intended quantities are held in local state and applied
- *    batched at `/complete` time as `issuanceAdjustments`.
- *  - Pre-scanned units (`unit.checked === true`) are not surfaced — backend
- *    enforces `ADJUSTMENT_CONFLICTS_WITH_SCANS` if a reduction conflicts with
- *    them, and we render that 409 inline (same as the pre-Task-14 wiring).
+ * Состояние чек-листа: `useScanSession` (загрузку открывает страница).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScanSession } from "./useScanSession";
 import { AddonSearch } from "./AddonSearch";
 import { DriverPanel } from "./DriverPanel";
+import { AbortSessionButton } from "./AbortSessionButton";
+import { ResumedSessionBanner } from "./ResumedSessionBanner";
+import { SessionClosedNotice } from "./SessionClosedNotice";
+import { formatMoscowDayTime, useChecklistDraft } from "./useChecklistDraft";
 import type {
+  ChecklistDraftV1,
   ChecklistItem,
+  ChecklistSessionProps,
   ChecklistState,
+  CompleteResult,
+  DraftOutdatedDetails,
   IssuanceAdjustment,
+  ScanApiError,
 } from "./types";
-import { formatRub } from "../../lib/format";
+import {
+  SCAN_ERROR,
+  getScanErrorDetails,
+  isChecklistDraftV1,
+  isScanApiError,
+  isSessionClosedError,
+  scanErrorCode,
+} from "./types";
 import { groupByCategory } from "../../lib/groupByCategory";
 import { scanApi } from "./api";
-import { isScanApiError } from "./types";
-import type { CompleteResult } from "./types";
 import { IssueResultView } from "./IssueResultView";
 import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
+import {
+  buildIssueDraft,
+  freeAddCap,
+  issueDraftHasRows,
+  mergeNewItems,
+  rowMax,
+  rowOf,
+  seedIssueRows,
+  type IssueRowMap,
+  type IssueRowState,
+} from "./issueChecklistDraft";
+import { computeLiveFinance, emptyLiveFinance } from "./issueLiveFinance";
+import {
+  ChecklistMessage,
+  ChecklistSkeleton,
+  ConfirmPartialDialog,
+  EarlyIssueDialog,
+  IssueChecklistHeading,
+  IssueRow,
+  LiveFinanceBlock,
+  type IssueRowProblem,
+} from "./IssueChecklistParts";
+
+export { computeLiveFinance } from "./issueLiveFinance";
 
 /** «#» + последние 6 символов id брони, в верхнем регистре (как в BookingList). */
 function displayNo(id: string): string {
   return "#" + id.slice(-6).toUpperCase();
 }
 
+const EARLY_ISSUE_HINT_MS = 24 * 3600 * 1000;
+/** Код сервера вне таблицы 2.2 — сохранён со времён сканера. */
+const ADJUSTMENT_CONFLICTS_WITH_SCANS = "ADJUSTMENT_CONFLICTS_WITH_SCANS";
+
 type IssuePhase = "checklist" | "submitting" | "result";
 
-// ── Live finance ────────────────────────────────────────────────────────────
-
-interface LiveFinance {
-  /** state.mainOriginalAfterDiscount — pre-session «Согласовано». */
-  mainOriginal: number;
-  /**
-   * Actual MAIN subtotal at intended quantities (capped at `originalQuantity`
-   * per row), discount applied. Anything above origQty becomes addon, not main.
-   */
-  mainActual: number;
-  /** Addon subtotal (intended − originalQuantity) per row, discount applied. */
-  addonActual: number;
-  /** max(0, mainOriginal − mainActual) — what shows as «Снято на выдаче». */
-  removalAmount: number;
-  /** mainActual + addonActual — bottom-line «Итого». */
-  finalAmount: number;
-  /** True when ≥ one row has intended < originalQuantity. */
-  hasRemovals: boolean;
-  /** True when ≥ one row has intended > originalQuantity. */
-  hasAddons: boolean;
+/** Что осталось от восстановления черновика — для плашки «Продолжена выдача». */
+interface RestoreInfo {
+  restored: boolean;
+  partial: boolean;
 }
-
-/**
- * Pure live-finance calc.
- *
- * NB: this is intentionally not Prisma-Decimal — display only. The server is
- * authoritative on commit (`/complete` recomputes finance via
- * recomputeBookingFinance + recomputeAddonEstimate). Any rounding drift we
- * show in the sticky block is fixed once the operator presses «Готово».
- */
-export function computeLiveFinance(
-  state: ChecklistState,
-  intendedQty: Map<string, number>,
-): LiveFinance {
-  const shifts = state.shifts > 0 ? state.shifts : 1;
-  const discount = Number(state.discountPercent ?? "0") / 100;
-  let mainSubtotal = 0;
-  let addonSubtotal = 0;
-  let hasRemovals = false;
-  let hasAddons = false;
-  for (const item of state.items) {
-    const intended = intendedQty.get(item.bookingItemId) ?? item.quantity;
-    const rate = Number(item.rentalRatePerShift ?? "0");
-    if (intended < item.originalQuantity) hasRemovals = true;
-    if (intended > item.originalQuantity) hasAddons = true;
-    if (intended <= 0 || rate <= 0) continue;
-    const mainPortion = Math.min(intended, item.originalQuantity);
-    const addonPortion = Math.max(0, intended - item.originalQuantity);
-    mainSubtotal += rate * shifts * mainPortion;
-    addonSubtotal += rate * shifts * addonPortion;
-  }
-  const mainActual = mainSubtotal * (1 - discount);
-  const addonActual = addonSubtotal * (1 - discount);
-  const mainOriginal = Number(state.mainOriginalAfterDiscount ?? "0");
-  const removalAmount = Math.max(0, mainOriginal - mainActual);
-  const finalAmount = mainActual + addonActual;
-  return {
-    mainOriginal,
-    mainActual,
-    addonActual,
-    removalAmount,
-    finalAmount,
-    hasRemovals,
-    hasAddons,
-  };
-}
-
-// ── Stepper-row ──────────────────────────────────────────────────────────────
-
-/**
- * One booking-item row inside the ISSUE checklist (post-Task-14 unbounded
- * stepper). The stepper is the ONLY control on the row — no commit button.
- *
- * Visual diff is rendered as a tiny inline pill next to the equipment name:
- *  - «+X» emerald when N > origQty
- *  - «−X» amber  when N < origQty
- *  - nothing      when N === origQty (the neutral case)
- *  - row body dims when N === 0 («не выдаём» semantic, but without a button)
- *
- * Touch targets ≥40px (h-10) on the +/− controls — same as the pre-Task-14 UI.
- */
-function IssueRow({
-  item,
-  intended,
-  checked,
-  onBump,
-  onSet,
-  onToggleCheck,
-}: {
-  item: ChecklistItem;
-  intended: number;
-  checked: boolean;
-  onBump: (delta: number) => void;
-  onSet: (value: number) => void;
-  onToggleCheck: () => void;
-}) {
-  // origQty=0 ⇒ the line is itself a добор from a prior session; treat
-  // bi.quantity (current) as the reference so the operator doesn't see
-  // a misleading «+10» on every fresh row.
-  const refQty = item.originalQuantity > 0 ? item.originalQuantity : item.quantity;
-  const maxN = item.quantity + item.addCap;
-  const N = intended;
-  const delta = N - refQty;
-  const dimmed = N === 0;
-
-  let diffPill: React.ReactNode = null;
-  if (delta > 0) {
-    diffPill = (
-      <span
-        aria-label={`Добавлено сверх ${refQty}: ${delta}`}
-        className="ml-1 inline-flex items-center rounded-full border border-emerald-border bg-emerald-soft px-1.5 py-0.5 text-[10px] font-semibold text-emerald"
-      >
-        +{delta}
-      </span>
-    );
-  } else if (delta < 0) {
-    diffPill = (
-      <span
-        aria-label={`Снято от ${refQty}: ${Math.abs(delta)}`}
-        className="ml-1 inline-flex items-center rounded-full border border-amber-border bg-amber-soft px-1.5 py-0.5 text-[10px] font-semibold text-amber"
-      >
-        −{Math.abs(delta)}
-      </span>
-    );
-  }
-
-  // Visual state for the row container — green left border + soft tint when
-  // the operator has marked this row as physically issued (грузчик унёс).
-  const rowClass = checked
-    ? "border-emerald-border bg-emerald-soft/30 shadow-[inset_3px_0_0_rgb(var(--c-emerald))]"
-    : "border-border bg-surface";
-
-  return (
-    <div
-      // В одну строку — только с 1280: на 1024 правая панель ~460 px, и
-      // название рядом со степпером и кнопкой обрезалось до 15 символов.
-      className={`flex flex-wrap items-center gap-2 rounded-lg border px-2.5 py-2 lg:px-3 lg:py-2.5 xl:flex-nowrap ${rowClass} ${
-        dimmed ? "opacity-60" : ""
-      }`}
-    >
-      <div className="min-w-0 flex-1 basis-full xl:basis-auto">
-        <div
-          className={`flex flex-wrap items-center gap-x-1 text-[13px] leading-tight ${
-            dimmed ? "line-through text-ink-3" : "text-ink"
-          }`}
-        >
-          <span className="truncate">{item.equipmentName}</span>
-          {diffPill}
-        </div>
-        <div className="mt-0.5 truncate text-[11px] text-ink-3">
-          было ×{refQty}
-        </div>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => onBump(-1)}
-          disabled={N <= 0}
-          aria-label={`Уменьшить количество — ${item.equipmentName}`}
-          className="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface text-lg font-semibold leading-none text-ink-2 transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          −
-        </button>
-        <input
-          type="number"
-          inputMode="numeric"
-          value={N}
-          onChange={(e) => {
-            const raw = e.target.value;
-            onSet(raw === "" ? 0 : Number(raw));
-          }}
-          min={0}
-          max={maxN}
-          aria-label={`Количество к выдаче — ${item.equipmentName}`}
-          className="mono-num h-10 w-12 rounded border border-border bg-surface text-center text-[13px] font-semibold text-ink outline-none [appearance:textfield] focus:border-accent-bright [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        />
-        <button
-          type="button"
-          onClick={() => onBump(+1)}
-          disabled={N >= maxN}
-          aria-label={`Увеличить количество — ${item.equipmentName}`}
-          className="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface text-lg font-semibold leading-none text-ink-2 transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          +
-        </button>
-      </div>
-
-      {/*
-        «Выдать» / «✓ Выдано» — per-row tap target. Operators on the warehouse
-        floor use this as a check-off marker as грузчики хватают приборы со
-        стеллажа («чтобы не путаться в потоке»). Independent от степпера: qty
-        и факт выдачи — две ортогональные вещи. Сheck-state локальный (не
-        сохраняется на бэк до /complete) — это намерение, как и stepper.
-      */}
-      <button
-        type="button"
-        onClick={onToggleCheck}
-        aria-pressed={checked}
-        disabled={N === 0}
-        aria-label={
-          N === 0
-            ? `Позиция снята с выдачи — ${item.equipmentName}`
-            : checked
-              ? `Снять отметку «Выдано» — ${item.equipmentName}`
-              : `Отметить «Выдано» — ${item.equipmentName}`
-        }
-        className={`flex h-10 min-w-[96px] shrink-0 items-center justify-center gap-1 rounded border px-3 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-          checked
-            ? "border-emerald-border bg-emerald text-surface hover:opacity-90"
-            : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
-        }`}
-      >
-        {checked ? (
-          <>
-            <span aria-hidden="true">✓</span>
-            Выдано
-          </>
-        ) : (
-          "Выдать"
-        )}
-      </button>
-    </div>
-  );
-}
-
-// ── Sticky live finance ──────────────────────────────────────────────────────
-
-function LiveFinanceBlock({
-  finance,
-  onSubmit,
-  submitting,
-  checkedCount,
-  totalCount,
-}: {
-  finance: LiveFinance;
-  onSubmit: () => void;
-  submitting: boolean;
-  /** How many rows the operator has marked as «Выдано». */
-  checkedCount: number;
-  /** Total rows in the checklist. */
-  totalCount: number;
-}) {
-  const allChecked = totalCount > 0 && checkedCount >= totalCount;
-  const unmarked = Math.max(0, totalCount - checkedCount);
-
-  return (
-    <div className="space-y-1 text-[13px] text-ink">
-      <div className="flex items-baseline justify-between">
-        <span className="text-ink-2">Согласовано</span>
-        <span className="mono-num">{formatRub(finance.mainOriginal)}</span>
-      </div>
-      {finance.hasRemovals && finance.removalAmount > 0 && (
-        <div className="flex items-baseline justify-between">
-          <span className="text-amber">Снято на выдаче</span>
-          <span className="mono-num text-amber">
-            −{formatRub(finance.removalAmount)}
-          </span>
-        </div>
-      )}
-      {finance.hasAddons && finance.addonActual > 0 && (
-        <div className="flex items-baseline justify-between">
-          <span className="text-emerald">Дополнительно</span>
-          <span className="mono-num text-emerald">
-            +{formatRub(finance.addonActual)}
-          </span>
-        </div>
-      )}
-      <div className="!mt-2 border-t border-border pt-2" />
-      <div className="flex items-baseline justify-between">
-        <span className="font-semibold">Итого</span>
-        <span className="mono-num text-[18px] font-semibold">
-          {formatRub(finance.finalAmount)}
-        </span>
-      </div>
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={submitting}
-        aria-label={
-          allChecked
-            ? "Готово, выдать — оформить выдачу с текущими количествами"
-            /* ws-2: «Выдано» — маркер сборки, на количество не влияет (выдаётся значение
-               степпера). Раньше подпись ложно обещала «остальные не выданы». */
-            : `Завершить выдачу — собрано ${checkedCount} из ${totalCount} позиций (выдаётся указанное количество)`
-        }
-        className={`!mt-3 block w-full rounded-lg px-4 py-3 text-center text-[14px] font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60 ${
-          allChecked ? "bg-emerald" : "bg-amber"
-        }`}
-      >
-        {submitting
-          ? "Оформляем…"
-          : allChecked
-            ? "✓ Готово, выдать →"
-            : `Завершить (отмечено ${checkedCount} из ${totalCount}) →`}
-      </button>
-      {!allChecked && unmarked > 0 && !submitting && (
-        <p className="mt-1 text-center text-[11px] text-ink-3">
-          {unmarked === 1
-            ? "1 позиция ещё не собрана — выдаётся указанное количество"
-            : `${unmarked} позиций ещё не собрано — выдаётся указанное количество`}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ── Main component ──────────────────────────────────────────────────────────
 
 export function IssueChecklist({
   sessionId,
@@ -380,107 +105,157 @@ export function IssueChecklist({
   onBack,
   onComplete,
   onCompleted,
+  resumed = null,
+  leaveRef,
+  onSessionClosed,
 }: {
   sessionId: string;
   projectName: string;
   onBack: () => void;
-  /** Advance to the next page (e.g. back to the bookings list) on «Готово». */
+  /** «Готово» на экране итога — к списку броней. */
   onComplete?: () => void;
   /**
-   * Fires the moment a successful /complete response arrives — BEFORE the
-   * operator sees the result screen. The parent uses this to refetch the
-   * booking list slot (desktop left pane) so the just-issued booking drops
-   * off the ISSUE list immediately.
+   * Сразу после успешного `/complete` — страница перезагружает списки, чтобы
+   * выданная бронь ушла из очереди «Выдача» ещё до «Готово».
    */
   onCompleted?: () => void;
-}) {
+} & ChecklistSessionProps) {
   const session = useScanSession();
-  const { state, loading, error, openSession, refresh } = session;
+  const { state: rawState, loading, error, openSession, refresh } = session;
+  // Состояние другой сессии (экран переиспользован без key) — ещё не наше.
+  const state: ChecklistState | null =
+    rawState && rawState.sessionId === sessionId ? rawState : null;
 
-  // Inline Добор catalog search.
   const [addonOpen, setAddonOpen] = useState(false);
-
-  // ── Per-row intended quantities (the only piece of UI state). ────────────
-  // `intendedQty` defaults each bookingItem to bi.quantity (current). When the
-  // operator bumps + past bi.quantity the value can go up to bi.quantity+addCap.
-  const [intendedQty, setIntendedQty] = useState<Map<string, number>>(
-    () => new Map(),
-  );
-  // bookingItemIds of доборы added with acknowledgedConflict=true.
+  const [rows, setRows] = useState<IssueRowMap>(() => new Map());
+  const [restoreInfo, setRestoreInfo] = useState<RestoreInfo | null>(null);
+  const [bannerHidden, setBannerHidden] = useState(false);
+  // Доборы из поиска, взятые «под ответственность» (подсказка про аудит).
   const [conflictAddons, setConflictAddons] = useState<Set<string>>(new Set());
+  // Жёлтое уведомление над списком: перечитали после изменения состава,
+  // загрузили версию с другого устройства, урезали количества.
+  const [notice, setNotice] = useState<string | null>(null);
+  const [rowProblem, setRowProblem] = useState<
+    { bookingItemId: string; problem: IssueRowProblem } | null
+  >(null);
+  const [localClosed, setLocalClosed] = useState<ScanApiError | null>(null);
+  const [earlyIssueMessage, setEarlyIssueMessage] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // bookingItemIds the operator has physically marked «Выдано». Used as a
-  // visual progress tracker — independent от stepper-а. Don't auto-clear on
-  // refetch: грузчик уже отнёс прибор, не отменять чек после refresh добора.
-  const [checkedRows, setCheckedRows] = useState<Set<string>>(new Set());
-
-  function toggleRowChecked(biId: string) {
-    // Обнулённая строка («не выдаём») — отмечать нечего: физической выдачи
-    // по ней нет, а чек раздувал бы прогресс сборки.
-    const intended =
-      intendedQty.get(biId) ??
-      state?.items.find((i) => i.bookingItemId === biId)?.quantity ??
-      0;
-    if (intended === 0 && !checkedRows.has(biId)) return;
-    setCheckedRows((prev) => {
-      const next = new Set(prev);
-      if (next.has(biId)) next.delete(biId);
-      else next.add(biId);
-      return next;
-    });
-  }
-
-  function checkAllRows() {
-    if (!state) return;
-    setCheckedRows(
-      new Set(
-        state.items
-          .filter(
-            (i) => (intendedQty.get(i.bookingItemId) ?? i.quantity) > 0,
-          )
-          .map((i) => i.bookingItemId),
-      ),
-    );
-  }
-
-  function uncheckAllRows() {
-    setCheckedRows(new Set());
-  }
-
-  // Seed `intendedQty` from `state.items` once the checklist arrives. New
-  // items (доборы added mid-session) get their default bi.quantity; we never
-  // clobber a value the operator has already chosen.
-  useEffect(() => {
-    if (!state) return;
-    setIntendedQty((prev) => {
-      let changed = false;
-      const next = new Map(prev);
-      for (const item of state.items) {
-        if (!next.has(item.bookingItemId)) {
-          next.set(item.bookingItemId, item.quantity);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [state]);
-
-  // ── Phase machine (no сверка — straight checklist → submitting → result). ──
   const [phase, setPhase] = useState<IssuePhase>("checklist");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<CompleteResult | null>(null);
 
-  // Bind the hook to the session opened upstream; cancellation-safe.
+  // Экран переиспользован под другую сессию без remount — всё локальное
+  // (итог, ошибки, окна) относится к прежней сессии и сбрасывается сразу, до
+  // отрисовки: иначе новая бронь мелькнула бы чужим «Выдача оформлена» (P7).
+  const [boundSessionId, setBoundSessionId] = useState(sessionId);
+  if (boundSessionId !== sessionId) {
+    setBoundSessionId(sessionId);
+    setPhase("checklist");
+    setResult(null);
+    setSubmitError(null);
+    setRows(new Map());
+    setRestoreInfo(null);
+    setBannerHidden(false);
+    setConflictAddons(new Set());
+    setNotice(null);
+    setRowProblem(null);
+    setLocalClosed(null);
+    setEarlyIssueMessage(null);
+    setConfirmOpen(false);
+    setAddonOpen(false);
+  }
+
+  const closedError: ScanApiError | null = localClosed ?? session.closedError ?? null;
+  // Закрытие сессии видно и внутри async «Готово» (ставится прямо в колбэке,
+  // не дожидаясь перерисовки); сбрасывается только сменой сессии.
+  const closedForRef = useRef<string | null>(null);
+  if (closedError) closedForRef.current = sessionId;
+  const markClosed = useCallback(
+    (err: ScanApiError) => {
+      closedForRef.current = sessionId;
+      setLocalClosed(err);
+    },
+    [sessionId],
+  );
+
+  // Черновик, который надо заново наложить на свежий `/state` (после 409
+  // `CHECKLIST_OUTDATED` позиции брони могли получить новые id).
+  const reseedRef = useRef<{ sessionId: string; draft: ChecklistDraftV1 } | null>(null);
+  const seededForRef = useRef<string | null>(null);
+  // Строки прошлого `/state` — чтобы нетронутая строка шла за новым планом.
+  const lastItemsRef = useRef<readonly ChecklistItem[] | null>(null);
+  const stateRef = useRef<ChecklistState | null>(state);
+  stateRef.current = state;
+
+  const handleOutdated = useCallback((fresh: DraftOutdatedDetails) => {
+    const current = stateRef.current;
+    if (current) {
+      const seed = seedIssueRows(current.items, isChecklistDraftV1(fresh.draft) ? fresh.draft : null);
+      setRows(seed.rows);
+    }
+    setNotice(
+      "Чек-лист изменили на другом устройстве — загружена свежая версия. Проверьте строки.",
+    );
+  }, []);
+
+  const draft = useChecklistDraft({
+    sessionId,
+    serverRevision: state?.draftRevision,
+    serverSavedAt: state?.draftSavedAt,
+    serverSavedBy: state?.draftSavedBy,
+    serverDraft: state?.draft,
+    onOutdated: handleOutdated,
+    onSessionClosed: markClosed,
+    leaveRef,
+  });
+  const scheduleDraft = draft.schedule;
+  const setDraftBaseline = draft.setBaseline;
+
+  // Открыть сессию в хуке (страница уже создала её на сервере).
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      await openSession(sessionId, "ISSUE");
-      if (cancelled) return;
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void openSession(sessionId, "ISSUE");
   }, [sessionId, openSession]);
+
+  // Засев строк: из черновика при первом чтении сессии, заново — после
+  // изменения состава брони; иначе (добор этой сессии) — только новые строки.
+  useEffect(() => {
+    if (!state) return;
+    const prevItems = lastItemsRef.current;
+    lastItemsRef.current = state.items;
+    const pending = reseedRef.current;
+    if (pending && pending.sessionId === state.sessionId) {
+      reseedRef.current = null;
+      const seed = seedIssueRows(state.items, pending.draft);
+      setRows(seed.rows);
+      // Позиции брони пересоздали — черновик на сервере ссылается на старые id.
+      if (issueDraftHasRows(pending.draft)) {
+        scheduleDraft(buildIssueDraft(state.items, seed.rows));
+      }
+      return;
+    }
+    if (seededForRef.current !== state.sessionId) {
+      seededForRef.current = state.sessionId;
+      const seed = seedIssueRows(state.items, state.draft);
+      const draftRows = state.draft?.issue ? Object.keys(state.draft.issue.rows).length : 0;
+      setRows(seed.rows);
+      // Засев по плану — не работа: пока оператор ничего не менял, черновик на
+      // сервер не уходит, и сессия «открыл и посмотрел» ничего не блокирует.
+      if (!state.draft) setDraftBaseline(buildIssueDraft(state.items, seed.rows));
+      setRestoreInfo({
+        restored: seed.restored > 0,
+        partial: seed.clamped.length > 0 || seed.restored < draftRows,
+      });
+      if (seed.clamped.length > 0) {
+        setNotice(
+          `Столько сейчас нет на складе — количество уменьшено: ${seed.clamped.join(", ")}. Проверьте эти строки.`,
+        );
+      }
+      return;
+    }
+    setRows((prev) => mergeNewItems(prev, state.items, prevItems));
+  }, [state, scheduleDraft, setDraftBaseline]);
 
   // Группы категорий в порядке первого появления: порядок строк задаёт сервер.
   const groups = useMemo(
@@ -488,115 +263,128 @@ export function IssueChecklist({
     [state],
   );
 
-  // ── Per-row helpers. ─────────────────────────────────────────────────────
-  function getIntended(biId: string): number {
-    return intendedQty.get(biId) ?? 0;
+  const itemById = useMemo(() => {
+    const m = new Map<string, ChecklistItem>();
+    for (const item of state?.items ?? []) m.set(item.bookingItemId, item);
+    return m;
+  }, [state]);
+
+  // ── Правки строк: экран + черновик на сервере ────────────────────────────
+  function commitRows(next: IssueRowMap) {
+    setRows(next);
+    if (!state) return;
+    // Хук сам не шлёт то же, что уже сохранено или засеяно.
+    scheduleDraft(buildIssueDraft(state.items, next));
+  }
+
+  function updateRow(biId: string, fn: (r: IssueRowState, item: ChecklistItem) => IssueRowState) {
+    const item = itemById.get(biId);
+    if (!item) return;
+    const cur = rowOf(rows, item);
+    const nextRow = fn(cur, item);
+    if (nextRow.qty === cur.qty && nextRow.checked === cur.checked && nextRow.ack === cur.ack) {
+      return;
+    }
+    const next = new Map(rows);
+    next.set(biId, nextRow);
+    commitRows(next);
+    if (rowProblem?.bookingItemId === biId) setRowProblem(null);
   }
 
   function setRowQty(biId: string, value: number) {
-    const item = state?.items.find((i) => i.bookingItemId === biId);
-    if (!item) return;
-    const maxN = item.quantity + item.addCap;
-    const clamped = Math.max(0, Math.min(maxN, Math.floor(value)));
-    setIntendedQty((m) => {
-      const next = new Map(m);
-      next.set(biId, clamped);
-      return next;
+    updateRow(biId, (r, item) => {
+      const qty = Math.max(0, Math.min(rowMax(item, r.ack), Math.floor(value) || 0));
+      // Обнулённая строка — снимаем «Выдано»: выдавать по ней нечего.
+      return { ...r, qty, checked: qty === 0 ? false : r.checked };
     });
-    // Строка обнулена — автоматически снимаем отметку «Выдано»: выдавать
-    // по ней нечего, и она выпадает из прогресса сборки.
-    if (clamped === 0) {
-      setCheckedRows((prev) => {
-        if (!prev.has(biId)) return prev;
-        const next = new Set(prev);
-        next.delete(biId);
-        return next;
-      });
-    }
   }
 
   function bumpRowQty(biId: string, delta: number) {
-    setRowQty(biId, getIntended(biId) + delta);
+    const item = itemById.get(biId);
+    if (!item) return;
+    setRowQty(biId, rowOf(rows, item).qty + delta);
   }
 
-  // ── Live finance (recomputes on every stepper change). ───────────────────
-  const finance = useMemo<LiveFinance>(() => {
-    if (!state) {
-      return {
-        mainOriginal: 0,
-        mainActual: 0,
-        addonActual: 0,
-        removalAmount: 0,
-        finalAmount: 0,
-        hasRemovals: false,
-        hasAddons: false,
-      };
-    }
-    return computeLiveFinance(state, intendedQty);
-  }, [state, intendedQty]);
+  function toggleRowChecked(biId: string) {
+    updateRow(biId, (r) => {
+      // Обнулённую строку («не выдаём») не отмечаем — прогресс бы врал.
+      if (r.qty === 0 && !r.checked) return r;
+      return { ...r, checked: !r.checked };
+    });
+  }
 
-  // ── equipmentIds already in the booking — used to filter AddonSearch. ─────
-  const existingEquipmentIds = useMemo(() => {
-    if (!state) return new Set<string>();
-    const ids = new Set<string>();
+  function setRowAck(biId: string, on: boolean) {
+    updateRow(biId, (r, item) => {
+      if (on) return { ...r, ack: true };
+      // Отказ от «под ответственность» — количество не выше свободного.
+      const qty = Math.min(r.qty, item.quantity + freeAddCap(item));
+      return { ...r, ack: false, qty, checked: qty === 0 ? false : r.checked };
+    });
+  }
+
+  function setAllChecked(checked: boolean) {
+    if (!state) return;
+    const next = new Map(rows);
     for (const item of state.items) {
-      if (item.equipmentId) ids.add(item.equipmentId);
+      const r = rowOf(rows, item);
+      next.set(item.bookingItemId, { ...r, checked: checked && r.qty > 0 });
     }
+    commitRows(next);
+  }
+
+  // ── Производные числа ────────────────────────────────────────────────────
+  const intendedQty = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const item of state?.items ?? []) m.set(item.bookingItemId, rowOf(rows, item).qty);
+    return m;
+  }, [state, rows]);
+
+  const finance = useMemo(
+    () => (state ? computeLiveFinance(state, intendedQty) : emptyLiveFinance()),
+    [state, intendedQty],
+  );
+
+  const existingEquipmentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of state?.items ?? []) if (item.equipmentId) ids.add(item.equipmentId);
     return ids;
   }, [state]);
 
-  // ── Counts for the result screen (no сверка → we compute summary directly). ─
+  // Для экрана итога: выдано единиц и доборов — строк сверх исходного
+  // количества (каталожный добор приходит с originalQuantity 0, P17).
   const counts = useMemo(() => {
-    if (!state) return { issuedUnits: 0, addons: 0 };
     let issuedUnits = 0;
     let addons = 0;
-    for (const item of state.items) {
-      if (item.isExtra) {
-        addons += 1;
-        continue;
-      }
-      const intended = intendedQty.get(item.bookingItemId) ?? item.quantity;
+    let addonsInSession = 0;
+    for (const item of state?.items ?? []) {
+      const intended = rowOf(rows, item).qty;
       issuedUnits += Math.max(0, intended);
+      if (intended > item.originalQuantity) addons += 1;
+      if ((item.addedOnSite ?? 0) > 0) addonsInSession += 1;
     }
-    return { issuedUnits, addons };
-  }, [state, intendedQty]);
+    return { issuedUnits, addons, addonsInSession };
+  }, [state, rows]);
 
-  // ── Прогресс сборки: только строки с количеством > 0. ────────────────────
-  // Обнулённые строки («не выдаём») исключаются из знаменателя — иначе
-  // «Готово, выдать» недостижимо (или наоборот, ложно-зелёно) при снятых
-  // позициях. Строка без seed-значения по умолчанию = bi.quantity (> 0).
-  const activeItemIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (!state) return ids;
-    for (const item of state.items) {
-      const intended = intendedQty.get(item.bookingItemId) ?? item.quantity;
-      if (intended > 0) ids.add(item.bookingItemId);
+  // Прогресс сборки — только строки с количеством больше нуля.
+  const { activeTotal, activeChecked } = useMemo(() => {
+    let total = 0;
+    let checked = 0;
+    for (const item of state?.items ?? []) {
+      const r = rowOf(rows, item);
+      if (r.qty <= 0) continue;
+      total += 1;
+      if (r.checked) checked += 1;
     }
-    return ids;
-  }, [state, intendedQty]);
-  const activeTotal = activeItemIds.size;
-  const activeChecked = useMemo(() => {
-    let n = 0;
-    for (const id of checkedRows) if (activeItemIds.has(id)) n += 1;
-    return n;
-  }, [checkedRows, activeItemIds]);
+    return { activeTotal: total, activeChecked: checked };
+  }, [state, rows]);
 
-  // Подтверждение выдачи, когда собраны не все позиции (guard от случайного
-  // «Завершить» на длинном чек-листе).
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  useEffect(() => {
-    if (!confirmOpen) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setConfirmOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [confirmOpen]);
-
-  function handleAddonClick() {
-    setAddonOpen(true);
-  }
+  const startsLater = useMemo(() => {
+    const start = state?.booking?.startDate;
+    if (!start) return null;
+    const ms = Date.parse(start);
+    if (!Number.isFinite(ms) || ms - Date.now() <= EARLY_ISSUE_HINT_MS) return null;
+    return formatMoscowDayTime(start);
+  }, [state]);
 
   function handleAddonAdded(bookingItemId: string, hadConflict: boolean) {
     if (hadConflict) {
@@ -610,267 +398,303 @@ export function IssueChecklist({
     void refresh();
   }
 
-  // ── States ──────────────────────────────────────────────────────────────────
+  // ── Состояния загрузки ───────────────────────────────────────────────────
 
-  if (loading && !state) {
+  const closeAfterSessionEnd = onSessionClosed ?? onBack;
+
+  if (closedError) {
     return (
-      <div className="space-y-2 px-3 py-3">
-        <div className="h-[46px] animate-pulse rounded-lg bg-surface-subtle" />
-        {[1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className="h-[52px] animate-pulse rounded-lg border border-border bg-surface"
-          />
-        ))}
-      </div>
+      <SessionClosedNotice
+        error={closedError}
+        operation="ISSUE"
+        onBack={closeAfterSessionEnd}
+      />
     );
+  }
+
+  if (!state && (loading || (rawState && rawState.sessionId !== sessionId))) {
+    return <ChecklistSkeleton />;
   }
 
   if (error && !state) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center px-4 py-12">
-        <div className="w-full max-w-[420px] rounded-lg border border-rose-border bg-rose-soft px-4 py-3 text-center text-sm text-rose">
-          {error.message || "Не удалось загрузить чек-лист"}
-        </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="mt-4 rounded border border-border bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
-        >
-          ← К списку броней
-        </button>
-      </div>
+      <ChecklistMessage
+        tone="error"
+        text={error.message || "Не удалось загрузить чек-лист"}
+        onBack={onBack}
+      />
     );
   }
 
   if (state && state.items.length === 0) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center px-4 py-16 text-center">
-        <p className="text-sm text-ink-3">
-          В этой брони нет позиций для выдачи
-        </p>
-        <button
-          type="button"
-          onClick={onBack}
-          className="mt-4 rounded border border-border bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
-        >
-          ← К списку броней
-        </button>
-      </div>
-    );
+    return <ChecklistMessage text="В этой брони нет позиций для выдачи" onBack={onBack} />;
   }
 
   if (!state) return null;
+  const current = state;
 
   /**
-   * Build `issuanceAdjustments` from rows whose intended quantity differs from
-   * the BookingItem's current quantity. NB: with the unbounded stepper, the
-   * intended quantity may be GREATER than bi.quantity (inline-добор) — the
-   * backend's /complete endpoint accepts that path (U2 commit) and increases
-   * BookingItem.quantity atomically (см. spec
-   * `docs/superpowers/specs/2026-05-21-issue-stock-cap-and-unit-removal-design.md`).
-   *
-   * Rows where intended === bi.quantity are omitted — the backend recomputes
-   * MAIN only when there's an actual change, so we keep the payload minimal.
+   * Корректировки для `/complete`: только строки, где выдаём не столько, сколько
+   * в брони. Больше брони — добор на месте; взято «под ответственность» — с
+   * флагом. Флаг уходит на любую прибавку такой строки, а не только сверх
+   * `addCap` с экрана: тот мог устареть (строку отверг сервер, а `/state` ещё
+   * не перечитан). Сервер учитывает флаг, только если свободного не хватает.
    */
   function buildIssuanceAdjustments(): IssuanceAdjustment[] {
-    if (!state) return [];
     const adjustments: IssuanceAdjustment[] = [];
-    for (const item of state.items) {
-      const intended = intendedQty.get(item.bookingItemId);
-      if (intended === undefined) continue;
-      if (intended !== item.quantity) {
-        adjustments.push({
-          bookingItemId: item.bookingItemId,
-          actualQuantity: intended,
-        });
-      }
+    for (const item of current.items) {
+      const r = rowOf(rows, item);
+      if (r.qty === item.quantity) continue;
+      adjustments.push({
+        bookingItemId: item.bookingItemId,
+        actualQuantity: r.qty,
+        ...(r.ack && r.qty > item.quantity ? { acknowledgedConflict: true } : {}),
+      });
     }
     return adjustments;
   }
 
-  async function submitToComplete() {
+  /** Строку отвергли при «Готово»: подсветить и объяснить. */
+  function markRow(bookingItemId: string | undefined, problem: IssueRowProblem) {
+    if (!bookingItemId || !itemById.has(bookingItemId)) return;
+    setRowProblem({ bookingItemId, problem });
+  }
+
+  function handleCompleteError(err: unknown): void {
+    if (isSessionClosedError(err)) {
+      draft.discard();
+      markClosed(err);
+      return;
+    }
+    const code = scanErrorCode(err);
+    const message = isScanApiError(err) ? err.message : "Сеть недоступна";
+
+    if (code === SCAN_ERROR.ISSUE_TOO_EARLY) {
+      setEarlyIssueMessage(message);
+      return;
+    }
+
+    if (code === SCAN_ERROR.CHECKLIST_OUTDATED) {
+      // Состав брони поменяли: перечитать чек-лист и заново наложить то, что
+      // уже погружено (строки найдутся по позиции или по прибору).
+      reseedRef.current = { sessionId, draft: buildIssueDraft(current.items, rows) };
+      setNotice(message);
+      void refresh();
+      return;
+    }
+
+    if (code === SCAN_ERROR.DRAFT_OUTDATED) {
+      const fresh = getScanErrorDetails(err, SCAN_ERROR.DRAFT_OUTDATED);
+      const freshDraft = fresh && isChecklistDraftV1(fresh.draft) ? fresh.draft : null;
+      // Хук черновика берёт свежую ревизию — следующее «Готово» и следующая
+      // правка уйдут уже от неё; экран перезасеивается версией из ответа.
+      if (fresh) {
+        draft.adoptOutdated({
+          revision: fresh.revision,
+          draft: freshDraft,
+          savedAt: fresh.savedAt ?? null,
+          savedBy: fresh.savedBy ?? null,
+        });
+      }
+      const seed = seedIssueRows(current.items, freshDraft);
+      setRows(seed.rows);
+      setNotice(`${message} Проверьте строки и нажмите «Готово» ещё раз.`);
+      return;
+    }
+
+    // Снимают единицы, которые уже отсканированы (штучный учёт) — строку
+    // возвращаем к количеству брони.
+    if (code === ADJUSTMENT_CONFLICTS_WITH_SCANS) {
+      const d = isScanApiError(err)
+        ? (err.details as { bookingItemId?: string } | null | undefined)
+        : null;
+      const item = d?.bookingItemId ? itemById.get(d.bookingItemId) : undefined;
+      if (item) {
+        const next = new Map(rows);
+        next.set(item.bookingItemId, { ...rowOf(rows, item), qty: item.quantity });
+        commitRows(next);
+      }
+      setSubmitError(message);
+      return;
+    }
+
+    if (code === SCAN_ERROR.ADDON_OVER_STOCK) {
+      const d = getScanErrorDetails(err, SCAN_ERROR.ADDON_OVER_STOCK);
+      const item = d?.bookingItemId ? itemById.get(d.bookingItemId) : undefined;
+      if (item) {
+        // `addCap` в ответе — потолок, по которому строку проверяли: при
+        // «под ответственность» это ackCap. Урезанное количество выше
+        // свободного так и остаётся под ответственностью — иначе следующее
+        // «Готово» уйдёт без флага и получит ADDON_CONFLICT.
+        const cap = Math.max(0, Math.floor(Number(d?.addCap ?? 0)) || 0);
+        const cur = rowOf(rows, item);
+        const qty = Math.min(cur.qty, item.quantity + cap);
+        const ack = cur.ack && qty > item.quantity + freeAddCap(item);
+        const next = new Map(rows);
+        next.set(item.bookingItemId, { ...cur, qty, ack, checked: qty === 0 ? false : cur.checked });
+        commitRows(next);
+        markRow(item.bookingItemId, {
+          kind: "over-stock",
+          text: `Столько на складе нет — количество уменьшено до ${qty}.`,
+        });
+        void refresh();
+      }
+      setSubmitError(message);
+      return;
+    }
+
+    if (code === SCAN_ERROR.ADDON_CONFLICT) {
+      const d = getScanErrorDetails(err, SCAN_ERROR.ADDON_CONFLICT);
+      markRow(d?.bookingItemId, {
+        kind: "conflict",
+        text: "Сверх свободного выдать можно только под ответственность.",
+        conflict: d ?? null,
+      });
+      void refresh();
+      setSubmitError(message);
+      return;
+    }
+
+    setSubmitError(message);
+  }
+
+  async function submitToComplete(opts: { force?: boolean } = {}) {
     if (phase === "submitting") return;
     setSubmitError(null);
+    setRowProblem(null);
+    setEarlyIssueMessage(null);
     setPhase("submitting");
+
+    // Сначала дослать черновик: `/complete` сверит ревизию. `null` — сессию
+    // закрыли или другое устройство сохранило позже прямо сейчас: экран уже
+    // перезасеян, оператор должен увидеть свежую версию до выдачи.
+    const pre = await draft.flushBeforeSubmit();
+    if (!pre || closedForRef.current === sessionId) {
+      setPhase("checklist");
+      return;
+    }
+    const draftRevision = pre.draftRevision;
+
     const adjustments = buildIssuanceAdjustments();
-    const payload =
-      adjustments.length > 0 ? { issuanceAdjustments: adjustments } : {};
+    const payload = {
+      ...(adjustments.length > 0 ? { issuanceAdjustments: adjustments } : {}),
+      ...(current.itemsVersion ? { itemsVersion: current.itemsVersion } : {}),
+      ...(draftRevision !== undefined ? { draftRevision } : {}),
+      ...(opts.force ? { force: true } : {}),
+    };
     try {
       const res = await scanApi.complete(sessionId, payload);
+      draft.discard();
       setResult(res);
       setPhase("result");
-      // Fire-and-forget: parent refetches booking lists (desktop left pane)
-      // so the just-issued booking drops off the ISSUE list immediately,
-      // before the operator clicks «Готово». Don't throw out of here.
-      try { onCompleted?.(); } catch { /* swallow — UX side-effect only */ }
+      // Страница перезагружает списки — выданная бронь уходит из очереди.
+      try {
+        onCompleted?.();
+      } catch {
+        /* побочный эффект интерфейса — не мешает итогу */
+      }
     } catch (err: unknown) {
-      // 409 ADJUSTMENT_CONFLICTS_WITH_SCANS: an operator-supplied adjustment
-      // tried to release units that are already scanned. Surface the server
-      // message inline and reset the conflicting row's intended quantity back
-      // to bi.quantity so the operator can edit it again.
-      if (
-        isScanApiError(err) &&
-        err.status === 409 &&
-        err.code === "ADJUSTMENT_CONFLICTS_WITH_SCANS"
-      ) {
-        const d = err.details as
-          | { bookingItemId?: string }
-          | null
-          | undefined;
-        if (d?.bookingItemId) {
-          const conflictingItem = state?.items.find(
-            (i) => i.bookingItemId === d.bookingItemId,
-          );
-          if (conflictingItem) {
-            setIntendedQty((m) => {
-              const next = new Map(m);
-              next.set(conflictingItem.bookingItemId, conflictingItem.quantity);
-              return next;
-            });
-          }
-        }
-        setSubmitError(err.message);
-        setPhase("checklist");
-        return;
-      }
-      // 409 ADDON_OVER_STOCK: an inline-добор delta exceeded physical stock.
-      // Reset that row to bi.quantity so the operator can pick a smaller bump.
-      if (
-        isScanApiError(err) &&
-        err.status === 409 &&
-        err.code === "ADDON_OVER_STOCK"
-      ) {
-        const d = err.details as
-          | { bookingItemId?: string }
-          | null
-          | undefined;
-        if (d?.bookingItemId) {
-          const conflictingItem = state?.items.find(
-            (i) => i.bookingItemId === d.bookingItemId,
-          );
-          if (conflictingItem) {
-            setIntendedQty((m) => {
-              const next = new Map(m);
-              next.set(conflictingItem.bookingItemId, conflictingItem.quantity);
-              return next;
-            });
-          }
-        }
-        setSubmitError(err.message);
-        setPhase("checklist");
-        return;
-      }
-      const msg = isScanApiError(err) ? err.message : "Сеть недоступна";
-      setSubmitError(msg);
       setPhase("checklist");
+      handleCompleteError(err);
     }
   }
 
-  // ── Phase: result («Выдача оформлена[ с замечаниями]») ───────────────────────
+  function requestSubmit() {
+    // Не все активные позиции отмечены «Выдано» — подтверждаем явно: на
+    // длинном чек-листе легко нажать «Завершить», не догрузив стеллаж.
+    if (activeChecked < activeTotal) {
+      setConfirmOpen(true);
+      return;
+    }
+    void submitToComplete();
+  }
+
+  // ── Итог ─────────────────────────────────────────────────────────────────
   if (phase === "result" && result) {
     return (
       <IssueResultView
         result={result}
-        bookingId={state.bookingId}
+        bookingId={current.bookingId}
         projectName={projectName}
         issuedCount={counts.issuedUnits}
-        addonsCount={counts.addons}
+        addonsCount={result.addonsAddedInSession ?? counts.addons}
         substitutedCount={result.substitutedItems?.length ?? 0}
         onDone={() => onComplete?.()}
       />
     );
   }
 
+  const showBanner = resumed != null && !bannerHidden && restoreInfo !== null;
+  const statusLabel = draft.statusLabel;
+
+  // «Прервать выдачу»: на десктопе — в шапке списка, на мобильном — внизу
+  // списка во всю ширину (в шапке рядом с «＋ Добор» ей тесно).
+  const abortButton = (variant: "header" | "block") => (
+    <AbortSessionButton
+      sessionId={sessionId}
+      operation="ISSUE"
+      addonsInSession={counts.addonsInSession}
+      onAborted={closeAfterSessionEnd}
+      onSessionClosed={markClosed}
+      disabled={phase === "submitting"}
+      variant={variant}
+    />
+  );
+
   return (
     <div className="flex min-h-full flex-1 flex-col">
+      {showBanner && (
+        <ResumedSessionBanner
+          operation="ISSUE"
+          startedAt={current.session?.startedAt ?? resumed.startedAt ?? null}
+          startedBy={current.session?.workerName ?? resumed.workerName ?? null}
+          restored={restoreInfo.restored}
+          draftSavedAt={current.draftSavedAt ?? null}
+          draftSavedBy={current.draftSavedBy ?? null}
+          partial={restoreInfo.partial}
+          onDismiss={() => setBannerHidden(true)}
+        />
+      )}
+
       <div className="flex-1 px-3 pb-4 pt-3 lg:px-4">
         {/* Водители — заполняется в момент погрузки. */}
         <DriverPanel sessionId={sessionId} operation="ISSUE" />
 
-        {/* Desktop heading line with progress + bulk actions + «+ Добор» chip. */}
-        <div className="mb-2 hidden flex-wrap items-center gap-x-3 gap-y-1.5 px-1 lg:flex">
-          <h2 className="whitespace-nowrap text-[15px] font-semibold text-ink">
-            Чек-лист выдачи
-          </h2>
-          <span
-            aria-label={`Выдано ${activeChecked} из ${activeTotal} позиций`}
-            className="whitespace-nowrap rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-ink-2"
-          >
-            <span className={activeChecked === activeTotal && activeTotal > 0 ? "text-emerald" : ""}>
-              {activeChecked}
-            </span>
-            <span className="text-ink-3"> / {activeTotal}</span>
-            <span className="ml-1 text-ink-3">выдано</span>
-          </span>
-          {activeChecked < activeTotal ? (
-            <button
-              type="button"
-              onClick={checkAllRows}
-              aria-label="Отметить все позиции как «Выдано»"
-              className="whitespace-nowrap rounded border border-emerald-border px-2.5 py-1 text-xs font-semibold text-emerald transition-colors hover:bg-emerald-soft"
-            >
-              ✓ Все выдано
-            </button>
-          ) : activeTotal > 0 ? (
-            <button
-              type="button"
-              onClick={uncheckAllRows}
-              aria-label="Снять все отметки «Выдано»"
-              className="whitespace-nowrap rounded border border-border px-2.5 py-1 text-xs font-semibold text-ink-2 transition-colors hover:bg-surface-muted"
-            >
-              Снять все отметки
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={handleAddonClick}
-            aria-label="Добор — добавить артикул не из заявки"
-            className="ml-auto whitespace-nowrap rounded border border-dashed border-accent-bright px-2.5 py-1 text-xs font-semibold text-accent-bright transition-colors hover:bg-accent-soft"
-          >
-            ＋ Добор
-          </button>
-        </div>
+        {startsLater && (
+          <div className="mb-2 rounded-lg border border-amber-border bg-amber-soft px-3 py-2 text-[12px] leading-snug text-ink">
+            <span aria-hidden="true">⚠ </span>
+            Аренда начинается {startsLater} — до начала больше суток. Проверьте,
+            что выдаёте нужную бронь.
+          </div>
+        )}
 
-        {/* Mobile heading: progress + bulk check/uncheck + «+ Добор» chip. */}
-        <div className="mb-2 flex items-center gap-2 px-0.5 lg:hidden">
-          <span
-            aria-label={`Выдано ${activeChecked} из ${activeTotal} позиций`}
-            className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold"
+        <IssueChecklistHeading
+          checked={activeChecked}
+          total={activeTotal}
+          statusLabel={statusLabel}
+          statusWarn={draft.status === "offline" || draft.status === "failed"}
+          onCheckAll={() => setAllChecked(true)}
+          onUncheckAll={() => setAllChecked(false)}
+          onAddon={() => setAddonOpen(true)}
+          abortSlot={abortButton("header")}
+        />
+
+        {notice && (
+          <div
+            role="status"
+            className="mb-2 flex items-start gap-2 rounded-lg border border-amber-border bg-amber-soft px-3 py-2 text-[12px] leading-snug text-ink"
           >
-            <span className={activeChecked === activeTotal && activeTotal > 0 ? "text-emerald" : "text-ink-2"}>
-              {activeChecked}
-            </span>
-            <span className="text-ink-3"> / {activeTotal} выдано</span>
-          </span>
-          {activeChecked < activeTotal ? (
+            <span className="flex-1">{notice}</span>
             <button
               type="button"
-              onClick={checkAllRows}
-              aria-label="Отметить все позиции как «Выдано»"
-              className="ml-auto rounded border border-emerald-border px-2 py-1 text-[11px] font-semibold text-emerald transition-colors hover:bg-emerald-soft"
+              onClick={() => setNotice(null)}
+              aria-label="Скрыть уведомление"
+              className="-my-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-3 transition-colors hover:bg-surface-muted"
             >
-              ✓ Все выдано
+              <span aria-hidden="true">✕</span>
             </button>
-          ) : activeTotal > 0 ? (
-            <button
-              type="button"
-              onClick={uncheckAllRows}
-              aria-label="Снять все отметки «Выдано»"
-              className="ml-auto rounded border border-border px-2 py-1 text-[11px] font-semibold text-ink-2 transition-colors hover:bg-surface-muted"
-            >
-              Снять все отметки
-            </button>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          onClick={handleAddonClick}
-          aria-label="Добор — добавить артикул не из заявки"
-          className="mb-3 block w-full rounded-lg border-[1.5px] border-dashed border-accent-bright bg-surface px-4 py-2.5 text-center text-sm font-semibold text-accent-bright transition-colors hover:bg-accent-soft lg:hidden"
-        >
-          ＋ Добор (артикул не из заявки)
-        </button>
+          </div>
+        )}
 
         {groups.map((group) => (
           <section key={group.category} className="mb-1">
@@ -880,19 +704,21 @@ export function IssueChecklist({
                 <IssueRow
                   key={item.bookingItemId}
                   item={item}
-                  intended={getIntended(item.bookingItemId)}
-                  checked={checkedRows.has(item.bookingItemId)}
+                  row={rowOf(rows, item)}
+                  problem={
+                    rowProblem?.bookingItemId === item.bookingItemId ? rowProblem.problem : null
+                  }
                   onBump={(delta) => bumpRowQty(item.bookingItemId, delta)}
                   onSet={(value) => setRowQty(item.bookingItemId, value)}
                   onToggleCheck={() => toggleRowChecked(item.bookingItemId)}
+                  onAck={(on) => setRowAck(item.bookingItemId, on)}
                 />
               ))}
             </div>
           </section>
         ))}
 
-        {/* Hint for conflict доборы surfaced post-add (we list them so the
-            audit info isn't silently lost between adding and committing). */}
+        {/* Доборы «под ответственность» из поиска — чтобы аудит не был сюрпризом. */}
         {conflictAddons.size > 0 && (
           <div className="mt-3 rounded-lg border border-amber-border bg-amber-soft px-3 py-2 text-[12px] text-amber">
             <span aria-hidden="true">⚠ </span>
@@ -911,37 +737,33 @@ export function IssueChecklist({
           </div>
         )}
 
+        <div className="mt-4 lg:hidden">{abortButton("block")}</div>
+
         {addonOpen && (
           <AddonSearch
             sessionId={sessionId}
-            bookingId={state.bookingId}
-            bookingNo={state.bookingId ? displayNo(state.bookingId) : undefined}
+            bookingId={current.bookingId}
+            bookingNo={current.bookingId ? displayNo(current.bookingId) : undefined}
             existingEquipmentIds={existingEquipmentIds}
+            manualFinalAmount={current.booking?.manualFinalAmount ?? null}
             onAdded={handleAddonAdded}
             onClose={() => setAddonOpen(false)}
+            onSessionClosed={(err) => {
+              setAddonOpen(false);
+              markClosed(err);
+            }}
           />
         )}
       </div>
 
       {/*
-        Sticky live finance block — sits at the bottom of the viewport, on
-        mobile right above the fixed tab bar (STICKY_ABOVE_TAB_BAR). The block renders even when finance is all
-        zeros (e.g. DRAFT booking with no MAIN) so «Готово, выдать» is
-        always reachable.
+        Живой блок финансов — прилипает к низу экрана (на мобильном — над
+        нижней навигацией). Рисуется и при нулях, чтобы «Готово» было видно.
       */}
       <div className={`${STICKY_ABOVE_TAB_BAR} border-t border-border bg-surface px-3 py-3 lg:px-4`}>
         <LiveFinanceBlock
           finance={finance}
-          onSubmit={() => {
-            // Не все активные позиции отмечены «Выдано» — подтверждаем
-            // явно: на длинном чек-листе легко нажать «Завершить», не
-            // догрузив стеллаж.
-            if (activeChecked < activeTotal) {
-              setConfirmOpen(true);
-              return;
-            }
-            void submitToComplete();
-          }}
+          onSubmit={requestSubmit}
           submitting={phase === "submitting"}
           checkedCount={activeChecked}
           totalCount={activeTotal}
@@ -949,46 +771,26 @@ export function IssueChecklist({
       </div>
 
       {confirmOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Подтверждение выдачи — не все позиции отмечены"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-scrim/40 lg:items-center lg:p-4"
-          onClick={() => setConfirmOpen(false)}
-        >
-          <div
-            className="w-full max-w-[440px] rounded-t-2xl border border-border bg-surface px-4 pb-5 pt-4 shadow-lg lg:rounded-xl lg:pb-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-[15px] font-semibold text-ink">
-              Не все позиции отмечены
-            </h3>
-            <p className="mt-1.5 text-[13px] leading-snug text-ink-2">
-              Отмечено {activeChecked} из {activeTotal} позиций. Выдача
-              оформится на указанные количества — убедитесь, что всё
-              действительно погружено.
-            </p>
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmOpen(false)}
-                className="flex-1 rounded-lg border border-border bg-surface px-4 py-3 text-center text-[14px] font-semibold text-ink transition-colors hover:bg-surface-muted"
-              >
-                Вернуться к списку
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmOpen(false);
-                  void submitToComplete();
-                }}
-                className="flex-1 rounded-lg bg-amber px-4 py-3 text-center text-[14px] font-semibold text-surface transition-colors hover:opacity-95"
-              >
-                Всё равно выдать
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmPartialDialog
+          checked={activeChecked}
+          total={activeTotal}
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={() => {
+            setConfirmOpen(false);
+            void submitToComplete();
+          }}
+        />
+      )}
+
+      {earlyIssueMessage && (
+        <EarlyIssueDialog
+          message={earlyIssueMessage}
+          onCheck={() => setEarlyIssueMessage(null)}
+          onForce={() => {
+            setEarlyIssueMessage(null);
+            void submitToComplete({ force: true });
+          }}
+        />
       )}
     </div>
   );

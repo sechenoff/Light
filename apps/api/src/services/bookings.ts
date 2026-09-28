@@ -10,6 +10,8 @@ import { HttpError } from "../utils/errors";
 import { computeUnitPriceForBookingPeriod, resolveCatalogLinePrice, splitEquipmentDiscount } from "./pricing";
 import { generateEstimateDocNumber } from "./numberingService";
 import { getAvailability } from "./availability";
+import { findHoldersBatch, type AddonConflict } from "./addonAvailability";
+import { notEnoughUnitsError } from "./stockCap";
 import { computeTransportPrice } from "./transportCalculator";
 import type { TransportBreakdown } from "./transportCalculator";
 import { toMoscowDateString, fromMoscowDateString } from "../utils/moscowDate";
@@ -275,6 +277,31 @@ export type BookingTransportSnapshot = {
  */
 const DOC_NUMBER_RETRIES = 5;
 
+/**
+ * Транзакция создания брони: на SQLite под конкурентной записью дефолтных
+ * 5 с ожидания и работы бывает мало — P2028 «Transaction already closed /
+ * expired» (лог прода 28.09 00:30:45), и бронь просто не создавалась.
+ */
+const CREATION_TX_OPTIONS = { maxWait: 10_000, timeout: 15_000 } as const;
+
+function isTransactionTimeout(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === "P2028";
+}
+
+/**
+ * Один повтор при таймауте интерактивной транзакции (P2028). Транзакция при
+ * таймауте откатывается целиком, поэтому повтор безопасен. Второй таймаут
+ * подряд — уже не случайность, отдаём его наружу.
+ */
+export async function withTxTimeoutRetry<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (!isTransactionTimeout(err)) throw err;
+    return run();
+  }
+}
+
 // SQLite допускает одного писателя. Одновременный BEGIN интерактивных
 // транзакций на Linux давал P1008 ещё до записи, вместо коллизии номера.
 // Последовательно выполняем только короткое создание + аудит; расчёты остаются
@@ -299,11 +326,13 @@ async function createWithRetriedDocNumber<T>(
     for (let attempt = 0; ; attempt++) {
       const docNumber = await generateEstimateDocNumber(new Date().getFullYear());
       try {
-        return await prisma.$transaction(async (tx) => {
-          const created = await tx.booking.create(build(docNumber));
-          await recordBookingCreated(tx, created.id);
-          return created as T;
-        });
+        return await withTxTimeoutRetry(() =>
+          prisma.$transaction(async (tx) => {
+            const created = await tx.booking.create(build(docNumber));
+            await recordBookingCreated(tx, created.id);
+            return created as T;
+          }, CREATION_TX_OPTIONS),
+        );
       } catch (err: unknown) {
         const e = err as { code?: string; meta?: { target?: unknown } };
         const target = Array.isArray(e.meta?.target) ? e.meta?.target.join(",") : String(e.meta?.target ?? "");
@@ -359,7 +388,7 @@ export async function createQuickBooking(args: {
   const resolvedPaymentDate =
     args.expectedPaymentDate ?? (await computeDefaultPaymentDate(args.endDate));
 
-  return serializeBookingCreation(() => prisma.$transaction(async (tx) => {
+  return serializeBookingCreation(() => withTxTimeoutRetry(() => prisma.$transaction(async (tx) => {
     const created = await tx.booking.create({
       data: {
         clientId: args.clientId,
@@ -380,7 +409,7 @@ export async function createQuickBooking(args: {
     });
     await recordBookingCreated(tx, created.id, "BOOKING_QUICK_CREATE");
     return created;
-  }));
+  }, CREATION_TX_OPTIONS)));
 }
 
 /**
@@ -887,6 +916,8 @@ export async function confirmBooking(bookingId: string) {
       occupiedQuantity: number;
       availableQuantity: number;
       requestedQuantity: number;
+      /** Кто держит позицию на эти даты (ближайшая по началу чужая бронь). */
+      holder?: AddonConflict | null;
     }> = [];
     // Имена для человекочитаемой ошибки конфликта (UI показывает их напрямую).
     const nameByEquipmentId = new Map(
@@ -928,9 +959,25 @@ export async function confirmBooking(bookingId: string) {
             `${c.equipmentName}: нужно ${c.requestedQuantity}, свободно ${c.availableQuantity} из ${c.totalQuantity}`,
         )
         .join("; ");
+      // Кто держит. Выданная бронь держит прибор до приёмки, а на проде возврат
+      // часто отмечают позже срока: подтверждение начавшейся брони упиралось в
+      // «свободно 0», и было непонятно, что прибор на самом деле уже на полке.
+      const holders = await findHoldersBatch(tx, {
+        equipmentIds: conflicts.map((c) => c.equipmentId),
+        start: booking.startDate,
+        end: booking.endDate,
+        excludeBookingId: bookingId,
+      });
+      for (const c of conflicts) c.holder = holders.get(c.equipmentId) ?? null;
+      const overdueHints = conflicts
+        .filter((c) => c.holder?.holderStatus === "ISSUED" && c.holder.overdue)
+        .map((c) => {
+          const [, m, d] = toMoscowDateString(new Date(c.holder!.to)).split("-");
+          return `«${c.equipmentName}» числится у клиента по брони «${c.holder!.projectName}» — возврат не отмечен с ${d}.${m}; если техника на складе, отметьте возврат`;
+        });
       throw new HttpError(
         409,
-        `Не хватает оборудования на выбранные даты — ${summary}`,
+        `Не хватает оборудования на выбранные даты — ${summary}${overdueHints.length > 0 ? `. ${overdueHints.join(". ")}` : ""}`,
         { conflicts },
       );
     }
@@ -1072,13 +1119,20 @@ export async function confirmBooking(bookingId: string) {
         select: { id: true },
         orderBy: { id: "asc" },
       });
-      const freeUnitIds = availableUnits
+      const allFreeUnitIds = availableUnits
         .map((u) => u.id)
-        .filter((id) => !alreadyReserved.has(id))
-        .slice(0, it.quantity);
+        .filter((id) => !alreadyReserved.has(id));
+      const freeUnitIds = allFreeUnitIds.slice(0, it.quantity);
       if (freeUnitIds.length < it.quantity) {
-        // Should not happen due to availability validation, but guard anyway.
-        throw new HttpError(409, "Not enough free units during reservation.");
+        // Агрегат по датам прошёл, а конкретных экземпляров нет: единица
+        // застряла «Выдана» у брони с чужими датами или в ремонте. Раньше —
+        // английское «Not enough free units during reservation.» без кода.
+        throw notEnoughUnitsError({
+          equipmentId: it.equipmentId,
+          name: it.equipment.name,
+          available: allFreeUnitIds.length,
+          requested: it.quantity,
+        });
       }
 
       await tx.bookingItemUnit.createMany({

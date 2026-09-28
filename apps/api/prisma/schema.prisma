@@ -737,6 +737,21 @@ model ScanSession {
   startedAt   DateTime          @default(now())
   completedAt DateTime?
 
+  /// Черновик чек-листа (ChecklistDraftV1, JSON ≤ 256 КБ): количества, отметки
+  /// и исходы приёмки живут на сервере, а не в памяти планшета. Ревизия —
+  /// оптимистичная блокировка двух устройств на одной сессии.
+  draftJson     String?
+  draftRevision Int       @default(0)
+  draftSavedAt  DateTime?
+  draftSavedBy  String?
+  /// Кто нажал «Готово» (workerName открывшего сессию может отличаться).
+  completedBy   String?
+  cancelledAt   DateTime?
+  /// KIOSK_ABORT | CARD_ABORT | EMPTY_LEAVE | BOOKING_ISSUED_MANUALLY |
+  /// BOOKING_RETURNED_MANUALLY | BOOKING_CANCELLED | BOOKING_ARCHIVED | STALE
+  cancelReason  String?
+  cancelledBy   String?
+
   scans ScanRecord[]
   addonRecords AddonRecord[]
 

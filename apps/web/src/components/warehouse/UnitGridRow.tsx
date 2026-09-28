@@ -42,8 +42,23 @@ export interface UnitSlot {
 const REASON_LABEL: Record<ProblemReason, string> = {
   LEFT_ON_SITE: "Оставлен на площадке",
   LOST: "Потерян",
-  DESTROYED: "Сломан безвозвратно",
+  // «Сломан безвозвратно» — не пропажа: сервер сразу списывает (WROTE_OFF),
+  // искать нечего. Подпись говорит, что будет, а не только что случилось.
+  DESTROYED: "Сломан безвозвратно — списать",
   STOLEN: "Украден",
+};
+
+/**
+ * Что произойдёт с прибором — зеркало `plannedStatus` в
+ * `apps/api/src/services/problemItemService.ts` (и подсказок `ProblemPanel`):
+ * «Оставлен» — ждём возврата, «Потерян»/«Украден» — ищем,
+ * «Сломан безвозвратно» — сразу списание, без поиска.
+ */
+const REASON_CONSEQUENCE: Record<ProblemReason, string> = {
+  LEFT_ON_SITE: "→ в «Потеряшки» · ожидается возврат",
+  LOST: "→ в «Потеряшки» · заявка на поиск",
+  STOLEN: "→ в «Потеряшки» · заявка на поиск",
+  DESTROYED: "→ списание прибора, искать не будем",
 };
 
 /** Cycle order: PENDING → ACCEPTED → REPAIR → PROBLEM → PENDING. */
@@ -87,6 +102,13 @@ interface Props {
   onProblemPatch: (unitIndex: number, patch: Partial<ProblemDraft>) => void;
   /** Row-level error message (e.g. «Заполните комментарий ремонта»). */
   rowError?: string | null;
+  /** DOM-id сообщения об ошибке — на него ссылается `aria-describedby` строки. */
+  rowErrorId?: string;
+  /**
+   * Жёлтая пометка над ячейками — например, «отметки сброшены: количество
+   * в брони изменилось». Не ошибка: завершать приёмку она не мешает.
+   */
+  notice?: string | null;
 }
 
 export function UnitGridRow({
@@ -99,6 +121,8 @@ export function UnitGridRow({
   onRepairCommentChange,
   onProblemPatch,
   rowError,
+  rowErrorId,
+  notice,
 }: Props) {
   const accepted = units.filter((u) => u.status === "ACCEPTED").length;
   const repair = units.filter((u) => u.status === "REPAIR").length;
@@ -169,6 +193,15 @@ export function UnitGridRow({
           )}
         </div>
       </div>
+
+      {notice && (
+        <p
+          role="status"
+          className="mb-2 rounded-md border border-amber-border bg-amber-soft px-2.5 py-1.5 text-[12px] leading-snug text-amber"
+        >
+          {notice}
+        </p>
+      )}
 
       {/* Unit chips grid */}
       <div className="flex flex-wrap gap-1.5">
@@ -299,6 +332,11 @@ export function UnitGridRow({
                   className="w-full rounded border border-border-strong bg-surface px-2.5 py-1.5 text-[12px] text-ink outline-none focus:border-rose"
                   placeholder="Что случилось"
                 />
+                {u.problem.reason && (
+                  <p className="text-[11px] leading-snug text-rose">
+                    {REASON_CONSEQUENCE[u.problem.reason]}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -306,6 +344,7 @@ export function UnitGridRow({
 
       {rowError && (
         <p
+          id={rowErrorId}
           role="alert"
           className="mt-2 rounded-md border border-rose-border bg-rose-soft px-2.5 py-1.5 text-[12px] text-rose"
         >

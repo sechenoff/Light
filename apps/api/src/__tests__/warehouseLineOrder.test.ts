@@ -96,46 +96,54 @@ beforeAll(async () => {
   const client = await prisma.client.create({
     data: { name: "Клиент порядок строк", phone: "+70000000077" },
   });
-  const booking = await prisma.booking.create({
-    data: {
-      clientId: client.id,
-      projectName: "Порядок по категориям",
-      startDate: new Date("2026-05-10"),
-      endDate: new Date("2026-05-12"),
-      status: "ISSUED",
-      amountPaid: 0,
-      amountOutstanding: 0,
-    },
-  });
-  bookingId = booking.id;
 
-  // Позиции добавлены «как попало»: произвольная — не последней, категории
-  // вперемешку. createdAt разнесены явно, чтобы старый порядок был однозначен.
-  const base = Date.parse("2026-05-01T10:00:00.000Z");
-  const addItem = (i: number, data: Record<string, unknown>) =>
-    prisma.bookingItem.create({
-      data: { bookingId, quantity: 1, createdAt: new Date(base + i * 60_000), ...data },
+  // Одна и та же бронь дважды: подтверждённая — для чек-листа выдачи (живая
+  // ISSUE-сессия бывает только у CONFIRMED), выданная — для приёмки и «В работе».
+  const DAY = 24 * 60 * 60 * 1000;
+  const seedBooking = async (status: "CONFIRMED" | "ISSUED", unitNo: string) => {
+    const start = new Date(Date.now() - DAY);
+    const booking = await prisma.booking.create({
+      data: {
+        clientId: client.id,
+        projectName: "Порядок по категориям",
+        startDate: start,
+        endDate: new Date(start.getTime() + 2 * DAY),
+        status,
+        amountPaid: 0,
+        amountOutstanding: 0,
+      },
     });
-  await addItem(0, { equipmentId: flag.id });
-  const stormItem = await addItem(1, { equipmentId: storm.id });
-  await addItem(2, { customName: "Доставка на площадку", customUnitPrice: 5000 });
-  await addItem(3, { equipmentId: cstand.id });
-  await addItem(4, { equipmentId: cable.id });
-  await addItem(5, { equipmentId: ls.id });
+    // Позиции добавлены «как попало»: произвольная — не последней, категории
+    // вперемешку. createdAt разнесены явно, чтобы старый порядок был однозначен.
+    const base = Date.now() - 7 * DAY;
+    const addItem = (i: number, data: Record<string, unknown>) =>
+      prisma.bookingItem.create({
+        data: { bookingId: booking.id, quantity: 1, createdAt: new Date(base + i * 60_000), ...data },
+      });
+    await addItem(0, { equipmentId: flag.id });
+    const stormItem = await addItem(1, { equipmentId: storm.id });
+    await addItem(2, { customName: "Доставка на площадку", customUnitPrice: 5000 });
+    await addItem(3, { equipmentId: cstand.id });
+    await addItem(4, { equipmentId: cable.id });
+    await addItem(5, { equipmentId: ls.id });
 
-  const unit = await prisma.equipmentUnit.create({
-    data: { equipmentId: storm.id, barcode: "LO-STORM-001", status: "ISSUED" },
-  });
-  await prisma.bookingItemUnit.create({
-    data: { bookingItemId: stormItem.id, equipmentUnitId: unit.id },
-  });
+    const unit = await prisma.equipmentUnit.create({
+      data: { equipmentId: storm.id, barcode: unitNo, status: status === "ISSUED" ? "ISSUED" : "AVAILABLE" },
+    });
+    await prisma.bookingItemUnit.create({
+      data: { bookingItemId: stormItem.id, equipmentUnitId: unit.id },
+    });
+    return booking.id as string;
+  };
+  const issueBookingId = await seedBooking("CONFIRMED", "LO-STORM-001");
+  bookingId = await seedBooking("ISSUED", "LO-STORM-002");
 
-  const session = (operation: "ISSUE" | "RETURN") =>
+  const session = (id: string, operation: "ISSUE" | "RETURN") =>
     prisma.scanSession.create({
-      data: { bookingId, workerName: "Кладовщик порядок", operation, status: "ACTIVE" },
+      data: { bookingId: id, workerName: "Кладовщик порядок", operation, status: "ACTIVE" },
     });
-  issueSessionId = (await session("ISSUE")).id;
-  returnSessionId = (await session("RETURN")).id;
+  issueSessionId = (await session(issueBookingId, "ISSUE")).id;
+  returnSessionId = (await session(bookingId, "RETURN")).id;
 });
 
 afterAll(async () => {
@@ -153,7 +161,8 @@ describe("порядок позиций брони в киоске склада"
     // Киоск группирует по category в порядке первого появления — группы
     // должны идти подряд, без повторов.
     const categories = res.body.items.map((i: any) => i.category);
-    expect(categories).toEqual(["Свет", "Свет", "Грип", "Грип", "Кабели", "Добавлено на месте"]);
+    // Произвольная позиция — своя категория или «Прочее», как в смете.
+    expect(categories).toEqual(["Свет", "Свет", "Грип", "Грип", "Кабели", "Прочее"]);
   });
 
   it("чек-лист приёмки — тот же порядок", async () => {

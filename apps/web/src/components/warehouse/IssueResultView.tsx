@@ -24,7 +24,10 @@
  * NEVER renders a barcode.
  */
 
+import { useState } from "react";
 import type { CompleteResult } from "./types";
+import { scanApi } from "./api";
+import { NEGOTIATED_TOTAL_ADDON_NOTE } from "./addonConflictText";
 import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
 import { formatRub, formatExpenseRub, pluralize } from "../../lib/format";
 
@@ -36,6 +39,7 @@ export function IssueResultView({
   addonsCount,
   substitutedCount,
   onDone,
+  pinMode,
 }: {
   result: CompleteResult;
   /** Booking id — used to build PDF download URLs in the «Финансы» block. */
@@ -49,7 +53,15 @@ export function IssueResultView({
   substitutedCount: number;
   /** Back to the bookings list. */
   onDone: () => void;
+  /**
+   * PIN-киоск без входа в CRM: PDF-маршруты отвечают там 401, поэтому ссылок
+   * нет — только подсказка (P17). По умолчанию — есть ли PIN-токен.
+   */
+  pinMode?: boolean;
 }) {
+  const [isPinMode] = useState<boolean>(
+    () => pinMode ?? scanApi.getWarehouseToken() != null,
+  );
   const safeIssued = Math.max(
     0,
     Number.isFinite(issuedCount) ? issuedCount : 0,
@@ -169,24 +181,26 @@ export function IssueResultView({
           )}
 
           {(() => {
-            // Task 13: «исходно / снято / фактически» + OVERPAID-callout.
-            //
-            // Финансовый блок раньше показывался ТОЛЬКО при `addonAfterDiscount > 0`
-            // (исторически — для отображения доб-сметы). Теперь он также должен
-            // появляться при main-reduction (склад снял позиции на выдаче) и при
-            // OVERPAID — иначе оператор не увидит «Снято на выдаче» и «К возврату».
+            // «Финансы»: было → стало. Блок показывается при ЛЮБОМ изменении
+            // основной сметы (снято на выдаче или прибавлено), при доп-смете,
+            // при переплате и при договорном итоге с добором — иначе кладовщик
+            // не видит, что сумма изменилась (или что добор в оплату не вошёл).
             const mainAfter = Number(result.mainAfterDiscount);
             const mainOriginal = Number(result.mainOriginalAfterDiscount);
             const addonAfter = Number(result.addonAfterDiscount);
-            // Защищаемся от NaN (любое поле может прийти не-числом) — Number.isFinite
-            // даёт false и для NaN, и для Infinity; в этом случае reduction не считаем.
-            const hasMainReduction =
-              Number.isFinite(mainAfter) &&
-              Number.isFinite(mainOriginal) &&
-              mainAfter < mainOriginal;
-            const removalAmount = hasMainReduction ? mainOriginal - mainAfter : 0;
+            // NaN/Infinity в любом поле — изменения не считаем.
+            const mainKnown =
+              Number.isFinite(mainAfter) && Number.isFinite(mainOriginal);
+            const hasMainReduction = mainKnown && mainAfter < mainOriginal;
+            // «Исходно 0» — у брони не было основной сметы (нечего сравнивать),
+            // а не «прибавили всю сумму на выдаче».
+            const hasMainIncrease =
+              mainKnown && mainOriginal > 0 && mainAfter > mainOriginal;
+            const mainDelta = mainKnown ? Math.abs(mainAfter - mainOriginal) : 0;
             const hasAddon = Number.isFinite(addonAfter) && addonAfter > 0;
             const isOverpaid = result.paymentStatus === "OVERPAID";
+            const manualTotal = result.manualFinalAmount ?? null;
+            const hasManualTotal = manualTotal != null;
             const paid = Number(result.amountPaid ?? "0");
             const finalNum = Number(result.finalAmount);
             // Переплата = |paid − final|. Используем модуль на случай рассинхрона
@@ -195,14 +209,25 @@ export function IssueResultView({
               Number.isFinite(paid) && Number.isFinite(finalNum)
                 ? Math.abs(paid - finalNum)
                 : 0;
+            // Договорной итог и добор: доп-смета есть, а к оплате она не идёт.
+            const addonOutsideTotal =
+              hasManualTotal && (hasAddon || hasMainIncrease || addonsCount > 0);
 
-            if (!hasMainReduction && !hasAddon && !isOverpaid) return null;
+            if (
+              !hasMainReduction &&
+              !hasMainIncrease &&
+              !hasAddon &&
+              !isOverpaid &&
+              !addonOutsideTotal
+            ) {
+              return null;
+            }
 
             return (
               <div className="mt-4 rounded-lg border border-border bg-surface px-3 py-3">
                 <div className="eyebrow mb-2">Финансы</div>
                 <dl className="space-y-1 text-[13px] text-ink">
-                  {hasMainReduction ? (
+                  {hasMainReduction || hasMainIncrease ? (
                     <>
                       <div className="flex justify-between">
                         <dt className="text-ink-2">Согласовано (исходно):</dt>
@@ -210,12 +235,21 @@ export function IssueResultView({
                           {formatRub(result.mainOriginalAfterDiscount)}
                         </dd>
                       </div>
-                      <div className="flex justify-between">
-                        <dt className="text-ink-2">Снято на выдаче:</dt>
-                        <dd className="mono-num text-rose">
-                          {formatExpenseRub(removalAmount)}
-                        </dd>
-                      </div>
+                      {hasMainReduction ? (
+                        <div className="flex justify-between">
+                          <dt className="text-ink-2">Снято на выдаче:</dt>
+                          <dd className="mono-num text-rose">
+                            {formatExpenseRub(mainDelta)}
+                          </dd>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between">
+                          <dt className="text-ink-2">Добавлено на выдаче:</dt>
+                          <dd className="mono-num text-emerald">
+                            + {formatRub(mainDelta)}
+                          </dd>
+                        </div>
+                      )}
                       <div className="flex justify-between font-semibold">
                         <dt className="text-ink-2">Согласовано (фактически):</dt>
                         <dd className="mono-num">
@@ -239,6 +273,12 @@ export function IssueResultView({
                       </dd>
                     </div>
                   )}
+                  {hasManualTotal && (
+                    <div className="flex justify-between">
+                      <dt className="text-ink-2">Договорная сумма:</dt>
+                      <dd className="mono-num">{formatRub(manualTotal)}</dd>
+                    </div>
+                  )}
                   <div className="flex justify-between border-t border-border pt-1 font-semibold">
                     <dt>К оплате:</dt>
                     <dd className="mono-num">
@@ -246,6 +286,12 @@ export function IssueResultView({
                     </dd>
                   </div>
                 </dl>
+
+                {addonOutsideTotal && (
+                  <p className="mt-3 rounded border border-amber-border bg-amber-soft px-3 py-2 text-[11px] leading-snug text-ink">
+                    {NEGOTIATED_TOTAL_ADDON_NOTE}
+                  </p>
+                )}
 
                 {isOverpaid && (
                   <div
@@ -259,26 +305,33 @@ export function IssueResultView({
                   </div>
                 )}
 
-                {hasAddon && (
-                  <div className="mt-3 flex gap-2">
-                    <a
-                      href={`/api/bookings/${bookingId}/full-estimate/export/pdf`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex-1 rounded border border-border bg-surface px-3 py-2 text-center text-[12px] font-medium text-ink-2 hover:bg-surface-muted"
-                    >
-                      Скачать смету (общая) PDF
-                    </a>
-                    <a
-                      href={`/api/addon-estimates/${bookingId}/export/pdf`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex-1 rounded border border-border bg-surface px-3 py-2 text-center text-[12px] font-medium text-ink-2 hover:bg-surface-muted"
-                    >
-                      Скачать доб-смета PDF
-                    </a>
-                  </div>
-                )}
+                {hasAddon &&
+                  (isPinMode ? (
+                    // PIN-киоск: у PDF-маршрутов нет PIN-токена — ссылка
+                    // открыла бы JSON «Требуется авторизация».
+                    <p className="mt-3 text-[12px] text-ink-3">
+                      PDF — в карточке брони в CRM
+                    </p>
+                  ) : (
+                    <div className="mt-3 flex gap-2">
+                      <a
+                        href={`/api/bookings/${bookingId}/full-estimate/export/pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 rounded border border-border bg-surface px-3 py-2 text-center text-[12px] font-medium text-ink-2 hover:bg-surface-muted"
+                      >
+                        Скачать смету (общая) PDF
+                      </a>
+                      <a
+                        href={`/api/addon-estimates/${bookingId}/export/pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 rounded border border-border bg-surface px-3 py-2 text-center text-[12px] font-medium text-ink-2 hover:bg-surface-muted"
+                      >
+                        Скачать доб-смета PDF
+                      </a>
+                    </div>
+                  ))}
               </div>
             );
           })()}

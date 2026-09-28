@@ -15,6 +15,13 @@ import { useBulkBookingActions } from "../useBulkBookingActions";
 import { bulkActionMeta } from "../bulkActions";
 import { BULK_MAX_IDS } from "../bulkLimits";
 import type { CurrentUser } from "../../../lib/auth";
+import {
+  INVALID_BOOKING_STATE,
+  announceStatusChangeNotes,
+  staleStateMessage,
+  type StatusChangeResponse,
+} from "../useBookingLifecycle";
+import { hasLiveKioskSession } from "./model";
 export function useRegisterActions(
   rows: Row[],
   user: CurrentUser | null,
@@ -63,7 +70,10 @@ export function useRegisterActions(
       return;
     }
     if (["CONFIRMED", "ISSUED"].includes(r.status)) {
-      if (r.hasScanSessions)
+      // В киоск — только продолжить уже идущую выдачу или приёмку. Прошлая
+      // сессия не повод: открытие киоска само создаёт новую, и она потом
+      // висит брошенной и блокирует «+ Добор» на карточке брони.
+      if (hasLiveKioskSession(r))
         router.push(`/warehouse/scan?booking=${encodeURIComponent(r.id)}`);
       else
         setConfirm({
@@ -80,9 +90,13 @@ export function useRegisterActions(
           ? "Доборы / выдача"
           : "Открыть проект"
       : r.status === "CONFIRMED"
-        ? "Выдать"
+        ? hasLiveKioskSession(r)
+          ? "Продолжить выдачу"
+          : "Выдать"
         : r.status === "ISSUED"
-          ? "Принять возврат"
+          ? hasLiveKioskSession(r)
+            ? "Продолжить приёмку"
+            : "Принять возврат"
           : r.status === "PENDING_APPROVAL" && sa
             ? "Согласовать"
             : "Открыть";
@@ -91,7 +105,7 @@ export function useRegisterActions(
     lock.current = true;
     setBusy(true);
     try {
-      await apiFetch(
+      const res = await apiFetch<StatusChangeResponse | undefined>(
         `/api/bookings/${confirm.row.id}${confirm.action === "archive" ? "" : "/status"}`,
         {
           method: confirm.action === "archive" ? "DELETE" : "POST",
@@ -108,10 +122,23 @@ export function useRegisterActions(
       setConfirm(null);
       refresh();
       toast.success("Бронирование обновлено");
+      announceStatusChangeNotes(res);
     } catch (e) {
-      if (
+      const code =
+        typeof e === "object" && e !== null
+          ? (e as { code?: unknown }).code
+          : undefined;
+      if (code === INVALID_BOOKING_STATE) {
+        // Коллега уже выдал / принял / отменил: окно закрываем, список
+        // перечитываем — кнопка строки сменится на актуальную.
+        setConfirm(null);
+        refresh();
+        toast.error(
+          staleStateMessage(e instanceof Error ? e.message : undefined, "Список обновлён"),
+        );
+      } else if (
         e instanceof Error &&
-        (e as Error & { code?: string }).code === "ISSUE_TOO_EARLY" &&
+        code === "ISSUE_TOO_EARLY" &&
         !confirm.force
       )
         setConfirm({

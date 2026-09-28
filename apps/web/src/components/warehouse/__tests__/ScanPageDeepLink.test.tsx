@@ -51,6 +51,8 @@ vi.mock("../api", () => ({
     getState: (id: string) => getState(id),
     getShift: () => getShift(),
     clearWarehouseToken: vi.fn(),
+    // PIN-входа нет — страница работает под главной сессией (P18).
+    getWarehouseAuth: () => null,
   },
 }));
 
@@ -84,8 +86,17 @@ const EMPTY_SHIFT = {
 };
 
 vi.mock("../IssueChecklist", () => ({
-  IssueChecklist: ({ projectName }: { projectName: string }) => (
-    <div>ISSUE-CHECKLIST {projectName}</div>
+  IssueChecklist: ({
+    projectName,
+    resumed,
+  }: {
+    projectName: string;
+    resumed?: { workerName?: string } | null;
+  }) => (
+    <div>
+      ISSUE-CHECKLIST {projectName}
+      {resumed ? ` · продолжена (${resumed.workerName})` : ""}
+    </div>
   ),
 }));
 vi.mock("../ReturnChecklist", () => ({
@@ -141,6 +152,28 @@ describe("WarehouseScanPage ?booking= deep-link", () => {
     await waitFor(() =>
       expect(h.replace).toHaveBeenCalledWith("/warehouse/scan"),
     );
+  });
+
+  it("продолженная сессия по deep-link: чек-лист получает resumed, своей плашки у страницы нет", async () => {
+    listBookings.mockImplementation(async (op: string) =>
+      op === "ISSUE" ? [BOOKING] : [],
+    );
+    createSession.mockResolvedValue({
+      id: "sess-1",
+      bookingId: "bk-1",
+      operation: "ISSUE",
+      status: "ACTIVE",
+      resumed: true,
+      workerName: "Пётр",
+      startedAt: "2026-07-03T08:00:00.000Z",
+    });
+
+    render(<WarehouseScanPage />);
+
+    expect(
+      await screen.findByText("ISSUE-CHECKLIST Проект Тест · продолжена (Пётр)"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("бронь из списка возвратов → RETURN-сессия и чек-лист приёмки", async () => {

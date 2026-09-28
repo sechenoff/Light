@@ -9,6 +9,8 @@ import fs from "fs";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 const TEST_DB_PATH = path.resolve(__dirname, "../../prisma/test-addon-items.db");
+const DAY = 24 * 3_600_000;
+const at = (days: number) => new Date(Date.now() + days * DAY);
 process.env.DATABASE_URL = `file:${TEST_DB_PATH}`;
 process.env.RATE_LIMIT_DISABLED = "true";
 process.env.API_KEYS = "test-key-addon-items";
@@ -70,13 +72,14 @@ beforeAll(async () => {
   });
   eqBusyId = eqBusy.id;
 
-  // Конфликтующая CONFIRMED бронь, занимающая eqBusy qty 1 на 2026-06-10..2026-06-12
+  // Конфликтующая CONFIRMED бронь, занимающая eqBusy qty 1 и накрывающая
+  // окно выдачи целевой брони (киоск проверяет «с текущего момента до конца»).
   const busyBooking = await prisma.booking.create({
     data: {
       clientId,
       projectName: "Занятый проект",
-      startDate: new Date("2026-06-10"),
-      endDate: new Date("2026-06-12"),
+      startDate: at(-1),
+      endDate: at(2),
       status: "CONFIRMED",
       amountPaid: 0,
       amountOutstanding: 0,
@@ -114,13 +117,13 @@ beforeAll(async () => {
   });
   eqAuditId = eqAudit.id;
 
-  // Целевая CONFIRMED бронь на пересекающиеся даты 2026-06-11..2026-06-13
+  // Целевая CONFIRMED бронь на пересекающиеся даты
   const tgt = await prisma.booking.create({
     data: {
       clientId,
       projectName: "Целевой проект",
-      startDate: new Date("2026-06-11"),
-      endDate: new Date("2026-06-13"),
+      startDate: at(0.5),
+      endDate: at(3),
       status: "CONFIRMED",
       amountPaid: 0,
       amountOutstanding: 0,

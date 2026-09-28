@@ -41,6 +41,7 @@ import {
   paymentLabels,
   actionLabels,
   parseSavedViews,
+  hasLiveKioskSession,
   type SavedRegisterView,
 } from "./model";
 
@@ -269,7 +270,13 @@ export function BookingRegister() {
             Длинный проект
           </span>
         )}
-        {r.hasScanSessions && <span>Сканирование</span>}
+        {/* Только живая сессия: прошлая или брошенная выдача в киоске ничего
+            не значит для оператора, а раньше висела здесь вечно. */}
+        {hasLiveKioskSession(r) && (
+          <span className="rounded bg-teal-soft px-1.5 py-0.5 text-teal">
+            Идёт в киоске
+          </span>
+        )}
       </div>
     </div>
   );

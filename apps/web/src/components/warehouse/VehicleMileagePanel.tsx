@@ -17,6 +17,17 @@
  *   submit.
  * - `onValidityChange(valid)` — все ли строки заполнены и проходят
  *   constraint mileage ≥ currentMileage.
+ * - `initialMileages` — пробег из сохранённого черновика приёмки
+ *   (`draft.return.mileages`). Подставляется в поля при каждой смене
+ *   объекта: родитель отдаёт новый объект только при восстановлении
+ *   черновика (открытие, свежая версия с другого устройства), поэтому
+ *   набранное руками не перетирается.
+ * - `onEdit()` — кладовщик сам изменил поле. Только это — правка для
+ *   черновика: подстановка из `initialMileages` и загрузка списка машин
+ *   правкой не считаются, иначе простое открытие приёмки переписывало бы
+ *   черновик на сервере (и выбивало правку второго планшета).
+ * - `onChange` зовётся только после загрузки списка машин: пока он грузится,
+ *   поля пустые, и «пустой пробег» не должен затирать восстановленный.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -30,6 +41,10 @@ interface VehicleMileagePanelProps {
   attemptedSubmit: boolean;
   onChange: (entries: VehicleMileageEntry[]) => void;
   onValidityChange: (valid: boolean) => void;
+  /** vehicleId → км из черновика; `null` — поле пустое. */
+  initialMileages?: Readonly<Record<string, number | null>> | null;
+  /** Кладовщик сам изменил поле пробега (не восстановление из черновика). */
+  onEdit?: () => void;
 }
 
 interface VehicleRowState {
@@ -46,10 +61,26 @@ export function VehicleMileagePanel({
   attemptedSubmit,
   onChange,
   onValidityChange,
+  initialMileages,
+  onEdit,
 }: VehicleMileagePanelProps) {
   const [vehicles, setVehicles] = useState<SessionVehicle[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [inputs, setInputs] = useState<Record<string, VehicleRowState>>({});
+
+  // Восстановление из черновика: новый объект = новая версия черновика.
+  useEffect(() => {
+    if (!initialMileages) return;
+    const restored = Object.entries(initialMileages).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number",
+    );
+    if (restored.length === 0) return;
+    setInputs((prev) => {
+      const next = { ...prev };
+      for (const [vehicleId, km] of restored) next[vehicleId] = { raw: String(km) };
+      return next;
+    });
+  }, [initialMileages]);
 
   // Подтягиваем список машин брони. Cancelled-flag паттерн для guard'a
   // от set-state после unmount.
@@ -112,10 +143,11 @@ export function VehicleMileagePanel({
     return { entries: computed, allValid: valid, perRowErrors: errs };
   }, [vehicles, inputs]);
 
-  // Сообщаем родителю текущее состояние.
+  // Сообщаем родителю текущее состояние — когда список машин уже известен.
   useEffect(() => {
+    if (vehicles === null) return;
     onChange(entries);
-  }, [entries, onChange]);
+  }, [vehicles, entries, onChange]);
 
   useEffect(() => {
     onValidityChange(allValid);
@@ -185,12 +217,13 @@ export function VehicleMileagePanel({
                     value={raw}
                     aria-invalid={Boolean(rowErr) || undefined}
                     aria-describedby={rowErr ? errId : undefined}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      onEdit?.();
                       setInputs((prev) => ({
                         ...prev,
                         [v.vehicleId]: { raw: e.target.value },
-                      }))
-                    }
+                      }));
+                    }}
                     className={`mono-num w-32 rounded border px-2 py-1 text-sm bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent ${
                       rowErr ? "border-rose-border" : "border-border"
                     }`}

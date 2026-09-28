@@ -96,6 +96,7 @@ export const ACTION_LABELS: Record<string, string> = {
   BOOKING_ITEM_QUANTITY_REDUCED: "Количество позиции уменьшено",
   BOOKING_VEHICLE_DRIVER_SET: "Водитель назначен на бронь",
   BOOKING_CONFIRMED_VIA_BOT: "Бронь подтверждена через бота",
+  SCAN_SESSION_CANCELLED: "Сессия киоска прервана",
   LEGACY_IMPORTED: "Импорт из старой базы",
   // Платежи и финансы
   PAYMENT_CREATE: "Платёж создан",

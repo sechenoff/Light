@@ -336,9 +336,17 @@ export async function computeShift(workerName: string): Promise<ShiftSummary> {
     toEntry(b, "RETURN", "OVERDUE", null),
   );
 
-  // Моя выработка: сессии, начатые сегодня этим оператором.
+  // Моя выработка: сессии, которые этот оператор сегодня завершил, и начатые
+  // им сегодня, но ещё не завершённые. Автор завершения — completedBy (сессию
+  // мог открыть один, а «Готово» нажать другой); у старых сессий его нет —
+  // тогда автор тот, кто открыл.
   const mySessions = await prisma.scanSession.findMany({
-    where: { workerName, startedAt: { gte: todayStart } },
+    where: {
+      OR: [
+        { completedBy: workerName, completedAt: { gte: todayStart } },
+        { completedBy: null, workerName, startedAt: { gte: todayStart } },
+      ],
+    },
     include: {
       booking: { select: { _count: { select: { items: true } } } },
     },
@@ -347,6 +355,20 @@ export async function computeShift(workerName: string): Promise<ShiftSummary> {
   const myCompleted = mySessions.filter(
     (s) => s.status === "COMPLETED" && s.completedAt != null,
   );
+  // Когда оператор сегодня взялся за сессию: открыл сегодня сам — с открытия;
+  // иначе (открыл вчера или другой кладовщик) — с момента «Готово». Иначе
+  // чужая вчерашняя сессия растянула бы «смену» на сутки.
+  const myActivityStart = (s: (typeof mySessions)[number]): Date =>
+    s.workerName === workerName && s.startedAt >= todayStart
+      ? s.startedAt
+      : s.completedAt ?? s.startedAt;
+  const firstActivity = mySessions.reduce<Date | null>((min, s) => {
+    const at = myActivityStart(s);
+    return min == null || at < min ? at : min;
+  }, null);
+  // Среднее время на операцию — только по сессиям, которые оператор сам и
+  // открыл: время ожидания чужой брошенной сессии — не его работа.
+  const myTimed = myCompleted.filter((s) => s.workerName === workerName);
 
   return {
     date: toMoscowDateString(todayStart),
@@ -365,9 +387,9 @@ export async function computeShift(workerName: string): Promise<ShiftSummary> {
       workerName,
       sessions: myCompleted.length,
       items: myCompleted.reduce((s, x) => s + x.booking._count.items, 0),
-      firstAt: mySessions[0]?.startedAt.toISOString() ?? null,
+      firstAt: firstActivity?.toISOString() ?? null,
       avgMinutes: avg(
-        myCompleted.map((s) => minutesBetween(s.startedAt, s.completedAt!)),
+        myTimed.map((s) => minutesBetween(s.startedAt, s.completedAt!)),
       ),
     },
   };
@@ -384,8 +406,16 @@ export async function computeJournal(args: {
   const from = addDays(todayStart, -(args.days - 1));
   const weekFrom = addDays(todayStart, -6);
   const monthFrom = addDays(todayStart, -29);
+  // «Мои» — завершённые мной; у старых сессий без completedBy — открытые мной.
   const scopeWhere =
-    args.scope === "me" ? { workerName: args.workerName } : {};
+    args.scope === "me"
+      ? {
+          OR: [
+            { completedBy: args.workerName },
+            { completedBy: null, workerName: args.workerName },
+          ],
+        }
+      : {};
 
   const [sessions, repairs, weekSessions, repairsMonth, problemsMonth, closedMonth] =
     await Promise.all([
@@ -437,7 +467,8 @@ export async function computeJournal(args: {
     id: s.id,
     at: s.startedAt.toISOString(),
     operation: s.operation as "ISSUE" | "RETURN",
-    workerName: s.workerName,
+    // Кто выдал / принял — тот, кто нажал «Готово», а не тот, кто открыл.
+    workerName: s.completedBy ?? s.workerName,
     bookingId: s.booking.id,
     displayNo: displayNo(s.booking.id),
     projectName: s.booking.projectName,

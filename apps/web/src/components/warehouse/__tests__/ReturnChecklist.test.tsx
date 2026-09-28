@@ -34,6 +34,11 @@ const completeSpy = vi.fn();
 vi.mock("../api", () => ({
   scanApi: {
     complete: (...args: unknown[]) => completeSpy(...args),
+    // Пробег машин и черновик: в брони машин нет, ревизии черновика нет
+    // (старый API) — черновик не отправляется.
+    listSessionVehicles: async () => [],
+    saveDraft: vi.fn(async () => ({ revision: 1, savedAt: new Date().toISOString() })),
+    cancel: vi.fn(async () => ({ cancelled: true })),
   },
 }));
 
@@ -760,6 +765,30 @@ describe("ReturnChecklist", () => {
     await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
   });
 
+  it("единица, уже отмеченная на сервере (продолженная сессия), показана принятой и не требует выбора", async () => {
+    const st = state();
+    st.items[0].units = st.items[0].units!.map((u) => ({ ...u, checked: true }));
+    mockState = st;
+    render(<ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />);
+    await screen.findByText("прибор 1 из 3");
+    fireEvent.click(
+      screen.getByRole("button", { name: /Принять все 4 шт «Manfrotto 1004» без замечаний/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Завершить приёмку/ }));
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/Выберите исход/)).not.toBeInTheDocument();
+  });
+
+  it("«Завершить» передаёт отпечаток состава брони (itemsVersion) из /state", async () => {
+    mockState = { ...state(), itemsVersion: "abc123" };
+    render(<ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Принять всё разом/ }));
+    await waitFor(() => expect(checkSpy).toHaveBeenCalledTimes(3));
+    fireEvent.click(screen.getByRole("button", { name: /Завершить приёмку/ }));
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    expect(completeSpy.mock.calls[0][1]).toMatchObject({ itemsVersion: "abc123" });
+  });
+
   it("shows the loading skeleton while state is null and loading", async () => {
     mockState = null;
     mockLoading = true;
@@ -953,6 +982,11 @@ describe("ReturnChecklist", () => {
       expect(screen.getAllByText(/Осталось пометить 1 из 3/).length).toBeGreaterThan(0),
     );
     expect(completeSpy).not.toHaveBeenCalled();
+    // Ошибка строки — один раз (внутри карточки), и строка ссылается на неё.
+    const errs = screen.getAllByText(/Осталось пометить 1 из 3/);
+    expect(errs).toHaveLength(1);
+    const row = errs[0].closest('[aria-invalid="true"]');
+    expect(row?.getAttribute("aria-describedby")).toBe(errs[0].id);
   });
 
   // ── New UnitGridRow integration tests (variant D, per-unit chips) ──────────

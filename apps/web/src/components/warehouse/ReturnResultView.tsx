@@ -28,12 +28,25 @@
  * are the cards/requests the backend actually CREATED
  * (`createdRepairIds` / `createdProblemItemIds`) — distinct from "flagged".
  *
+ * Автор: `result.completedBy` — тот, кто нажал «Завершить приёмку» (он может
+ * отличаться от того, кто открыл сессию: приёмку начали на одном планшете, а
+ * закончили на другом). Старый API поля не присылает — строки тогда нет.
+ *
  * NEVER renders a barcode.
  */
 
 import type { CompleteResult } from "./types";
 import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
 import { pluralize } from "../../lib/format";
+
+/** «Кто оформил: …» под названием брони в шапке итога. */
+function CompletedByLine({ name }: { name: string }) {
+  return (
+    <p className="mt-1 text-[12px] text-ink-3">
+      Кто оформил: <span className="font-medium text-ink-2">{name}</span>
+    </p>
+  );
+}
 
 export function ReturnResultView({
   result,
@@ -80,6 +93,7 @@ export function ReturnResultView({
   const missingCount = missingItems.length;
   const hasMissing = missingCount > 0;
   const needsAttention = hasFailures || hasMissing;
+  const completedBy = result.completedBy?.trim() || null;
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -98,6 +112,7 @@ export function ReturnResultView({
               <p className="mt-1 text-[13px] text-ink-2">
                 {projectName || "Бронь"}
               </p>
+              {completedBy && <CompletedByLine name={completedBy} />}
             </div>
           ) : (
             <div className="rounded-lg border border-emerald-border bg-emerald-soft px-4 py-4 text-center">
@@ -110,6 +125,7 @@ export function ReturnResultView({
               <p className="mt-1 text-[13px] text-ink-2">
                 {projectName || "Бронь"}
               </p>
+              {completedBy && <CompletedByLine name={completedBy} />}
             </div>
           )}
 

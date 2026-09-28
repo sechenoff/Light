@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry, diffFields } from "./audit";
 import { releaseBookingUnits } from "./bookings";
+import { closeActiveScanSessions, invalidBookingStateMessage } from "./scanSessionPolicy";
 
 /**
  * Отмена, архивация, восстановление и окончательное удаление брони — единая
@@ -15,13 +16,31 @@ import { releaseBookingUnits } from "./bookings";
  * копиями).
  */
 
-/** Из каких статусов бронь можно отменить. Зеркалит allowedActionsByStatus. */
+/**
+ * 409 INVALID_BOOKING_STATE для ручной кнопки карточки: текст по паре
+ * «статус × действие» («Бронь уже выдана — обновите страницу», «Выданную бронь
+ * нельзя отменить — сначала примите возврат»…), а не ENUM-строка
+ * «Недопустимый переход: ISSUED -> issue». Когда переход сам по себе допустим,
+ * но бронь поменяли между чтением и записью (гонка двух сотрудников), текст —
+ * «Бронь уже изменили — обновите страницу». В details — status и action, чтобы
+ * интерфейс перечитал бронь.
+ */
+export function invalidTransitionError(status: string, action: string): HttpError {
+  return new HttpError(
+    409,
+    invalidBookingStateMessage(status as Parameters<typeof invalidBookingStateMessage>[0], action),
+    "INVALID_BOOKING_STATE",
+    { status, action },
+  );
+}
+
 async function requireOrdinaryBooking(bookingId: string) {
   if (await prisma.bookingProject.findUnique({ where: { bookingId } })) {
     throw new HttpError(409, "Действие выполняется в карточке длинного проекта", "PROJECT_ACTION_REQUIRED");
   }
 }
 
+/** Из каких статусов бронь можно отменить. Зеркалит allowedActionsByStatus. */
 const CANCELLABLE_STATUSES = ["DRAFT", "PENDING_APPROVAL", "CONFIRMED"] as const;
 
 const bookingInclude = {
@@ -36,14 +55,20 @@ export type CancelBookingPatch = {
 };
 
 /**
- * Отменить бронь: статус → CANCELLED + снятие UNIT-резервов + аудит,
- * всё в одной транзакции. Без освобождения резервов equipmentUnit застревал
- * бы в ISSUED, а BookingItemUnit продолжал занимать оборудование.
+ * Отменить бронь: статус → CANCELLED + снятие UNIT-резервов + закрытие сессий
+ * киоска + аудит, всё в одной транзакции. Без освобождения резервов
+ * equipmentUnit застревал бы в ISSUED, а BookingItemUnit продолжал занимать
+ * оборудование; без закрытия сессий брошенный чек-лист выдачи висел бы
+ * «активным» на отменённой брони.
+ *
+ * Статус перепроверяется условным updateMany внутри транзакции: «Отменить» и
+ * «Выдать» в одну секунду больше не проходят обе (выданная бронь становилась
+ * «Отменена» с записью «Выдано» в журнале).
  *
  * `userId` — автор действия; для каналов без AdminUser (бот-ключ) сюда
  * приходит "system", как и раньше в маршруте.
  */
-export async function cancelBooking(
+export async function cancelBookingWithSessions(
   bookingId: string,
   userId: string,
   patch: CancelBookingPatch = {},
@@ -55,24 +80,24 @@ export async function cancelBooking(
   });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
   if (!CANCELLABLE_STATUSES.includes(booking.status as (typeof CANCELLABLE_STATUSES)[number])) {
-    throw new HttpError(
-      409,
-      `Недопустимый переход: ${booking.status} -> cancel`,
-      "INVALID_BOOKING_STATE",
-    );
+    throw invalidTransitionError(booking.status, "cancel");
   }
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const updated = await tx.booking.update({
-      where: { id: bookingId },
+    const claimed = await tx.booking.updateMany({
+      where: { id: bookingId, status: { in: [...CANCELLABLE_STATUSES] }, deletedAt: null },
       data: {
         status: "CANCELLED",
         expectedPaymentDate: patch.expectedPaymentDate,
         paymentComment: patch.paymentComment,
       },
-      include: bookingInclude,
     });
+    if (claimed.count === 0) {
+      const fresh = await tx.booking.findUnique({ where: { id: bookingId }, select: { status: true } });
+      throw invalidTransitionError(fresh?.status ?? booking.status, "cancel");
+    }
     const released = await releaseBookingUnits(bookingId, tx);
+    const closed = await closeActiveScanSessions(tx, bookingId, { reason: "BOOKING_CANCELLED", actorUserId: userId });
     await writeAuditEntry({
       tx,
       userId,
@@ -85,15 +110,28 @@ export async function cancelBooking(
         via: "status:cancel",
         releasedReservations: released.releasedReservations,
         freedUnitIds: released.freedUnitIds.length,
+        closedScanSessions: closed.length,
       }),
     });
-    return updated;
+    const updated = await tx.booking.findUniqueOrThrow({ where: { id: bookingId }, include: bookingInclude });
+    return { booking: updated, closedScanSessions: closed.length };
   });
+}
+
+/** Отмена без подробностей о сессиях киоска — для bulk и прочих вызовов. */
+export async function cancelBooking(
+  bookingId: string,
+  userId: string,
+  patch: CancelBookingPatch = {},
+) {
+  return (await cancelBookingWithSessions(bookingId, userId, patch)).booking;
 }
 
 export type ArchiveBookingResult = {
   releasedReservations: number;
   freedUnits: number;
+  /** Сколько сессий киоска закрыто (reason BOOKING_ARCHIVED). */
+  closedScanSessions: number;
 };
 
 /**
@@ -126,14 +164,19 @@ export async function archiveBooking(
   }
 
   const released = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    await tx.booking.update({
-      where: { id: bookingId },
+    // Условный updateMany: параллельная архивация между чтением и записью —
+    // штатный 409, а не второй аудит и повторное закрытие.
+    const claimed = await tx.booking.updateMany({
+      where: { id: bookingId, deletedAt: null },
       data: { deletedAt: new Date(), deletedBy: userId },
     });
+    if (claimed.count === 0) throw new HttpError(409, "Бронь уже в архиве", "BOOKING_ALREADY_ARCHIVED");
     const isTerminal = existing.status === "RETURNED" || existing.status === "CANCELLED";
     const rel = isTerminal
       ? { releasedReservations: 0, freedUnitIds: [] as string[] }
       : await releaseBookingUnits(bookingId, tx);
+    // Архивная бронь ни выдаваться, ни приниматься в киоске больше не будет.
+    const closed = await closeActiveScanSessions(tx, bookingId, { reason: "BOOKING_ARCHIVED", actorUserId: userId });
     await writeAuditEntry({
       tx,
       userId,
@@ -146,14 +189,16 @@ export async function archiveBooking(
         deletedBy: userId,
         releasedReservations: rel.releasedReservations,
         freedUnits: rel.freedUnitIds.length,
+        closedScanSessions: closed.length,
       },
     });
-    return rel;
+    return { ...rel, closedScanSessions: closed.length };
   });
 
   return {
     releasedReservations: released.releasedReservations,
     freedUnits: released.freedUnitIds.length,
+    closedScanSessions: released.closedScanSessions,
   };
 }
 

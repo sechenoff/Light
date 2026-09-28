@@ -148,6 +148,18 @@ const FIELD_LABELS: Record<string, string> = {
   mileage: "Показание счётчика",
   message: "Сообщение",
   operation: "Операция",
+  // Киоск склада: кто начал, кто завершил или прервал сессию выдачи / приёмки.
+  workerName: "Кладовщик",
+  startedBy: "Кто начал",
+  startedAt: "Начато",
+  completedBy: "Кто завершил",
+  completedAt: "Завершено",
+  cancelledBy: "Кто прервал",
+  cancelledAt: "Прервано",
+  closedScanSessions: "Закрыто сессий киоска",
+  hasDraft: "Были сохранённые отметки",
+  // Киоск пишет число строк, у которых на выдаче поменяли количество.
+  adjustments: "Строк с изменённым количеством",
   equipmentName: "Оборудование",
   unitName: "Единица оборудования",
   before: "До изменения",
@@ -267,8 +279,24 @@ const STATUS_BY_ENTITY: Record<string, Record<string, string>> = {
   EquipmentUnit: { ISSUED: "В аренде" },
   Unit: { ISSUED: "В аренде" },
 };
+/**
+ * Почему закрыта сессия киоска (ScanSession.cancelReason / after.reason аудита
+ * SCAN_SESSION_CANCELLED). Общий словарь для журнала и карточки брони.
+ */
+export const SCAN_CANCEL_REASON_LABELS: Record<string, string> = {
+  KIOSK_ABORT: "Прервали в киоске",
+  CARD_ABORT: "Прервали на карточке брони",
+  EMPTY_LEAVE: "Закрыли без отметок",
+  BOOKING_ISSUED_MANUALLY: "Бронь выдана кнопкой на карточке",
+  BOOKING_RETURNED_MANUALLY: "Возврат отмечен кнопкой на карточке",
+  BOOKING_CANCELLED: "Бронь отменена",
+  BOOKING_ARCHIVED: "Бронь убрана в архив",
+  STALE: "Устарела — бронь изменили вне киоска",
+};
+// sessionId / scanSessionId — служебные номера сессии киоска: человеку в
+// «Что изменилось» они ничего не говорят.
 const HIDDEN =
-  /^(id|createdAt|updatedAt|revision|version|auditActor|auditSource|via)$|password(?!Changed)|hash|token|secret|api.?key|authorization|cookie/i;
+  /^(id|createdAt|updatedAt|revision|version|auditActor|auditSource|via|sessionId|scanSessionId)$|password(?!Changed)|hash|token|secret|api.?key|authorization|cookie/i;
 
 export function parseAuditSnapshot(
   raw: AuditRecord["before"],
@@ -303,11 +331,23 @@ export function auditActionLabel(action: string): string {
 export function auditEntityLabel(type: string): string {
   return ENTITY_LABELS[type] ?? "Запись";
 }
+/**
+ * Автор записи. Кладовщик, вошедший в киоск по PIN, учётки в CRM не имеет:
+ * запись идёт от системного автора `_system_`, а его имя — в `after.workerName`.
+ * Такую запись подписываем «Склад · имя»; без имени (автозакрытие устаревшей
+ * сессии, фоновые задачи) — «Система».
+ */
 export function auditActorLabel(
-  record: Pick<AuditRecord, "userId" | "user">,
+  record: Pick<AuditRecord, "userId" | "user"> & {
+    after?: AuditRecord["after"];
+  },
 ): string {
-  if (record.userId === "_system_" || record.user?.username === "_system_")
-    return "Система";
+  if (record.userId === "_system_" || record.user?.username === "_system_") {
+    const worker = parseAuditSnapshot(record.after ?? null).workerName;
+    return typeof worker === "string" && worker.trim()
+      ? `Склад · ${worker.trim()}`
+      : "Система";
+  }
   return record.user?.username ?? "Автор не сохранён";
 }
 export function auditValue(
@@ -347,6 +387,10 @@ export function auditValue(
     return auditTimestamp(raw);
   if (key === "status" && STATUS_BY_ENTITY[entityType]?.[raw])
     return STATUS_BY_ENTITY[entityType][raw];
+  // Причина — чаще свободный текст сотрудника; словарь только для кодов
+  // закрытия сессии киоска, остальное выводится как есть.
+  if ((key === "reason" || key === "cancelReason") && SCAN_CANCEL_REASON_LABELS[raw])
+    return SCAN_CANCEL_REASON_LABELS[raw];
   const enumField =
     /status|role|method|paymentForm|direction|category|urgency|kind|source|resolution|operation|action|decision|^from$|^to$/i.test(
       key,

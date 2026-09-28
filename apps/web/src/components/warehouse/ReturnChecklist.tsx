@@ -16,117 +16,100 @@
  *    (`outcomes` map). ACCEPTED also marks the unit returned via the hook's
  *    optimistic `check` (server-authoritative, per-id in-flight guard — we do
  *    NOT bypass it). REPAIR/PROBLEM are sent in the single `/complete` POST.
- *  - COUNT items: server is client-managed (`checkedQty: 0`, no `units[]`);
- *    all-or-nothing accept, tracked locally — mirrors IssueChecklist + the
- *    checklistService COUNT semantics. COUNT lines can only be ACCEPTED.
+ *  - COUNT items: a grid of slots per line (`UnitGridRow`), accept/repair/
+ *    problem per physical piece, sent as COUNT-form entries in `/complete`.
+ *  - Строки ×0 (позицию сняли степпером на выдаче) в приёмке не участвуют:
+ *    их не рисуем и не требуем «Помечьте все 0 шт» — иначе приёмку нельзя
+ *    завершить ничем, кроме кнопки на карточке брони.
  *
- * Panels are CONTROLLED — this component owns the comment / reason / date in
- * the `outcomes` map and feeds them down, so it can validate "comment required
- * per flagged row" BEFORE the POST.
+ * Черновик (P6): исходы, сетки, комментарии и пробег машин уходят на сервер
+ * (`useChecklistDraft`, 800 мс) и восстанавливаются при следующем открытии
+ * (`returnChecklistDraft.ts`) — смена раздела, «←», перезагрузка и второй
+ * планшет работу больше не теряют. Сервер защищает «Завершить» ревизией
+ * черновика и отпечатком состава брони (`draftRevision`, `itemsVersion`):
+ *  - `CHECKLIST_OUTDATED` — состав брони поменялся: перечитываем чек-лист и
+ *    переносим свои отметки на новый состав;
+ *  - `DRAFT_OUTDATED` — другое устройство сохранило позже: показываем его
+ *    версию;
+ *  - `SESSION_*` — приёмку уже завершили, прервали или бронь приняли на
+ *    карточке: `SessionClosedNotice` вместо чек-листа.
  *
- * ⚠ expectedBackDate WIRE-FORMAT TRAP (cross-task, Task 7.1 review Issue #1):
- * ProblemPanel emits a bare `YYYY-MM-DD`. The backend Zod for
- * `problemUnits[].expectedBackDate` is `z.string().datetime()` — it REQUIRES
- * full ISO-8601 and REJECTS a bare date. THIS component owns the conversion:
- * `new Date(`${d}T00:00:00.000Z`).toISOString()`, applied ONLY when
- * `reason === "LEFT_ON_SITE"` and a date is present; the field is omitted
- * otherwise.
- *
- * NOTE: there is NO `invoiceNeedsReissue` in the response (removed in Task
- * 2.2) — we do not reference it.
+ * ⚠ expectedBackDate WIRE-FORMAT TRAP: ProblemPanel emits a bare
+ * `YYYY-MM-DD`; the backend Zod (`z.string().datetime()`) needs ISO-8601.
+ * THIS component owns the conversion (`toIsoDatetime`), only for
+ * `LEFT_ON_SITE` with a date present.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useScanSession } from "./useScanSession";
 import { scanApi } from "./api";
-import { UnitRow } from "./UnitRow";
-import { RepairPanel } from "./RepairPanel";
-import { ProblemPanel } from "./ProblemPanel";
 import { DriverPanel } from "./DriverPanel";
-import { UnitGridRow, type UnitSlot } from "./UnitGridRow";
+import type { UnitSlot } from "./UnitGridRow";
 import { ReturnResultView } from "./ReturnResultView";
 import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
 import { VehicleMileagePanel } from "./VehicleMileagePanel";
-import { isScanApiError } from "./types";
+import { ReturnItemRows, type ReturnRowHandlers } from "./ReturnChecklistRows";
+import { SessionClosedNotice } from "./SessionClosedNotice";
+import { AbortSessionButton } from "./AbortSessionButton";
+import { ResumedSessionBanner } from "./ResumedSessionBanner";
+import { useChecklistDraft } from "./useChecklistDraft";
+import {
+  buildReturnCompletePayload,
+  computeAcceptedCount,
+  computeReturnRowErrors,
+  cycleStatus,
+  returnUnitIds,
+} from "./returnChecklistPayload";
+import {
+  buildReturnDraft,
+  emptySlots,
+  hydrateReturnDraft,
+  mileageEntries,
+  returnableItems,
+  type HydratedReturn,
+  type MileageMap,
+  type OutcomeMap,
+} from "./returnChecklistDraft";
+import {
+  SCAN_ERROR,
+  getScanErrorDetails,
+  isScanApiError,
+  isSessionClosedError,
+  scanErrorCode,
+} from "./types";
 import type {
-  ChecklistState,
-  CompletePayload,
+  ChecklistDraftV1,
+  ChecklistSessionProps,
   CompleteResult,
+  DraftOutdatedDetails,
   ProblemDraft,
-  ProblemUnitInput,
-  RepairUnitInput,
   ReturnOutcome,
+  ScanApiError,
   VehicleMileageEntry,
 } from "./types";
 import { pluralize } from "../../lib/format";
 import { groupByCategory } from "../../lib/groupByCategory";
 
-// ── Local outcome state ──────────────────────────────────────────────────────
-
-interface UnitOutcome {
-  outcome: ReturnOutcome;
-  /** Present (controlled) when outcome === "REPAIR". */
-  repairComment?: string;
-  /** Present (controlled) when outcome === "PROBLEM". */
-  problem?: ProblemDraft;
-}
-
-type OutcomeMap = Record<string, UnitOutcome>;
-
-/** Every UNIT unit id across the checklist (one row each). */
-function allUnitIds(state: ChecklistState): string[] {
-  const ids: string[] = [];
-  for (const item of state.items) {
-    if (item.trackingMode === "UNIT" && item.units) {
-      for (const u of item.units) ids.push(u.unitId);
-    }
-  }
-  return ids;
-}
+// ── Constants ────────────────────────────────────────────────────────────────
 
 /**
- * The TRUE «Принято» count from the frontend outcome truth (this component
- * owns it): UNIT units whose outcome is ACCEPTED + the `accepted` bucket of
- * every COUNT row's split.
- *
- * This is intentionally NOT derived from the backend `scannedCount`: in the
- * RETURN flow only ACCEPTED units are ever check()'d (REPAIR/PROBLEM are sent
- * in the /complete POST, never scanned), so `scannedCount − repair − problem`
- * double-subtracts and under-reports. A COUNT row's `split.accepted` ranges
- * 0..quantity (Task 6 split — accept/repair/problem buckets per line).
+ * Восстановление черновика — до того, как экран станет кликабельным: иначе
+ * отметка, поставленная между отрисовкой и обычным эффектом, затёрлась бы
+ * восстановленным состоянием. На сервере (SSR) layout-эффект не нужен.
  */
-function computeAcceptedCount(
-  state: ChecklistState,
-  outcomes: OutcomeMap,
-  unitGrids: ReadonlyMap<string, UnitSlot[]>,
-): number {
-  let accepted = 0;
-  for (const item of state.items) {
-    if (item.trackingMode === "UNIT" && item.units) {
-      for (const u of item.units) {
-        if (outcomes[u.unitId]?.outcome === "ACCEPTED") accepted += 1;
-      }
-    } else {
-      const slots = unitGrids.get(item.bookingItemId);
-      if (slots) {
-        accepted += slots.filter((s) => s.status === "ACCEPTED").length;
-      }
-    }
-  }
-  return accepted;
-}
+const useHydrationEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
-/**
- * ISO-8601 upgrade for the backend Zod (`z.string().datetime()`).
- * Bare `YYYY-MM-DD` → midnight-UTC ISO. Returns undefined when the date is
- * absent or not a clean calendar date (defensive — never POST a bad value).
- */
-function toIsoDatetime(bareDate: string | null | undefined): string | undefined {
-  if (!bareDate) return undefined;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(bareDate)) return undefined;
-  const d = new Date(`${bareDate}T00:00:00.000Z`);
-  if (Number.isNaN(d.getTime())) return undefined;
-  return d.toISOString();
+const RESET_ROW_NOTICE =
+  "Количество в брони изменилось — отметки по этой строке сброшены, отметьте заново";
+const OTHER_DEVICE_NOTICE =
+  "Чек-лист изменили на другом устройстве — загружена свежая версия";
+const CHECKLIST_OUTDATED_NOTICE =
+  "Состав брони изменился, пока был открыт чек-лист — список обновлён, проверьте строки";
+
+/** Состав брони поменялся — перенести свои отметки на новый состав. */
+interface PendingRebase {
+  draft: ChecklistDraftV1;
+  fromVersion: string | undefined;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -137,7 +120,10 @@ export function ReturnChecklist({
   onBack,
   onDone,
   onCompleted,
-}: {
+  onSessionClosed,
+  leaveRef,
+  resumed,
+}: ChecklistSessionProps & {
   sessionId: string;
   projectName: string;
   onBack: () => void;
@@ -145,163 +131,204 @@ export function ReturnChecklist({
   onDone?: () => void;
   /**
    * Fires the moment a successful /complete response arrives — BEFORE the
-   * operator sees the result screen. The parent uses this to refetch the
-   * booking list slot (desktop left pane) so the just-returned booking drops
-   * off immediately, without waiting for the «Готово» button.
+   * operator sees the result screen (the parent refetches the booking lists).
    */
   onCompleted?: () => void;
 }) {
   const session = useScanSession();
-  const { state, loading, error, openSession, check, uncheck } = session;
+  const { state, loading, error, openSession, check, uncheck, refresh } = session;
 
   // Per-unit outcome map — OWNED here (panels are controlled).
   const [outcomes, setOutcomes] = useState<OutcomeMap>({});
-  // Per-unit state for COUNT-mode rows (variant D, 2026-05-23).
-  // Each COUNT-line owns `totalQty` independent UnitSlots — every slot carries
-  // its own status (PENDING|ACCEPTED|REPAIR|PROBLEM) AND its own repair
-  // comment / problem draft. Payload builder flushes one repair/problem entry
-  // per non-accepted slot (quantity:1, own comment). Empty Map ⇒ no row touched.
-  const [unitGrids, setUnitGrids] = useState<Map<string, UnitSlot[]>>(
-    new Map(),
-  );
+  // COUNT rows: bookingItemId → one slot per physical piece.
+  const [unitGrids, setUnitGrids] = useState<Map<string, UnitSlot[]>>(new Map());
+  // Строки, чьи отметки из черновика сброшены: количество в брони изменилось.
+  const [resetRows, setResetRows] = useState<ReadonlySet<string>>(new Set());
+  const [restoredMileages, setRestoredMileages] = useState<MileageMap | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  // Per-row validation messages (keyed by unit id) + a summary line.
+  // Жёлтое пояснение: чек-лист перечитан или загружен с другого устройства.
+  const [notice, setNotice] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
-  const [validationSummary, setValidationSummary] = useState<string | null>(
+  const [validationSummary, setValidationSummary] = useState<string | null>(null);
+  const [result, setResult] = useState<CompleteResult | null>(null);
+  // Сессия закрыта (SESSION_*): вместо чек-листа — уведомление.
+  const [closedError, setClosedError] = useState<ScanApiError | null>(null);
+  // Что восстановлено при открытии — для плашки продолженной сессии.
+  const [restoreInfo, setRestoreInfo] = useState<{ restored: boolean; partial: boolean } | null>(
     null,
   );
-  // Completion result → switches the whole panel to the RESULT view.
-  const [result, setResult] = useState<CompleteResult | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
-  // Пробег машин: текущие entries (приходят из VehicleMileagePanel via onChange)
-  // и флаг валидности (заполнены все строки + mileage ≥ currentMileage).
-  // attemptedSubmit включает per-row ошибки в панели только после нажатия
-  // «Завершить приёмку» — чтобы пустые поля не выглядели «красными» сразу.
+  // Пробег машин: entries из VehicleMileagePanel + валидность. Пока панель
+  // не загрузила машины (`mileagesReported`), черновик несёт восстановленный
+  // пробег, а не пустоту.
   const [vehicleMileages, setVehicleMileages] = useState<VehicleMileageEntry[]>([]);
+  const [mileagesReported, setMileagesReported] = useState(false);
   const [vehicleMileagesValid, setVehicleMileagesValid] = useState<boolean>(true);
   const [attemptedSubmit, setAttemptedSubmit] = useState<boolean>(false);
 
-  // Per-unit row DOM refs — used to scroll/focus the FIRST errored row into
-  // view on a failed «Завершить приёмку» (kiosk a11y: the operator must not
-  // have to hunt for the offending row off-screen).
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Черновик: для какой сессии уже восстановлен, была ли правка оператора.
+  const hydratedFor = useRef<string | null>(null);
+  const dirtyRef = useRef(false);
+  const pendingRebase = useRef<PendingRebase | null>(null);
 
-  /** Stable id for a row's error <p> so the row can `aria-describedby` it. */
-  function rowErrorId(unitId: string): string {
-    return `return-row-error-${unitId}`;
-  }
+  const items = useMemo(() => (state ? returnableItems(state.items) : []), [state]);
 
-  // Bind the hook to the upstream-opened session; cancellation-safe.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      await openSession(sessionId, "RETURN");
-      if (cancelled) return;
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, openSession]);
-
-  // Группы категорий в порядке первого появления: порядок строк задаёт сервер.
-  const groups = useMemo(
-    () => (state ? groupByCategory(state.items, (item) => item.category) : []),
-    [state],
+  const applyHydration = useCallback(
+    (h: HydratedReturn, opts: { markDirty: boolean }) => {
+      setOutcomes(h.outcomes);
+      setUnitGrids(h.unitGrids);
+      setResetRows(new Set(h.resetRowIds));
+      setRestoredMileages(Object.keys(h.mileages).length > 0 ? { ...h.mileages } : null);
+      setRowErrors({});
+      setValidationSummary(null);
+      dirtyRef.current = opts.markDirty;
+      for (const id of h.toCheck) void check(id).catch(() => undefined);
+      for (const id of h.toUncheck) void uncheck(id).catch(() => undefined);
+    },
+    [check, uncheck],
   );
 
-  const unitIds = useMemo(() => (state ? allUnitIds(state) : []), [state]);
+  // Другое устройство сохранило черновик позже: показываем его версию.
+  const handleDraftOutdated = useCallback(
+    (fresh: DraftOutdatedDetails) => {
+      if (!state) return;
+      applyHydration(hydrateReturnDraft(state.items, fresh.draft), { markDirty: false });
+      setNotice(OTHER_DEVICE_NOTICE);
+    },
+    [state, applyHydration],
+  );
 
-  // unitId → человекочитаемое имя («SkyPanel S60 — прибор 2 из 3») для
-  // экрана результата: failed-массивы бэкенда несут только id единицы,
-  // а показывать оператору сырой id нельзя (правило «без штрихкодов/id в UX»).
+  const draft = useChecklistDraft({
+    sessionId,
+    serverRevision: state?.draftRevision,
+    serverSavedAt: state?.draftSavedAt ?? null,
+    serverSavedBy: state?.draftSavedBy ?? null,
+    serverDraft: state?.draft ?? null,
+    onOutdated: handleDraftOutdated,
+    onSessionClosed: setClosedError,
+    leaveRef,
+  });
+  const { schedule: scheduleDraft, discard: discardDraft } = draft;
+
+  // Bind the hook to the upstream-opened session.
+  useEffect(() => {
+    void openSession(sessionId, "RETURN");
+  }, [sessionId, openSession]);
+
+  // Восстановление: один раз на сессию из `state.draft`; после 409
+  // CHECKLIST_OUTDATED — из своих отметок, перенесённых на новый состав.
+  useHydrationEffect(() => {
+    if (!state) return;
+    const rebase = pendingRebase.current;
+    if (rebase && state.itemsVersion !== rebase.fromVersion) {
+      pendingRebase.current = null;
+      hydratedFor.current = state.sessionId;
+      applyHydration(hydrateReturnDraft(state.items, rebase.draft), { markDirty: true });
+      return;
+    }
+    if (hydratedFor.current === state.sessionId) return;
+    hydratedFor.current = state.sessionId;
+    const h = hydrateReturnDraft(state.items, state.draft ?? null);
+    setRestoreInfo({
+      restored: h.restoredAny,
+      partial: h.resetRowIds.length > 0 || h.unmatchedGrids > 0,
+    });
+    applyHydration(h, { markDirty: false });
+  }, [state, applyHydration]);
+
+  // Сессию закрыли, пока чек-лист открывался (/state → SESSION_*): черновик
+  // досылать некуда.
+  const loadClosed = session.closedError ?? (isSessionClosedError(error) ? error : null);
+  useEffect(() => {
+    if (loadClosed) discardDraft();
+  }, [loadClosed, discardDraft]);
+
+  const draftMileages = useMemo(
+    () => (mileagesReported ? vehicleMileages : mileageEntries(restoredMileages)),
+    [mileagesReported, vehicleMileages, restoredMileages],
+  );
+
+  // Правка оператора → черновик на сервер (хук сам копит 800 мс).
+  useEffect(() => {
+    if (!dirtyRef.current || result || closedError) return;
+    scheduleDraft(buildReturnDraft({ items, outcomes, unitGrids, mileages: draftMileages }));
+  }, [items, outcomes, unitGrids, draftMileages, result, closedError, scheduleDraft]);
+
+  // Пробег — правка, только когда кладовщик сам меняет поле: подстановка из
+  // черновика и загрузка списка машин черновик не переписывают.
+  const handleMileagesChange = useCallback((entries: VehicleMileageEntry[]) => {
+    setVehicleMileages(entries);
+    setMileagesReported(true);
+  }, []);
+  const handleMileageEdit = useCallback(() => {
+    dirtyRef.current = true;
+  }, []);
+
+  // Группы категорий в порядке первого появления: порядок строк задаёт сервер.
+  const groups = useMemo(() => groupByCategory(items, (item) => item.category), [items]);
+
+  const unitIds = useMemo(() => returnUnitIds(items), [items]);
+
+  // unitId → «SkyPanel S60 — прибор 2 из 3» для экрана результата: сырые id
+  // оператору не показываем.
   const unitNameById = useMemo(() => {
     const m = new Map<string, string>();
-    if (!state) return m;
-    for (const item of state.items) {
-      if (item.trackingMode === "UNIT" && item.units) {
-        const total = item.units.length;
-        item.units.forEach((u, idx) => {
-          m.set(
-            u.unitId,
-            total > 1
-              ? `${item.equipmentName} — прибор ${idx + 1} из ${total}`
-              : item.equipmentName,
-          );
-        });
-      }
+    for (const item of state?.items ?? []) {
+      if (item.trackingMode !== "UNIT" || !item.units) continue;
+      const total = item.units.length;
+      item.units.forEach((u, idx) => {
+        m.set(u.unitId, total > 1 ? `${item.equipmentName} — прибор ${idx + 1} из ${total}` : item.equipmentName);
+      });
     }
     return m;
   }, [state]);
 
-  // ── Outcome mutations ──────────────────────────────────────────────────────
+  // ── Outcome mutations (каждая — правка оператора → черновик) ──────────────
 
-  function clearRowError(unitId: string) {
+  function touch(rowId: string) {
+    dirtyRef.current = true;
     setRowErrors((prev) => {
-      if (!(unitId in prev)) return prev;
+      if (!(rowId in prev)) return prev;
       const next = { ...prev };
-      delete next[unitId];
+      delete next[rowId];
       return next;
     });
   }
 
-  /** True when the unit is already marked returned on the server (`checked`). */
   function isUnitCheckedOnServer(unitId: string): boolean {
-    if (!state) return false;
-    for (const item of state.items) {
-      if (item.trackingMode === "UNIT" && item.units) {
-        const u = item.units.find((x) => x.unitId === unitId);
-        if (u) return u.checked;
-      }
+    for (const item of items) {
+      const u = item.units?.find((x) => x.unitId === unitId);
+      if (u) return u.checked;
     }
     return false;
   }
 
   function setUnitOutcome(unitId: string, next: ReturnOutcome) {
-    clearRowError(unitId);
-    const wasAccepted =
-      outcomes[unitId]?.outcome === "ACCEPTED" || isUnitCheckedOnServer(unitId);
+    touch(unitId);
+    const wasAccepted = outcomes[unitId]?.outcome === "ACCEPTED" || isUnitCheckedOnServer(unitId);
     setOutcomes((prev) => {
       const existing = prev[unitId];
       if (next === "REPAIR") {
-        return {
-          ...prev,
-          [unitId]: {
-            outcome: "REPAIR",
-            repairComment: existing?.repairComment ?? "",
-          },
-        };
+        return { ...prev, [unitId]: { outcome: "REPAIR", repairComment: existing?.repairComment ?? "" } };
       }
       if (next === "PROBLEM") {
-        return {
-          ...prev,
-          [unitId]: {
-            outcome: "PROBLEM",
-            problem:
-              existing?.problem ??
-              ({ reason: null, comment: "", expectedBackDate: null } as ProblemDraft),
-          },
-        };
+        const problem: ProblemDraft = existing?.problem ?? { reason: null, comment: "", expectedBackDate: null };
+        return { ...prev, [unitId]: { outcome: "PROBLEM", problem } };
       }
-      // ACCEPTED — drop any repair/problem draft for this unit.
       return { ...prev, [unitId]: { outcome: "ACCEPTED" } };
     });
-
     // ACCEPTED also marks the unit returned through the hook's optimistic
-    // `check` (per-id in-flight guard — we never bypass it).
-    if (next === "ACCEPTED") {
-      void check(unitId).catch(() => undefined);
-    } else if (wasAccepted) {
-      // Оператор передумал: единица уже была отмечена возвращённой на
-      // сервере (check при «Принято»). Снимаем скан — иначе бэкенд видит её
-      // одновременно принятой И ремонтной/проблемной, и сверка искажается.
-      void uncheck(unitId).catch(() => undefined);
-    }
+    // `check`; changing mind after «Принято» removes the server mark.
+    if (next === "ACCEPTED") void check(unitId).catch(() => undefined);
+    else if (wasAccepted) void uncheck(unitId).catch(() => undefined);
   }
 
   function setRepairComment(unitId: string, comment: string) {
-    clearRowError(unitId);
+    touch(unitId);
     setOutcomes((prev) => {
       const ex = prev[unitId];
       if (!ex || ex.outcome !== "REPAIR") return prev;
@@ -310,146 +337,85 @@ export function ReturnChecklist({
   }
 
   function patchProblem(unitId: string, patch: Partial<ProblemDraft>) {
-    clearRowError(unitId);
+    touch(unitId);
     setOutcomes((prev) => {
       const ex = prev[unitId];
       if (!ex || ex.outcome !== "PROBLEM") return prev;
-      const base: ProblemDraft = ex.problem ?? {
-        reason: null,
-        comment: "",
-        expectedBackDate: null,
-      };
-      return {
-        ...prev,
-        [unitId]: { ...ex, problem: { ...base, ...patch } },
-      };
+      const base: ProblemDraft = ex.problem ?? { reason: null, comment: "", expectedBackDate: null };
+      return { ...prev, [unitId]: { ...ex, problem: { ...base, ...patch } } };
     });
   }
 
-  /** Lazily initialise a COUNT row's UnitSlot[] with all-PENDING slots. */
-  function getUnitGrid(bookingItemId: string, totalQty: number): UnitSlot[] {
-    const cached = unitGrids.get(bookingItemId);
-    if (cached) return cached;
-    return Array.from({ length: totalQty }, (_, i) => ({
-      index: i + 1,
-      status: "PENDING",
-      repairComment: "",
-      problem: { reason: null, comment: "", expectedBackDate: null },
-    }));
+  /** Grid of a COUNT row, lazily all-PENDING. */
+  function slotsOf(bookingItemId: string, qty: number): UnitSlot[] {
+    return unitGrids.get(bookingItemId) ?? emptySlots(qty);
   }
 
-  /**
-   * Cycle one slot's status PENDING → ACCEPTED → REPAIR → PROBLEM → PENDING.
-   * Persists repair/problem drafts across cycles so the operator doesn't lose
-   * a comment they typed on a previous status pass.
-   */
-  function cycleUnit(bookingItemId: string, unitIndex: number, totalQty: number) {
-    clearRowError(bookingItemId);
+  function updateGrid(bookingItemId: string, qty: number, map: (slots: UnitSlot[]) => UnitSlot[]) {
+    touch(bookingItemId);
+    setResetRows((prev) => {
+      if (!prev.has(bookingItemId)) return prev;
+      const next = new Set(prev);
+      next.delete(bookingItemId);
+      return next;
+    });
     setUnitGrids((prev) => {
-      const existing = prev.get(bookingItemId) ?? getUnitGrid(bookingItemId, totalQty);
-      const next = existing.map((slot) =>
-        slot.index === unitIndex
-          ? {
-              ...slot,
-              status: cycleStatus(slot.status),
-            }
-          : slot,
-      );
       const updated = new Map(prev);
-      updated.set(bookingItemId, next);
+      updated.set(bookingItemId, map(prev.get(bookingItemId) ?? emptySlots(qty)));
       return updated;
     });
   }
 
-  /** Bulk-accept: every slot of a row goes to ACCEPTED. */
-  function acceptAllOfRow(bookingItemId: string, totalQty: number) {
-    clearRowError(bookingItemId);
-    setUnitGrids((prev) => {
-      const existing = prev.get(bookingItemId) ?? getUnitGrid(bookingItemId, totalQty);
-      const next = existing.map((slot) => ({ ...slot, status: "ACCEPTED" as const }));
-      const updated = new Map(prev);
-      updated.set(bookingItemId, next);
-      return updated;
-    });
-  }
+  const handlers: ReturnRowHandlers = {
+    setUnitOutcome,
+    setRepairComment,
+    patchProblem,
+    cycleSlot: (biId, index, qty) =>
+      updateGrid(biId, qty, (slots) =>
+        slots.map((s) => (s.index === index ? { ...s, status: cycleStatus(s.status) } : s)),
+      ),
+    acceptRow: (biId, qty) =>
+      updateGrid(biId, qty, (slots) => slots.map((s) => ({ ...s, status: "ACCEPTED" as const }))),
+    setSlotRepairComment: (biId, index, comment, qty) =>
+      updateGrid(biId, qty, (slots) =>
+        slots.map((s) => (s.index === index ? { ...s, repairComment: comment } : s)),
+      ),
+    patchSlotProblem: (biId, index, patch, qty) =>
+      updateGrid(biId, qty, (slots) =>
+        slots.map((s) => (s.index === index ? { ...s, problem: { ...s.problem, ...patch } } : s)),
+      ),
+  };
 
-  function setUnitRepairComment(
-    bookingItemId: string,
-    unitIndex: number,
-    comment: string,
-    totalQty: number,
-  ) {
-    clearRowError(bookingItemId);
-    setUnitGrids((prev) => {
-      const existing = prev.get(bookingItemId) ?? getUnitGrid(bookingItemId, totalQty);
-      const next = existing.map((slot) =>
-        slot.index === unitIndex ? { ...slot, repairComment: comment } : slot,
-      );
-      const updated = new Map(prev);
-      updated.set(bookingItemId, next);
-      return updated;
-    });
-  }
-
-  function patchUnitProblem(
-    bookingItemId: string,
-    unitIndex: number,
-    patch: Partial<ProblemDraft>,
-    totalQty: number,
-  ) {
-    clearRowError(bookingItemId);
-    setUnitGrids((prev) => {
-      const existing = prev.get(bookingItemId) ?? getUnitGrid(bookingItemId, totalQty);
-      const next = existing.map((slot) =>
-        slot.index === unitIndex
-          ? { ...slot, problem: { ...slot.problem, ...patch } }
-          : slot,
-      );
-      const updated = new Map(prev);
-      updated.set(bookingItemId, next);
-      return updated;
-    });
-  }
-
-  // «Принять всё разом» — every UNIT unit ACCEPTED (hook guard dedupes) and
-  // every COUNT row's split set to {accepted: quantity, repair: 0, problem: 0}.
-  // Mirrors IssueChecklist.issueAll.
+  // «Принять всё разом»: every UNIT unit ACCEPTED (hook guard dedupes) and
+  // every COUNT slot ACCEPTED. Строки ×0 не трогаем — их в приёмке нет.
   async function acceptAll() {
     if (!state || bulkBusy || submitting) return;
     setBulkBusy(true);
+    dirtyRef.current = true;
     try {
-      setUnitGrids(() => {
-        const next = new Map<string, UnitSlot[]>();
-        for (const item of state.items) {
-          if (item.trackingMode !== "UNIT" || !item.units) {
-            next.set(
-              item.bookingItemId,
-              Array.from({ length: item.quantity }, (_, i) => ({
-                index: i + 1,
-                status: "ACCEPTED",
-                repairComment: "",
-                problem: { reason: null, comment: "", expectedBackDate: null },
-              })),
-            );
-          }
+      const nextGrids = new Map<string, UnitSlot[]>();
+      for (const item of items) {
+        if (item.trackingMode !== "UNIT" || !item.units) {
+          nextGrids.set(
+            item.bookingItemId,
+            emptySlots(item.quantity).map((s) => ({ ...s, status: "ACCEPTED" as const })),
+          );
         }
-        return next;
-      });
+      }
+      setUnitGrids(nextGrids);
+      setResetRows(new Set());
       setOutcomes((prev) => {
         const next: OutcomeMap = { ...prev };
-        for (const id of allUnitIds(state)) next[id] = { outcome: "ACCEPTED" };
+        for (const id of unitIds) next[id] = { outcome: "ACCEPTED" };
         return next;
       });
       setRowErrors({});
       setValidationSummary(null);
 
       const pending: Promise<void>[] = [];
-      for (const item of state.items) {
-        if (item.trackingMode !== "UNIT" || !item.units) continue;
-        for (const u of item.units) {
-          if (!u.checked) {
-            pending.push(check(u.unitId).catch(() => undefined));
-          }
+      for (const item of items) {
+        for (const u of item.units ?? []) {
+          if (!u.checked) pending.push(check(u.unitId).catch(() => undefined));
         }
       }
       await Promise.all(pending);
@@ -458,96 +424,11 @@ export function ReturnChecklist({
     }
   }
 
-  // ── UnitSlot status cycle (PENDING → ACCEPTED → REPAIR → PROBLEM → PENDING)
-  // Used by cycleUnit; defined locally for typing convenience.
-  function cycleStatus(s: UnitSlot["status"]): UnitSlot["status"] {
-    if (s === "PENDING") return "ACCEPTED";
-    if (s === "ACCEPTED") return "REPAIR";
-    if (s === "REPAIR") return "PROBLEM";
-    return "PENDING";
-  }
-
   // ── Validation + completion ────────────────────────────────────────────────
 
-  /**
-   * Pure: per-row-id validation errors (no state writes). Keyed by unitId for
-   * UNIT rows, bookingItemId for COUNT rows (mutually disjoint id spaces, both
-   * passed to `setRowErrors` / `rowErrorId`).
-   *
-   * COUNT-row rules (Task 6):
-   *  - `pending = qty − accepted − repair − problem` must be 0;
-   *  - if `repair > 0`, repair comment must be non-empty;
-   *  - if `problem > 0`, problem reason + comment must be set.
-   */
-  function computeRowErrors(): Record<string, string> {
-    const errs: Record<string, string> = {};
-    if (!state) return errs;
-
-    for (const id of unitIds) {
-      const o = outcomes[id];
-      if (!o) {
-        errs[id] = "Выберите исход: принято, ремонт или проблема";
-        continue;
-      }
-      if (o.outcome === "REPAIR") {
-        if (!o.repairComment || o.repairComment.trim() === "") {
-          errs[id] = "Опишите, что сломалось";
-        }
-      } else if (o.outcome === "PROBLEM") {
-        const p = o.problem;
-        if (!p || !p.reason) {
-          errs[id] = "Выберите причину проблемы";
-        } else if (!p.comment || p.comment.trim() === "") {
-          errs[id] = "Добавьте комментарий к проблеме";
-        }
-      }
-    }
-
-    for (const item of state.items) {
-      if (item.trackingMode === "UNIT") continue;
-      const biId = item.bookingItemId;
-      const slots = unitGrids.get(biId);
-      // Untouched row → ALL units still pending
-      if (!slots || slots.every((s) => s.status === "PENDING")) {
-        errs[biId] = `Помечьте все ${item.quantity} шт`;
-        continue;
-      }
-      const pending = slots.filter((s) => s.status === "PENDING").length;
-      if (pending > 0) {
-        errs[biId] = `Осталось пометить ${pending} из ${item.quantity}`;
-        continue;
-      }
-      // Per-slot validation — first error wins, message names the unit.
-      for (const slot of slots) {
-        if (slot.status === "REPAIR" && !slot.repairComment.trim()) {
-          errs[biId] = `Юнит #${slot.index}: введите комментарий ремонта`;
-          break;
-        }
-        if (slot.status === "PROBLEM") {
-          if (!slot.problem.reason) {
-            errs[biId] = `Юнит #${slot.index}: выберите причину проблемы`;
-            break;
-          }
-          if (!slot.problem.comment.trim()) {
-            errs[biId] = `Юнит #${slot.index}: добавьте комментарий проблемы`;
-            break;
-          }
-        }
-      }
-    }
-    return errs;
-  }
-
-  /**
-   * Run validation, commit row + summary error state. Returns the computed
-   * errors map (empty ⇒ valid) so the caller can also focus the first row.
-   *
-   * Помимо per-row outcomes валидирует блок «Пробег машин»: если есть
-   * BookingVehicle и хотя бы один пробег пустой/некорректный — validity
-   * приходит false из VehicleMileagePanel, и мы добавляем строку в summary.
-   */
+  /** Commit row + summary errors; returns them (empty ⇒ valid). */
   function validate(): Record<string, string> {
-    const errs = computeRowErrors();
+    const errs = computeReturnRowErrors(items, outcomes, unitGrids);
     setRowErrors(errs);
     const count = Object.keys(errs).length;
     const messages: string[] = [];
@@ -556,119 +437,26 @@ export function ReturnChecklist({
         `Не заполнено ${count} ${pluralize(count, "позиция", "позиции", "позиций")} — проверьте отмеченные строки`,
       );
     }
-    if (!vehicleMileagesValid) {
-      messages.push("Введите пробег для каждой машины брони");
-    }
+    if (!vehicleMileagesValid) messages.push("Введите пробег для каждой машины брони");
     setValidationSummary(messages.length > 0 ? messages.join(". ") : null);
     return errs;
   }
 
-  function buildPayload(): CompletePayload {
-    const repairUnits: RepairUnitInput[] = [];
-    const problemUnits: ProblemUnitInput[] = [];
-
-    for (const id of unitIds) {
-      const o = outcomes[id];
-      if (!o) continue;
-      if (o.outcome === "REPAIR") {
-        // urgency intentionally omitted — backend defaults NORMAL.
-        repairUnits.push({
-          equipmentUnitId: id,
-          comment: (o.repairComment ?? "").trim(),
-        });
-      } else if (o.outcome === "PROBLEM" && o.problem && o.problem.reason) {
-        const entry: ProblemUnitInput = {
-          equipmentUnitId: id,
-          reason: o.problem.reason,
-          comment: o.problem.comment.trim(),
-        };
-        // ISO conversion ONLY for LEFT_ON_SITE with a date present; the
-        // backend Zod rejects a bare YYYY-MM-DD (z.string().datetime()).
-        if (o.problem.reason === "LEFT_ON_SITE") {
-          const iso = toIsoDatetime(o.problem.expectedBackDate);
-          if (iso) entry.expectedBackDate = iso;
-        }
-        problemUnits.push(entry);
-      }
-      // ACCEPTED units are already reflected by the hook's check() calls —
-      // they are NOT sent in repair/problem arrays.
-    }
-
-    // Per-unit COUNT-mode repair/problem (variant D) — emit ONE entry per
-    // non-accepted unit with its own comment. Backend `repairUnitSchema` /
-    // `problemUnitSchema` accept `{bookingItemId, quantity, …}` as the
-    // discriminated COUNT-form (apps/api warehouse.ts). `INVALID_SPLIT`
-    // validation groups by bookingItemId and sums quantities, so N entries
-    // with quantity:1 are equivalent to one entry with quantity:N from the
-    // backend's perspective — we just get separate audit rows per unit.
-    if (state) {
-      for (const item of state.items) {
-        if (item.trackingMode === "UNIT") continue;
-        const biId = item.bookingItemId;
-        const slots = unitGrids.get(biId);
-        if (!slots) continue;
-        for (const slot of slots) {
-          if (slot.status === "REPAIR") {
-            repairUnits.push({
-              bookingItemId: biId,
-              quantity: 1,
-              comment: slot.repairComment.trim(),
-            });
-          } else if (slot.status === "PROBLEM" && slot.problem.reason) {
-            const entry: ProblemUnitInput = {
-              bookingItemId: biId,
-              quantity: 1,
-              reason: slot.problem.reason,
-              comment: slot.problem.comment.trim(),
-            };
-            if (slot.problem.reason === "LEFT_ON_SITE") {
-              const iso = toIsoDatetime(slot.problem.expectedBackDate);
-              if (iso) entry.expectedBackDate = iso;
-            }
-            problemUnits.push(entry);
-          }
-        }
-      }
-    }
-
-    const payload: CompletePayload = {};
-    if (repairUnits.length > 0) payload.repairUnits = repairUnits;
-    if (problemUnits.length > 0) payload.problemUnits = problemUnits;
-    if (vehicleMileages.length > 0) payload.vehicleMileages = vehicleMileages;
-    return payload;
-  }
-
-  /**
-   * Scroll + focus the FIRST errored row into view (kiosk a11y). Iterates
-   * rows in render order — UNIT unit-rows (per `unitIds`) and COUNT rows (per
-   * bookingItemId) both register their refs against the same `rowRefs` map.
-   * Deferred to the next frame so the just-set row error / `aria-invalid`
-   * have rendered before focus moves.
-   */
+  /** Scroll + focus the FIRST errored row (render order) into view. */
   function focusFirstError(errs: Record<string, string>) {
-    if (!state) return;
-    // Build the ordered id list as rendered: for each item, either every unit
-    // (UNIT) or the row's bookingItemId (COUNT).
     let firstId: string | undefined;
-    outer: for (const item of state.items) {
-      if (item.trackingMode === "UNIT" && item.units) {
-        for (const u of item.units) {
-          if (u.unitId in errs) {
-            firstId = u.unitId;
-            break outer;
-          }
-        }
-      } else if (item.bookingItemId in errs) {
-        firstId = item.bookingItemId;
-        break;
-      }
+    for (const item of items) {
+      const ids = item.trackingMode === "UNIT" && item.units
+        ? item.units.map((u) => u.unitId)
+        : [item.bookingItemId];
+      firstId = ids.find((id) => id in errs);
+      if (firstId) break;
     }
     if (!firstId) return;
+    const target = firstId;
     requestAnimationFrame(() => {
-      const node = rowRefs.current.get(firstId!);
+      const node = rowRefs.current.get(target);
       if (!node) return;
-      // scrollIntoView is absent in some non-browser/test environments —
-      // focus alone still satisfies the a11y contract there.
       if (typeof node.scrollIntoView === "function") {
         node.scrollIntoView({ behavior: "smooth", block: "center" });
       }
@@ -676,61 +464,117 @@ export function ReturnChecklist({
     });
   }
 
+  function registerRow(rowId: string, node: HTMLDivElement | null) {
+    if (node) rowRefs.current.set(rowId, node);
+    else rowRefs.current.delete(rowId);
+  }
+
+  /** Ответ «Завершить» с кодом: разобрать по таблице кодов киоска. */
+  async function handleCompleteError(err: unknown): Promise<void> {
+    if (isSessionClosedError(err)) {
+      draft.discard();
+      setClosedError(err);
+      return;
+    }
+    const code = scanErrorCode(err);
+    if (code === SCAN_ERROR.CHECKLIST_OUTDATED && state) {
+      // Состав брони поменялся: перечитываем чек-лист и переносим свои
+      // отметки на новый состав, как только придёт новый отпечаток состава.
+      const rebase: PendingRebase = {
+        draft: buildReturnDraft({ items, outcomes, unitGrids, mileages: draftMileages }),
+        fromVersion: state.itemsVersion,
+      };
+      pendingRebase.current = rebase;
+      setNotice(isScanApiError(err) ? err.message : CHECKLIST_OUTDATED_NOTICE);
+      const fresh = await refresh();
+      // Состав на сервере тот же — переносить нечего, отметки остаются как есть.
+      if (fresh && fresh.itemsVersion === rebase.fromVersion && pendingRebase.current === rebase) {
+        pendingRebase.current = null;
+      }
+      return;
+    }
+    if (code === SCAN_ERROR.DRAFT_OUTDATED && state) {
+      // Другое устройство сохранило позже: берём его версию (и ревизию) как
+      // исходную точку — следующее «Завершить» уйдёт уже от неё.
+      const fresh = getScanErrorDetails(err, SCAN_ERROR.DRAFT_OUTDATED);
+      if (fresh && typeof fresh.revision === "number") {
+        draft.adoptOutdated(fresh);
+        applyHydration(hydrateReturnDraft(state.items, fresh.draft), { markDirty: false });
+      }
+      setNotice(isScanApiError(err) ? err.message : OTHER_DEVICE_NOTICE);
+      return;
+    }
+    setSubmitError(
+      isScanApiError(err) ? err.message : "Не удалось завершить приёмку — попробуйте ещё раз",
+    );
+  }
+
   async function handleComplete() {
     if (submitting || bulkBusy) return;
     setSubmitError(null);
+    setNotice(null);
     setAttemptedSubmit(true);
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       focusFirstError(errs);
       return;
     }
-    if (!vehicleMileagesValid) {
-      // Per-row подсветка панели уже включится через attemptedSubmit=true.
-      // Summary показывает validate(). Дополнительная навигация к панели не
-      // нужна — она над футером и видна.
-      return;
-    }
+    // Пробег: per-row подсветка панели включится через attemptedSubmit.
+    if (!vehicleMileagesValid) return;
     setSubmitting(true);
     try {
-      const payload = buildPayload();
+      // Сначала дослать свой черновик: «Завершить» сверяет его ревизию.
+      const pre = await draft.flushBeforeSubmit();
+      if (!pre) return;
+      const payload = buildReturnCompletePayload({
+        items,
+        outcomes,
+        unitGrids,
+        mileages: vehicleMileages,
+      });
+      if (state?.itemsVersion) payload.itemsVersion = state.itemsVersion;
+      if (pre.draftRevision !== undefined) payload.draftRevision = pre.draftRevision;
       const res = await scanApi.complete(sessionId, payload);
+      draft.discard();
       setResult(res);
-      // Fire-and-forget: parent refetches booking lists (desktop left pane)
-      // so the just-handled booking drops off immediately, before the operator
-      // even clicks «Готово». Don't throw out of here.
-      try { onCompleted?.(); } catch { /* swallow — UX side-effect only */ }
+      // Parent refetches booking lists so the returned booking drops off now.
+      try {
+        onCompleted?.();
+      } catch {
+        /* UX side-effect only */
+      }
     } catch (err: unknown) {
-      setSubmitError(
-        isScanApiError(err)
-          ? err.message
-          : "Не удалось завершить приёмку — попробуйте ещё раз",
-      );
+      await handleCompleteError(err);
     } finally {
       setSubmitting(false);
     }
   }
 
+  const closeAfterSessionEnd = () => (onSessionClosed ?? onDone ?? onBack)();
+
   // ── RESULT view ────────────────────────────────────────────────────────────
-  // Delegated to ReturnResultView (pure presentational; owns the correct
-  // failedBrokenUnits / failedProblemUnits shapes + partial-failure header).
 
   if (result) {
-    // «Принято» = the frontend outcome truth (ACCEPTED units + accepted COUNT
-    // lines), NOT scannedCount − repair − problem (which double-subtracts —
-    // see computeAcceptedCount / ReturnResultView docblock). `state` is
-    // guaranteed present here (the operator interacted to submit); fall back
-    // to 0 defensively if the hook somehow cleared it.
-    const acceptedCount = state
-      ? computeAcceptedCount(state, outcomes, unitGrids)
-      : 0;
     return (
       <ReturnResultView
         result={result}
         projectName={projectName}
-        acceptedCount={acceptedCount}
+        acceptedCount={computeAcceptedCount(items, outcomes, unitGrids)}
         unitNames={unitNameById}
         onDone={() => (onDone ? onDone() : onBack())}
+      />
+    );
+  }
+
+  // ── Сессия закрыта (оформлена, прервана, устарела) ────────────────────────
+
+  const sessionClosed: ScanApiError | null = closedError ?? loadClosed;
+  if (sessionClosed) {
+    return (
+      <SessionClosedNotice
+        error={sessionClosed}
+        operation="RETURN"
+        onBack={closeAfterSessionEnd}
       />
     );
   }
@@ -742,10 +586,7 @@ export function ReturnChecklist({
       <div className="space-y-2 px-3 py-3">
         <div className="h-[46px] animate-pulse rounded-lg bg-surface-subtle" />
         {[1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className="h-[52px] animate-pulse rounded-lg border border-border bg-surface"
-          />
+          <div key={i} className="h-[52px] animate-pulse rounded-lg border border-border bg-surface" />
         ))}
       </div>
     );
@@ -757,30 +598,21 @@ export function ReturnChecklist({
         <div className="w-full max-w-[420px] rounded-lg border border-rose-border bg-rose-soft px-4 py-3 text-center text-sm text-rose">
           {error.message || "Не удалось загрузить чек-лист приёмки"}
         </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="mt-4 rounded border border-border bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
-        >
-          ← К списку броней
-        </button>
+        <BackToListButton onClick={onBack} />
       </div>
     );
   }
 
-  if (state && state.items.length === 0) {
+  if (state && items.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-16 text-center">
-        <p className="text-sm text-ink-3">
-          В этой брони нет позиций для приёмки
+        <p className="text-sm text-ink-3">В этой брони нет позиций для приёмки</p>
+        {/* Все строки сняли на выдаче (×0): принимать в киоске нечего, а
+            бронь всё ещё «Выдана» — закрыть её можно только на карточке. */}
+        <p className="mt-1 max-w-[360px] text-[12px] text-ink-3">
+          Если бронь нужно закрыть, отметьте возврат кнопкой «Вернуть» на карточке брони.
         </p>
-        <button
-          type="button"
-          onClick={onBack}
-          className="mt-4 rounded border border-border bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
-        >
-          ← К списку броней
-        </button>
+        <BackToListButton onClick={onBack} />
       </div>
     );
   }
@@ -788,20 +620,52 @@ export function ReturnChecklist({
   if (!state) return null;
 
   const interactionsDisabled = bulkBusy || submitting;
+  const draftOffline = draft.status === "offline" || draft.status === "failed";
+  // Плашка «Продолжена приёмка»: страница передаёт ответ createSession только
+  // для продолженной сессии; честно пишем, восстановлено ли что-то.
+  const showResumed =
+    !bannerDismissed && restoreInfo !== null && resumed != null && resumed.resumed !== false;
 
   // ── Main checklist ─────────────────────────────────────────────────────────
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
+      {showResumed && (
+        <ResumedSessionBanner
+          operation="RETURN"
+          startedAt={resumed?.startedAt ?? state.session?.startedAt ?? null}
+          startedBy={resumed?.workerName ?? state.session?.workerName ?? null}
+          restored={restoreInfo.restored}
+          partial={restoreInfo.partial}
+          draftSavedAt={state.draftSavedAt ?? null}
+          draftSavedBy={state.draftSavedBy ?? null}
+          onDismiss={() => setBannerDismissed(true)}
+        />
+      )}
       <div className="flex-1 px-3 pb-4 pt-3 lg:px-4">
         {/* Водители — при разгрузке пишем, кто привёз. */}
         <DriverPanel sessionId={sessionId} operation="RETURN" />
 
-        {/* Desktop heading (analog of mockup block 4 right pane). */}
-        <div className="mb-2 hidden items-center gap-3 px-1 lg:flex">
-          <h2 className="text-[15px] font-semibold text-ink">
-            Чек-лист приёмки
-          </h2>
+        {/* Шапка чек-листа: заголовок (десктоп), сохранение черновика, «Прервать». */}
+        <div className="mb-2 flex min-h-[40px] items-center gap-3 px-1">
+          <h2 className="hidden text-[15px] font-semibold text-ink lg:block">Чек-лист приёмки</h2>
+          {draft.statusLabel && (
+            <p
+              role="status"
+              className={`text-[11px] ${draftOffline ? "font-medium text-rose" : "text-ink-3"}`}
+            >
+              {draft.statusLabel}
+            </p>
+          )}
+          <div className="ml-auto">
+            <AbortSessionButton
+              sessionId={sessionId}
+              operation="RETURN"
+              disabled={interactionsDisabled}
+              onAborted={closeAfterSessionEnd}
+              onSessionClosed={setClosedError}
+            />
+          </div>
         </div>
 
         {/* «Принять всё разом» — primary bar (mockup .ph-acceptall). */}
@@ -819,173 +683,54 @@ export function ReturnChecklist({
           <section key={group.category} className="mb-1">
             <p className="eyebrow px-1.5 pb-1 pt-2">{group.category}</p>
             <div className="space-y-1.5">
-              {group.items.map((item) => {
-                if (item.trackingMode === "UNIT" && item.units) {
-                  const total = item.units.length;
-                  return item.units.map((u, idx) => {
-                    const o = outcomes[u.unitId];
-                    const rowError = rowErrors[u.unitId];
-                    const errId = rowErrorId(u.unitId);
-                    return (
-                      <div
-                        key={u.unitId}
-                        ref={(node) => {
-                          if (node) rowRefs.current.set(u.unitId, node);
-                          else rowRefs.current.delete(u.unitId);
-                        }}
-                        tabIndex={-1}
-                        aria-invalid={rowError ? true : undefined}
-                        aria-describedby={rowError ? errId : undefined}
-                        className="space-y-1.5 outline-none"
-                      >
-                        <UnitRow
-                          name={item.equipmentName}
-                          ordinalLabel={`прибор ${idx + 1} из ${total}`}
-                          mode="RETURN"
-                          value={o?.outcome ?? null}
-                          onChange={(next) =>
-                            setUnitOutcome(u.unitId, next)
-                          }
-                          disabled={interactionsDisabled}
-                        />
-
-                        {o?.outcome === "REPAIR" && (
-                          <RepairPanel
-                            sessionId={sessionId}
-                            unitId={u.unitId}
-                            comment={o.repairComment ?? ""}
-                            onCommentChange={(s) =>
-                              setRepairComment(u.unitId, s)
-                            }
-                            disabled={interactionsDisabled}
-                          />
-                        )}
-
-                        {o?.outcome === "PROBLEM" && (
-                          <ProblemPanel
-                            reason={o.problem?.reason ?? null}
-                            onReasonChange={(r) =>
-                              patchProblem(u.unitId, { reason: r })
-                            }
-                            comment={o.problem?.comment ?? ""}
-                            onCommentChange={(s) =>
-                              patchProblem(u.unitId, { comment: s })
-                            }
-                            expectedBackDate={
-                              o.problem?.expectedBackDate ?? null
-                            }
-                            onExpectedBackDateChange={(d) =>
-                              patchProblem(u.unitId, { expectedBackDate: d })
-                            }
-                            disabled={interactionsDisabled}
-                            fieldIdPrefix={`problem-${u.unitId}`}
-                          />
-                        )}
-
-                        {rowError && (
-                          <p
-                            id={errId}
-                            role="alert"
-                            className="rounded-md border border-rose-border bg-rose-soft px-2.5 py-1.5 text-[12px] text-rose"
-                          >
-                            {rowError}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  });
-                }
-                // COUNT line — split between accept/repair/problem (Task 6).
-                const biId = item.bookingItemId;
-                const rowError = rowErrors[biId];
-                const errId = rowErrorId(biId);
-                return (
-                  <div
-                    key={biId}
-                    ref={(node) => {
-                      if (node) rowRefs.current.set(biId, node);
-                      else rowRefs.current.delete(biId);
-                    }}
-                    tabIndex={-1}
-                    aria-invalid={rowError ? true : undefined}
-                    aria-describedby={rowError ? errId : undefined}
-                    className="space-y-1.5 outline-none"
-                  >
-                    <UnitGridRow
-                      name={item.equipmentName}
-                      totalQty={item.quantity}
-                      units={getUnitGrid(biId, item.quantity)}
-                      disabled={interactionsDisabled}
-                      onCycle={(unitIndex) =>
-                        cycleUnit(biId, unitIndex, item.quantity)
-                      }
-                      onAcceptAll={() =>
-                        acceptAllOfRow(biId, item.quantity)
-                      }
-                      onRepairCommentChange={(unitIndex, comment) =>
-                        setUnitRepairComment(
-                          biId,
-                          unitIndex,
-                          comment,
-                          item.quantity,
-                        )
-                      }
-                      onProblemPatch={(unitIndex, patch) =>
-                        patchUnitProblem(
-                          biId,
-                          unitIndex,
-                          patch,
-                          item.quantity,
-                        )
-                      }
-                      rowError={rowError ?? null}
-                    />
-                    {rowError && (
-                      <p
-                        id={errId}
-                        role="alert"
-                        className="rounded-md border border-rose-border bg-rose-soft px-2.5 py-1.5 text-[12px] text-rose"
-                      >
-                        {rowError}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
+              {group.items.map((item) => (
+                <ReturnItemRows
+                  key={item.bookingItemId}
+                  item={item}
+                  sessionId={sessionId}
+                  outcomes={outcomes}
+                  slots={slotsOf(item.bookingItemId, item.quantity)}
+                  rowErrors={rowErrors}
+                  resetNotice={resetRows.has(item.bookingItemId) ? RESET_ROW_NOTICE : null}
+                  disabled={interactionsDisabled}
+                  handlers={handlers}
+                  registerRow={registerRow}
+                />
+              ))}
             </div>
           </section>
         ))}
       </div>
 
-      {/*
-        Блок «Пробег машин». Рендерится ВНЕ sticky-футера, чтобы можно было
-        прокрутить к ошибкам и видеть всю панель одновременно с действиями.
-        Сама панель пропадает, если в брони нет BookingVehicle.
-      */}
+      {/* Блок «Пробег машин» — вне липкого футера; без машин не рендерится. */}
       <div className="px-3 lg:px-4">
         <VehicleMileagePanel
           sessionId={sessionId}
           attemptedSubmit={attemptedSubmit}
-          onChange={setVehicleMileages}
+          onChange={handleMileagesChange}
           onValidityChange={setVehicleMileagesValid}
+          initialMileages={restoredMileages}
+          onEdit={handleMileageEdit}
         />
       </div>
 
       {/* Sticky «Завершить приёмку →» footer (mockup .ph-bottom). */}
       <div className={`${STICKY_ABOVE_TAB_BAR} border-t border-border bg-surface px-3 py-3 lg:px-4`}>
-        {validationSummary && (
+        {notice && (
           <p
-            role="alert"
-            className="mb-2 rounded-md border border-rose-border bg-rose-soft px-3 py-2 text-[12px] text-rose"
+            role="status"
+            className="mb-2 rounded-md border border-amber-border bg-amber-soft px-3 py-2 text-[12px] text-amber"
           >
+            {notice}
+          </p>
+        )}
+        {validationSummary && (
+          <p role="alert" className="mb-2 rounded-md border border-rose-border bg-rose-soft px-3 py-2 text-[12px] text-rose">
             {validationSummary}
           </p>
         )}
         {submitError && (
-          <p
-            role="alert"
-            className="mb-2 rounded-md border border-rose-border bg-rose-soft px-3 py-2 text-[12px] text-rose"
-          >
+          <p role="alert" className="mb-2 rounded-md border border-rose-border bg-rose-soft px-3 py-2 text-[12px] text-rose">
             {submitError}
           </p>
         )}
@@ -1000,5 +745,17 @@ export function ReturnChecklist({
         </button>
       </div>
     </div>
+  );
+}
+
+function BackToListButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-4 rounded border border-border bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-muted"
+    >
+      ← К списку броней
+    </button>
   );
 }

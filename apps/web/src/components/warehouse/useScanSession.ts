@@ -10,12 +10,22 @@
  *   → rollback on failure, with a per-unit-id in-flight `useRef<Set<string>>`
  *   guard so a concurrent refresh cannot clobber an in-flight mutation.
  *
+ * Черновик чек-листа (P6): перед чтением `/state` хук ждёт, пока уляжется
+ * досылка черновика этой сессии (`awaitDraftSettled`), — чек-лист,
+ * вернувшийся после смены раздела, иначе прочитал бы черновик раньше, чем
+ * дойдёт последняя правка. Если правка не ушла (нет связи) и сервер с тех пор
+ * ничего нового не получил, в `state.draft` подкладывается она.
+ *
+ * Закрытая сессия (`SESSION_*` из любого вызова) попадает в `closedError` —
+ * чек-лист показывает `SessionClosedNotice` вместо устаревшего экрана.
+ *
  * UI is intentionally NOT implemented here.
  */
 
 import { useCallback, useRef, useState } from "react";
 import { scanApi } from "./api";
-import { isScanApiError } from "./types";
+import { awaitDraftSettled, peekUnsavedDraft } from "./useChecklistDraft";
+import { isScanApiError, isSessionClosedError } from "./types";
 import type {
   ChecklistItem,
   ChecklistState,
@@ -60,6 +70,17 @@ export function applyUnitChecked(
   return { ...state, items };
 }
 
+/**
+ * Подложить несохранённый черновик (связи не было) вместо серверного, если
+ * сервер с тех пор не получил новой ревизии. Иначе — ответ сервера как есть.
+ */
+export function withUnsavedDraft(state: ChecklistState): ChecklistState {
+  const local = peekUnsavedDraft(state.sessionId);
+  if (!local) return state;
+  if (local.baseRevision !== (state.draftRevision ?? 0)) return state;
+  return { ...state, draft: local.draft };
+}
+
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export interface UseScanSessionResult {
@@ -69,6 +90,12 @@ export interface UseScanSessionResult {
   state: ChecklistState | null;
   loading: boolean;
   error: ScanApiError | null;
+  /**
+   * Сессию закрыли (`SESSION_ALREADY_COMPLETED` / `SESSION_CANCELLED` /
+   * `SESSION_STALE` / `SESSION_NOT_FOUND`) — работать с ней дальше нельзя.
+   * Чек-лист показывает `SessionClosedNotice`. Сбрасывается при `openSession`.
+   */
+  closedError: ScanApiError | null;
 
   goStep: (step: ScanStep) => void;
   setOperation: (operation: ScanOperation) => void;
@@ -80,8 +107,14 @@ export interface UseScanSessionResult {
     sessionId: string | null,
     operation?: ScanOperation,
   ) => Promise<void>;
-  /** Re-fetch checklist state (skipped while a mutation is in flight). */
-  refresh: () => Promise<void>;
+  /**
+   * Перечитать чек-лист. Возвращает свежий `ChecklistState` — по нему экран
+   * заново применяет черновик (например, после 409 `CHECKLIST_OUTDATED`).
+   * `null` — не прочитали: идёт отметка единицы, сессия другая или ошибка
+   * (она в `error` / `closedError`). `void` в типе — только для совместимости
+   * со старыми моками в тестах.
+   */
+  refresh: () => Promise<ChecklistState | null | void>;
 
   check: (unitId: string) => Promise<void>;
   uncheck: (unitId: string) => Promise<void>;
@@ -99,6 +132,7 @@ export function useScanSession(
   const [state, setState] = useState<ChecklistState | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ScanApiError | null>(null);
+  const [closedError, setClosedError] = useState<ScanApiError | null>(null);
 
   // Per-unit-id in-flight guard — useRef avoids re-render churn / stale closures.
   const inFlight = useRef<Set<string>>(new Set());
@@ -118,20 +152,25 @@ export function useScanSession(
     setOperationState(next);
   }, []);
 
-  const loadState = useCallback(async (id: string): Promise<void> => {
+  const loadState = useCallback(async (id: string): Promise<ChecklistState | null> => {
     setLoading(true);
     setError(null);
     try {
-      const next = await scanApi.getState(id);
-      if (sessionRef.current !== id) return;
+      await awaitDraftSettled(id);
+      if (sessionRef.current !== id) return null;
+      const next = withUnsavedDraft(await scanApi.getState(id));
+      if (sessionRef.current !== id) return null;
       setState(next);
       setOperationState(next.operation);
+      return next;
     } catch (err: unknown) {
-      if (sessionRef.current !== id) return;
+      if (sessionRef.current !== id) return null;
       const e: ScanApiError = isScanApiError(err)
         ? err
         : { status: 0, code: null, message: errorMessage(err, "Ошибка загрузки"), details: null };
       setError(e);
+      if (isSessionClosedError(e)) setClosedError(e);
+      return null;
     } finally {
       if (sessionRef.current === id) setLoading(false);
     }
@@ -141,6 +180,7 @@ export function useScanSession(
     async (id: string | null, op?: ScanOperation): Promise<void> => {
       sessionRef.current = id;
       setSessionId(id);
+      setClosedError(null);
       if (op) setOperationState(op);
       if (!id) {
         setState(null);
@@ -153,11 +193,11 @@ export function useScanSession(
     [loadState],
   );
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (): Promise<ChecklistState | null> => {
     const id = sessionRef.current;
-    if (!id) return;
-    if (refreshBlocked.current) return;
-    await loadState(id);
+    if (!id) return null;
+    if (refreshBlocked.current) return null;
+    return loadState(id);
   }, [loadState]);
 
   // ── Optimistic check / uncheck ─────────────────────────────────────────────
@@ -189,7 +229,7 @@ export function useScanSession(
         }
         // Reconcile from the server (authoritative on tap-confirm).
         if (sessionRef.current === id) {
-          const fresh = await scanApi.getState(id);
+          const fresh = withUnsavedDraft(await scanApi.getState(id));
           if (sessionRef.current === id) {
             setState(fresh);
             setOperationState(fresh.operation);
@@ -205,6 +245,7 @@ export function useScanSession(
           ? err
           : { status: 0, code: null, message: errorMessage(err, "Ошибка при отметке"), details: null };
         setError(e);
+        if (sessionRef.current === id && isSessionClosedError(e)) setClosedError(e);
         throw e;
       } finally {
         inFlight.current.delete(guardKey);
@@ -233,6 +274,7 @@ export function useScanSession(
     state,
     loading,
     error,
+    closedError,
     goStep,
     setOperation,
     openSession,

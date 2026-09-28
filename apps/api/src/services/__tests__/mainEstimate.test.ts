@@ -1,11 +1,12 @@
 /**
- * Интеграционный тест: recreateMainEstimate.
- *  - пересоздаёт MAIN из текущих BookingItem (quantity > 0)
- *  - сохраняет discountPercent и shifts существующей MAIN-сметы
- *  - пропускает позиции с quantity = 0
- *  - удаляет MAIN, если ни одной позиции с quantity > 0 не осталось
- *  - идемпотентность повторного вызова
- *  - no-op для несуществующей брони
+ * Интеграционный тест: applyIssuanceToMainEstimate — смета MAIN после выдачи в
+ * киоске правится точечно, по снимку цен, а не пересобирается по прайсу.
+ *  - строка уменьшается до выданного, цена — из снимка (прайс мог измениться)
+ *  - строка, по которой не выдано ничего, удаляется; Estimate.id сохраняется
+ *  - прибавка сверх сметы MAIN не трогает (её считает доп-смета)
+ *  - произвольная позиция сопоставляется по названию
+ *  - процент скидки не начисляется на договорные строки
+ *  - идемпотентность и no-op без MAIN
  */
 
 import path from "path";
@@ -61,8 +62,8 @@ async function seedFixture() {
     data: {
       clientId: client.id,
       projectName: "Main est project",
-      startDate: new Date("2026-06-01"),
-      endDate: new Date("2026-06-02"),
+      startDate: new Date(Date.now() + 60 * 60 * 1000),
+      endDate: new Date(Date.now() + 25 * 60 * 60 * 1000),
       status: "CONFIRMED",
       finalAmount: "0",
       amountPaid: "0",
@@ -107,7 +108,7 @@ async function seedFixture() {
   bookingId = booking.id;
 }
 
-describe("recreateMainEstimate", () => {
+describe("applyIssuanceToMainEstimate", () => {
   beforeEach(async () => {
     execSync("npx prisma db push --skip-generate --force-reset", {
       cwd: path.resolve(__dirname, "../../.."),
@@ -127,84 +128,142 @@ describe("recreateMainEstimate", () => {
     await prisma?.$disconnect?.();
   });
 
-  it("recreates MAIN from current BookingItem quantities, preserving discountPercent and shifts", async () => {
-    const { recreateMainEstimate } = await import("../mainEstimate");
-    // Reduce eq1 from 2 to 1
-    await prisma.bookingItem.updateMany({
-      where: { bookingId, equipmentId: eq1Id },
-      data: { quantity: 1 },
-    });
+  async function apply(id = bookingId) {
+    const { applyIssuanceToMainEstimate } = await import("../mainEstimate");
+    return prisma.$transaction((tx: any) => applyIssuanceToMainEstimate(tx, id));
+  }
 
-    await recreateMainEstimate(bookingId);
-
-    const main = await prisma.estimate.findFirst({
+  async function loadMain() {
+    return prisma.estimate.findFirst({
       where: { bookingId, kind: "MAIN" },
       include: { lines: true },
     });
-    expect(main).not.toBeNull();
+  }
+
+  it("уменьшает строку до выданного по цене из снимка, сохраняя скидку, смены и id сметы", async () => {
+    const before = await loadMain();
+    // Прайс подняли после подтверждения — клиенту это не должно стоить денег.
+    await prisma.equipment.update({ where: { id: eq2Id }, data: { rentalRatePerShift: "900" } });
+    await prisma.bookingItem.updateMany({ where: { bookingId, equipmentId: eq1Id }, data: { quantity: 1 } });
+
+    const res = await apply();
+    expect(res.changed).toBe(true);
+
+    const main = await loadMain();
+    expect(main.id).toBe(before.id);
     expect(main.discountPercent.toString()).toBe("10");
     expect(main.shifts).toBe(1);
-    expect(main.lines).toHaveLength(2);
     const eq1Line = main.lines.find((l: any) => l.equipmentId === eq1Id);
-    expect(eq1Line).toBeTruthy();
     expect(eq1Line.quantity).toBe(1);
+    expect(eq1Line.unitPrice.toString()).toBe("1000");
     expect(eq1Line.lineSum.toString()).toBe("1000");
-    // subtotal = 1×1000 + 1×500 = 1500
+    // Вторая строка не переоценена по новому прайсу.
+    const eq2Line = main.lines.find((l: any) => l.equipmentId === eq2Id);
+    expect(eq2Line.lineSum.toString()).toBe("500");
+    // subtotal = 1000 + 500 = 1500; скидка 10 % = 150; итог 1350.
     expect(main.subtotal.toString()).toBe("1500");
-    // discount = 1500 × 10% = 150; total = 1500 − 150 = 1350
+    expect(main.discountAmount.toString()).toBe("150");
     expect(main.totalAfterDiscount.toString()).toBe("1350");
   });
 
-  it("skips BookingItems with quantity=0", async () => {
-    const { recreateMainEstimate } = await import("../mainEstimate");
-    await prisma.bookingItem.updateMany({
-      where: { bookingId, equipmentId: eq2Id },
-      data: { quantity: 0 },
-    });
-
-    await recreateMainEstimate(bookingId);
-
-    const main = await prisma.estimate.findFirst({
-      where: { bookingId, kind: "MAIN" },
-      include: { lines: true },
-    });
+  it("строку, по которой ничего не выдано, удаляет", async () => {
+    await prisma.bookingItem.updateMany({ where: { bookingId, equipmentId: eq2Id }, data: { quantity: 0 } });
+    await apply();
+    const main = await loadMain();
     expect(main.lines).toHaveLength(1);
     expect(main.lines[0].equipmentId).toBe(eq1Id);
+    expect(main.totalAfterDiscount.toString()).toBe("1800");
   });
 
-  it("deletes MAIN when no BookingItems with quantity>0 remain", async () => {
-    const { recreateMainEstimate } = await import("../mainEstimate");
-    await prisma.bookingItem.updateMany({
-      where: { bookingId },
-      data: { quantity: 0 },
-    });
-
-    await recreateMainEstimate(bookingId);
-
-    const main = await prisma.estimate.findFirst({
-      where: { bookingId, kind: "MAIN" },
-    });
-    expect(main).toBeNull();
+  it("прибавку сверх сметы не вливает в MAIN — это доп-смета", async () => {
+    await prisma.bookingItem.updateMany({ where: { bookingId, equipmentId: eq1Id }, data: { quantity: 4 } });
+    const res = await apply();
+    expect(res.changed).toBe(false);
+    const main = await loadMain();
+    expect(main.lines.find((l: any) => l.equipmentId === eq1Id).quantity).toBe(2);
+    expect(main.totalAfterDiscount.toString()).toBe("2250");
   });
 
-  it("is idempotent — second call yields same totals and line count", async () => {
-    const { recreateMainEstimate } = await import("../mainEstimate");
-    await recreateMainEstimate(bookingId);
-    const first = await prisma.estimate.findFirst({
-      where: { bookingId, kind: "MAIN" },
-      include: { lines: true },
+  it("произвольную позицию сопоставляет по названию и берёт её цену из снимка", async () => {
+    const main = await loadMain();
+    await prisma.bookingItem.create({
+      data: { bookingId, customName: "Доставка на площадку", customUnitPrice: "3000", quantity: 1 },
     });
-    await recreateMainEstimate(bookingId);
-    const second = await prisma.estimate.findFirst({
-      where: { bookingId, kind: "MAIN" },
-      include: { lines: true },
+    await prisma.estimateLine.create({
+      data: {
+        estimateId: main.id,
+        equipmentId: null,
+        categorySnapshot: "Прочее",
+        nameSnapshot: "Доставка на площадку",
+        quantity: 2,
+        unitPrice: "3000",
+        lineSum: "6000",
+      },
     });
+    await apply();
+    const after = await loadMain();
+    const custom = after.lines.find((l: any) => l.equipmentId === null);
+    expect(custom.quantity).toBe(1);
+    expect(custom.lineSum.toString()).toBe("3000");
+  });
+
+  it("прибавку по произвольной позиции держит сама MAIN по цене из снимка: в доп-смету она не попадает", async () => {
+    const main = await loadMain();
+    await prisma.bookingItem.create({
+      data: { bookingId, customName: "Генераторщик", customUnitPrice: "4000", quantity: 2 },
+    });
+    await prisma.estimateLine.create({
+      data: {
+        estimateId: main.id,
+        equipmentId: null,
+        categorySnapshot: "Прочее",
+        nameSnapshot: "Генераторщик",
+        quantity: 1,
+        unitPrice: "3500",
+        lineSum: "3500",
+      },
+    });
+    const res = await apply();
+    expect(res.changed).toBe(true);
+    const after = await loadMain();
+    const custom = after.lines.find((l: any) => l.equipmentId === null);
+    // Цена — из снимка сметы (3500), а не из позиции брони.
+    expect(custom.quantity).toBe(2);
+    expect(custom.lineSum.toString()).toBe("7000");
+    // subtotal = 2000 + 500 + 7000 = 9500; скидка 10 % = 950; итог 8550.
+    expect(after.subtotal.toString()).toBe("9500");
+    expect(after.totalAfterDiscount.toString()).toBe("8550");
+    // Каталожные строки по-прежнему только уменьшаются.
+    expect(after.lines.find((l: any) => l.equipmentId === eq1Id).quantity).toBe(2);
+  });
+
+  it("процент скидки не начисляет на договорную строку", async () => {
+    // eq1 — договорная (listUnitPrice задан): скидка ложится только на eq2.
+    await prisma.estimateLine.updateMany({
+      where: { equipmentId: eq1Id },
+      data: { listUnitPrice: "1500" },
+    });
+    await prisma.bookingItem.updateMany({ where: { bookingId, equipmentId: eq1Id }, data: { quantity: 1 } });
+    await apply();
+    const main = await loadMain();
+    // 1000 (договорная) + 500 − 10 % × 500 = 1450.
+    expect(main.discountAmount.toString()).toBe("50");
+    expect(main.totalAfterDiscount.toString()).toBe("1450");
+  });
+
+  it("идемпотентна: повтор ничего не меняет", async () => {
+    await prisma.bookingItem.updateMany({ where: { bookingId, equipmentId: eq1Id }, data: { quantity: 1 } });
+    await apply();
+    const first = await loadMain();
+    const res = await apply();
+    expect(res.changed).toBe(false);
+    const second = await loadMain();
     expect(second.totalAfterDiscount.toString()).toBe(first.totalAfterDiscount.toString());
     expect(second.lines.length).toBe(first.lines.length);
   });
 
-  it("no-op when booking does not exist", async () => {
-    const { recreateMainEstimate } = await import("../mainEstimate");
-    await expect(recreateMainEstimate("non-existent-id")).resolves.toBeUndefined();
+  it("без MAIN — ничего не делает", async () => {
+    const res = await apply("non-existent-id");
+    expect(res).toEqual({ changed: false, totalAfterDiscount: null });
   });
 });

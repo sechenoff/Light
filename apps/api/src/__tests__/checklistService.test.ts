@@ -26,6 +26,7 @@ let equipmentId: string;
 let unitId: string;
 let unit2Id: string;
 let countEquipmentId: string;
+let capEquipmentId: string;
 let bookingId: string;
 let sessionId: string;
 let countBookingItemId: string;
@@ -97,13 +98,28 @@ beforeAll(async () => {
   });
   countEquipmentId = countEquipment.id;
 
+  // COUNT-позиция с малым складом — для потолка добора. Штучная (UNIT) для
+  // этого не годится: её потолок — число свободных экземпляров, а не
+  // totalQuantity (у Fresnel их 2, и оба уже в брони).
+  const capEquipment = await prisma.equipment.create({
+    data: {
+      importKey: "checklist-cap-001",
+      name: "Флаг 60×90",
+      category: "Грип",
+      rentalRatePerShift: 300,
+      stockTrackingMode: "COUNT",
+      totalQuantity: 5,
+    },
+  });
+  capEquipmentId = capEquipment.id;
+
   // Создаём бронь
   const booking = await prisma.booking.create({
     data: {
       clientId,
       projectName: "Тест чек-лист",
-      startDate: new Date("2026-05-01"),
-      endDate: new Date("2026-05-03"),
+      startDate: new Date(Date.now() + 2 * 24 * 3_600_000),
+      endDate: new Date(Date.now() + 4 * 24 * 3_600_000),
       status: "CONFIRMED",
       amountPaid: 0,
       amountOutstanding: 0,
@@ -302,7 +318,7 @@ describe("addExtraItem", () => {
       where: { bookingId },
     });
 
-    await addExtraItem(sessionId, equipmentId, 3, "test-operator");
+    await addExtraItem(sessionId, capEquipmentId, 3, "test-operator");
 
     const finalRecords = await prisma.addonRecord.findMany({
       where: { bookingId },
@@ -311,7 +327,7 @@ describe("addExtraItem", () => {
     expect(finalRecords.length).toBe(initialRecords + 1);
     expect(finalRecords[0].quantity).toBe(3);
     expect(finalRecords[0].sessionId).toBe(sessionId);
-    expect(finalRecords[0].equipmentId).toBe(equipmentId);
+    expect(finalRecords[0].equipmentId).toBe(capEquipmentId);
     expect(finalRecords[0].createdBy).toBe("test-operator");
 
     // ADDON Estimate должен существовать с totalQty >= 3
@@ -320,26 +336,26 @@ describe("addExtraItem", () => {
       include: { lines: true },
     });
     expect(addon).toBeTruthy();
-    const line = addon!.lines.find((l: any) => l.equipmentId === equipmentId);
+    const line = addon!.lines.find((l: any) => l.equipmentId === capEquipmentId);
     expect(line).toBeTruthy();
     expect(line!.quantity).toBeGreaterThanOrEqual(3);
   });
 
   // ── Hard cap (ADDON_OVER_STOCK) ────────────────────────────────────────────────
-  // Формула: addCap = equipment.totalQuantity − occupiedByOthers − alreadyInThisBooking.
-  // В этих тестах equipmentId.totalQuantity=5 и нет других пересекающихся броней,
-  // поэтому occupiedByOthers=0; alreadyInBooking задаётся через upsert перед вызовом.
+  // Формула (stockCap): addCap = физический склад − занято чужими (пик) − уже в брони.
+  // В этих тестах у «Флаг 60×90» totalQuantity=5 и нет других броней, поэтому
+  // занято чужими = 0; alreadyInBooking задаётся через upsert перед вызовом.
 
   it("rejects with 409 ADDON_OVER_STOCK when quantity exceeds addCap", async () => {
     const { addExtraItem } = await import("../services/checklistService");
     // Pre-fill this booking with quantity=4 → addCap = 5 − 0 − 4 = 1.
     await prisma.bookingItem.upsert({
-      where: { bookingId_equipmentId: { bookingId, equipmentId } },
+      where: { bookingId_equipmentId: { bookingId, equipmentId: capEquipmentId } },
       update: { quantity: 4 },
-      create: { bookingId, equipmentId, quantity: 4 },
+      create: { bookingId, equipmentId: capEquipmentId, quantity: 4 },
     });
     // Requesting 2 must fail (cap=1).
-    await expect(addExtraItem(sessionId, equipmentId, 2, "ivan")).rejects.toMatchObject({
+    await expect(addExtraItem(sessionId, capEquipmentId, 2, "ivan")).rejects.toMatchObject({
       status: 409,
       code: "ADDON_OVER_STOCK",
       details: { addCap: 1, requested: 2, alreadyInBooking: 4 },
@@ -349,15 +365,15 @@ describe("addExtraItem", () => {
   it("allows quantity exactly equal to addCap", async () => {
     const { addExtraItem } = await import("../services/checklistService");
     await prisma.bookingItem.upsert({
-      where: { bookingId_equipmentId: { bookingId, equipmentId } },
+      where: { bookingId_equipmentId: { bookingId, equipmentId: capEquipmentId } },
       update: { quantity: 4 },
-      create: { bookingId, equipmentId, quantity: 4 },
+      create: { bookingId, equipmentId: capEquipmentId, quantity: 4 },
     });
     // addCap = 5 − 0 − 4 = 1; запрос ровно на 1 → ОК.
-    const result = await addExtraItem(sessionId, equipmentId, 1, "ivan");
+    const result = await addExtraItem(sessionId, capEquipmentId, 1, "ivan");
     expect(result.bookingItemId).toBeDefined();
     const bi = await prisma.bookingItem.findUnique({
-      where: { bookingId_equipmentId: { bookingId, equipmentId } },
+      where: { bookingId_equipmentId: { bookingId, equipmentId: capEquipmentId } },
     });
     expect(bi!.quantity).toBe(5);
   });
@@ -365,13 +381,13 @@ describe("addExtraItem", () => {
   it("second consecutive add fails when addCap exhausted", async () => {
     const { addExtraItem } = await import("../services/checklistService");
     await prisma.bookingItem.upsert({
-      where: { bookingId_equipmentId: { bookingId, equipmentId } },
+      where: { bookingId_equipmentId: { bookingId, equipmentId: capEquipmentId } },
       update: { quantity: 3 },
-      create: { bookingId, equipmentId, quantity: 3 },
+      create: { bookingId, equipmentId: capEquipmentId, quantity: 3 },
     });
     // addCap = 5 − 0 − 3 = 2; первый запрос на 2 проходит, второй на 1 падает.
-    await addExtraItem(sessionId, equipmentId, 2, "ivan");
-    await expect(addExtraItem(sessionId, equipmentId, 1, "ivan")).rejects.toMatchObject({
+    await addExtraItem(sessionId, capEquipmentId, 2, "ivan");
+    await expect(addExtraItem(sessionId, capEquipmentId, 1, "ivan")).rejects.toMatchObject({
       status: 409,
       code: "ADDON_OVER_STOCK",
     });

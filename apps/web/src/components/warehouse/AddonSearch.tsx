@@ -26,120 +26,78 @@
  * Never renders a barcode (product rule: hidden barcode IDs). Real
  * <button>/<input> semantics; Russian aria-labels; emoji aria-hidden;
  * touch targets ≥ 40px.
+ *
+ * PR «Выдача и приёмка»:
+ *  - потолок один для поиска, `/items` и степпера (P4): выбор количества идёт
+ *    до `ackCap`, сверх свободного (`addCap`) сервер отвечает конфликтом, и
+ *    карточка «под ответственность» даёт выбрать количество, а не только 1;
+ *  - держатель назван по-человечески — «у клиента с …», «возврат не отмечен»,
+ *    «пока на складе»; «Свободно с …» только при известной дате (P26);
+ *  - 409 ADDON_OVER_STOCK — текст сервера как есть (он называет позицию);
+ *  - договорной итог брони — предупреждение, что сумма к оплате не изменится
+ *    (P22); в PIN-киоске вместо ссылки на PDF — подсказка (P17).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { scanApi } from "./api";
-import type { AddonConflict, AddonResult } from "./types";
-import { isScanApiError } from "./types";
-import { toMoscowDateString } from "../../lib/moscowDate";
+import type { AddonConflict, AddonResult, ScanApiError } from "./types";
+import {
+  getScanErrorDetails,
+  isScanApiError,
+  isSessionClosedError,
+  SCAN_ERROR,
+} from "./types";
+import { NEGOTIATED_TOTAL_ADDON_NOTE } from "./addonConflictText";
+import { ConflictWarning } from "./AddonConflictCard";
 
 const DEBOUNCE_MS = 300;
-const ADDON_CONFLICT_CODE = "ADDON_CONFLICT";
-const ADDON_OVER_STOCK_CODE = "ADDON_OVER_STOCK";
-
-/** «21.05» — день.месяц по московскому времени (как в BookingList). */
-function shortDate(iso: string): string {
-  const ymd = toMoscowDateString(new Date(iso)); // YYYY-MM-DD
-  const [, m, d] = ymd.split("-");
-  return `${d}.${m}`;
-}
 
 /**
- * Narrows a 409 ADDON_CONFLICT `details` payload to an `AddonConflict`.
- * The backend echoes the same shape it returns inside each search result.
+ * Разбор `details` 409 ADDON_CONFLICT в `AddonConflict`. Сервер присылает ту же
+ * форму, что в строках поиска; `freeFrom` бывает `null` (держатель выдан и не
+ * вернул в срок) — карточка при этом всё равно нужна.
  */
-function conflictFromDetails(details: unknown): AddonConflict | null {
-  if (typeof details !== "object" || details === null) return null;
-  const d = details as Record<string, unknown>;
+function conflictFromError(err: unknown): AddonConflict | null {
+  const d = getScanErrorDetails(err, SCAN_ERROR.ADDON_CONFLICT);
+  if (!d) return null;
   if (
-    typeof d.bookingNo === "string" &&
-    typeof d.projectName === "string" &&
-    typeof d.from === "string" &&
-    typeof d.to === "string" &&
-    typeof d.freeFrom === "string"
+    typeof d.bookingNo !== "string" ||
+    typeof d.projectName !== "string" ||
+    typeof d.from !== "string" ||
+    typeof d.to !== "string"
   ) {
-    return {
-      bookingId: typeof d.bookingId === "string" ? d.bookingId : "",
-      bookingNo: d.bookingNo,
-      projectName: d.projectName,
-      from: d.from,
-      to: d.to,
-      freeFrom: d.freeFrom,
-    };
+    return null;
   }
-  return null;
+  return {
+    ...d,
+    bookingId: typeof d.bookingId === "string" ? d.bookingId : "",
+    freeFrom: typeof d.freeFrom === "string" ? d.freeFrom : null,
+  };
 }
 
 function isAvailable(r: AddonResult): boolean {
   return r.availability !== "UNAVAILABLE" && r.addCap > 0;
 }
 
-/** The red conflict warn card (mockup block 3 `.warn`). Pure & controlled. */
-function ConflictWarning({
-  name,
-  qty,
-  conflict,
-  busy,
-  onCancel,
-  onForce,
-}: {
-  name: string;
-  qty: number;
-  conflict: AddonConflict;
-  busy: boolean;
-  onCancel: () => void;
-  onForce: () => void;
-}) {
-  return (
-    <div
-      role="alert"
-      className="mx-3 mb-3 rounded-lg border border-rose-border bg-rose-soft px-3 py-2.5"
-    >
-      <p className="text-[13px] font-semibold text-rose">
-        <span aria-hidden="true">⚠ </span>
-        {name} занят
-      </p>
-      <p className="mt-1 text-[11px] leading-snug text-rose">
-        Бронь {conflict.bookingNo} «{conflict.projectName}» ·{" "}
-        {shortDate(conflict.from)}–{shortDate(conflict.to)}. Свободно с{" "}
-        {shortDate(conflict.freeFrom)}.
-      </p>
-      <div className="mt-2.5 flex gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          aria-label={`Отмена — не добавлять ${name}`}
-          className="h-10 flex-1 rounded border border-border bg-surface text-[12px] font-medium text-ink-2 transition-colors hover:bg-surface-muted disabled:opacity-50"
-        >
-          Отмена
-        </button>
-        <button
-          type="button"
-          onClick={onForce}
-          disabled={busy}
-          aria-label={`Выдать ${qty > 1 ? `${qty} шт ` : ""}${name} под ответственность, несмотря на конфликт`}
-          className="h-10 flex-[1.4] rounded bg-rose text-[12px] font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60"
-        >
-          {busy
-            ? "…"
-            : qty > 1
-              ? `Выдать ${qty} под ответственность`
-              : "Выдать под ответственность"}
-        </button>
-      </div>
-      <p className="mt-1.5 text-[10px] text-rose/80">
-        Конфликт зафиксируется в аудите
-      </p>
-    </div>
-  );
+/**
+ * Потолок «под ответственность»: сервер v2 присылает `ackCap` в строке и в
+ * держателе; старый сервер — нет, тогда разрешаем ровно то, что уже выбрано.
+ */
+function resolveAckCap(
+  conflict: AddonConflict | null,
+  rowAckCap: number | undefined,
+  fallback: number,
+): number {
+  const cap = conflict?.ackCap ?? rowAckCap;
+  return typeof cap === "number" && Number.isFinite(cap) ? Math.max(0, Math.floor(cap)) : fallback;
 }
 
 interface ActiveConflict {
   equipmentId: string;
   name: string;
   qty: number;
+  /** Потолок «под ответственность» (`ackCap`). */
+  maxQty: number;
   conflict: AddonConflict;
 }
 
@@ -148,13 +106,16 @@ interface PickingTarget {
   name: string;
   qty: number;
   /**
-   * Upper bound for the qty input: `addCap` from the search row — the amount
-   * the operator can still добрать on THIS booking (warehouse stock minus
-   * what's already on this booking). Falls back to 1 when addCap is 0 to keep
-   * the input in a valid [1, max] range; the disabled-row path prevents that
-   * branch from opening the picker anyway.
+   * Верхняя граница поля количества: `ackCap` строки — сколько можно добрать
+   * вообще, включая «под ответственность» (старый сервер без `ackCap` —
+   * `addCap`). Не ниже 1, чтобы поле оставалось в [1, max]; строка с нулём
+   * выбор количества не открывает.
    */
   availableMax: number;
+  /** Свободно без конфликта (`addCap`). Выше — только под ответственность. */
+  freeMax: number;
+  /** `ackCap` строки — перенести в карточку конфликта после 409. */
+  rowAckCap: number | undefined;
 }
 
 export function AddonSearch({
@@ -162,8 +123,11 @@ export function AddonSearch({
   bookingId,
   bookingNo,
   existingEquipmentIds,
+  manualFinalAmount = null,
+  pinMode,
   onAdded,
   onClose,
+  onSessionClosed,
 }: {
   sessionId: string;
   /**
@@ -193,9 +157,31 @@ export function AddonSearch({
   onAdded: (bookingItemId: string, hadConflict: boolean) => void;
   /** Dismiss the sheet / inline panel. */
   onClose: () => void;
+  /**
+   * Договорной итог брони (`ChecklistState.booking.manualFinalAmount`). Задан —
+   * добор не меняет сумму к оплате, и кладовщик должен об этом знать (P22).
+   */
+  manualFinalAmount?: string | null;
+  /**
+   * PIN-киоск без входа в CRM: ссылка на PDF там отвечает 401, поэтому вместо
+   * неё — подсказка (P17). По умолчанию — есть ли PIN-токен в sessionStorage.
+   */
+  pinMode?: boolean;
+  /**
+   * Сессию закрыли, пока был открыт поиск (коды `SESSION_*`): добирать в неё
+   * больше нельзя, чек-лист показывает `SessionClosedNotice`.
+   */
+  onSessionClosed?: (err: ScanApiError) => void;
 }) {
+  const [isPinMode] = useState<boolean>(
+    () => pinMode ?? scanApi.getWarehouseToken() != null,
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const sheetRef = useRef<HTMLElement>(null);
+  // Колбэк чек-листа приходит новой стрелкой на каждый рендер — через ref,
+  // чтобы эффект поиска не перезапускался от перерисовки родителя.
+  const onSessionCloseRef = useRef(onSessionClosed);
+  onSessionCloseRef.current = onSessionClosed;
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [results, setResults] = useState<AddonResult[]>([]);
@@ -308,6 +294,12 @@ export function AddonSearch({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        // Сессию закрыли (оформили на другом планшете, прервали на карточке) —
+        // искать добор некуда: чек-лист покажет уведомление.
+        if (isSessionClosedError(err) && onSessionCloseRef.current) {
+          onSessionCloseRef.current(err);
+          return;
+        }
         setResults([]);
         setSearched(true);
         setError(
@@ -335,12 +327,12 @@ export function AddonSearch({
       : results;
   const hiddenInBookingCount = results.length - visibleResults.length;
 
-  // Shared POST: accepts qty (>= 1) and optional ack flag. On 409 ADDON_CONFLICT
-  // surface the SAME red warn card built from `err.details` AND preserve the
-  // chosen qty so «Выдать N под ответственность» retries with the same N.
+  // Общий POST: количество (≥ 1) и флаг «под ответственность». На 409
+  // ADDON_CONFLICT — та же красная карточка из `err.details` с сохранённым
+  // количеством, чтобы «Выдать N под ответственность» повторил ровно N.
   const doAdd = useCallback(
     async (
-      r: { equipmentId: string; name: string },
+      r: { equipmentId: string; name: string; rowAckCap?: number },
       ack: boolean,
       qty: number,
     ) => {
@@ -360,46 +352,31 @@ export function AddonSearch({
         setAddedName(safeQty > 1 ? `${r.name} ×${safeQty}` : r.name);
         onAdded(added.bookingItemId, ack);
       } catch (err: unknown) {
-        if (
-          isScanApiError(err) &&
-          err.status === 409 &&
-          err.code === ADDON_OVER_STOCK_CODE
-        ) {
-          // Hard-cap по складу: на этой брони уже добран максимум
-          // (alreadyInBooking + новые requested > availableQuantity).
-          // Это НЕ конфликт с другой бронью — это нехватка на нашем же
-          // окне. Выдать «под ответственность» нельзя. Закрываем picker
-          // и показываем inline-ошибку с деталями из `err.details`.
-          const d = err.details as
-            | { addCap?: number; alreadyInBooking?: number }
-            | undefined;
-          const parts: string[] = ["Не хватает на складе."];
-          if (d?.alreadyInBooking !== undefined) {
-            parts.push(`Уже в брони: ${d.alreadyInBooking},`);
-          }
-          parts.push(`осталось добрать: ${d?.addCap ?? 0}`);
-          setError(parts.join(" "));
-          setPicking(null);
+        if (isSessionClosedError(err) && onSessionClosed) {
           setActive(null);
+          setPicking(null);
+          onSessionClosed(err);
           return;
         }
-        if (
-          isScanApiError(err) &&
-          err.status === 409 &&
-          err.code === ADDON_CONFLICT_CODE
-        ) {
-          const conflict = conflictFromDetails(err.details);
-          if (conflict) {
-            // Transition picker → warn card, carrying the chosen qty.
-            setActive({
-              equipmentId: r.equipmentId,
-              name: r.name,
-              qty: safeQty,
-              conflict,
-            });
-            setPicking(null);
-            return;
-          }
+        const conflict = conflictFromError(err);
+        if (conflict) {
+          // Карточка конфликта с тем же количеством (не больше потолка).
+          const maxQty = resolveAckCap(conflict, r.rowAckCap, safeQty);
+          setActive({
+            equipmentId: r.equipmentId,
+            name: r.name,
+            qty: maxQty > 0 ? Math.min(safeQty, maxQty) : safeQty,
+            maxQty,
+            conflict,
+          });
+          setPicking(null);
+          return;
+        }
+        // Остальное (ADDON_OVER_STOCK, ADDON_ONLY_ON_ISSUE, сеть) — текст
+        // сервера как есть: он по-русски и называет позицию и остаток.
+        if (isScanApiError(err) && err.code === SCAN_ERROR.ADDON_OVER_STOCK) {
+          setPicking(null);
+          setActive(null);
         }
         setError(
           isScanApiError(err) ? err.message : "Не удалось добавить артикул",
@@ -408,37 +385,44 @@ export function AddonSearch({
         setAdding(null);
       }
     },
-    [adding, sessionId, onAdded],
+    [adding, sessionId, onAdded, onSessionClosed],
   );
 
   function handleRowTap(r: AddonResult) {
     setAddedName(null);
-    // Conflicted (explicit conflict OR busy) → show the warn card directly
-    // with qty=1 (conflict-добор is rare; qty edit not exposed in this path).
+    // Занятая строка (есть держатель) — сразу карточка конфликта; количество
+    // в ней выбирается до `ackCap`.
     if (r.conflict || !isAvailable(r)) {
       if (r.conflict) {
         setActive({
           equipmentId: r.equipmentId,
           name: r.name,
           qty: 1,
+          maxQty: resolveAckCap(r.conflict, r.ackCap, 1),
           conflict: r.conflict,
         });
       } else {
-        // Busy with no conflict block from the API — still soft-warn by
-        // attempting the add; the backend returns the 409 with details,
-        // which surfaces the same card.
-        void doAdd({ equipmentId: r.equipmentId, name: r.name }, false, 1);
+        // Занята, но держателя в строке нет — пробуем добавить: сервер вернёт
+        // 409 с деталями, и появится та же карточка.
+        void doAdd(
+          { equipmentId: r.equipmentId, name: r.name, rowAckCap: r.ackCap },
+          false,
+          1,
+        );
       }
       return;
     }
-    // Free row → open inline qty picker. Default qty=1, max = addCap (upper
-    // bound that respects already-issued quantity on this booking, not the raw
-    // warehouse stock).
+    // Свободная строка → выбор количества. Потолок — `ackCap` (включая «под
+    // ответственность»); сверх свободного сервер ответит конфликтом, и
+    // появится карточка с выбранным количеством.
+    const freeMax = Math.max(1, r.addCap);
     setPicking({
       equipmentId: r.equipmentId,
       name: r.name,
       qty: 1,
-      availableMax: Math.max(1, r.addCap),
+      availableMax: Math.max(freeMax, r.ackCap ?? 0),
+      freeMax,
+      rowAckCap: r.ackCap,
     });
   }
 
@@ -458,6 +442,10 @@ export function AddonSearch({
       const clamped = Math.min(p.availableMax, Math.max(1, Math.floor(n)));
       return { ...p, qty: clamped };
     });
+  }
+
+  function setActiveQty(next: number) {
+    setActive((a) => (a && a.qty !== next ? { ...a, qty: next } : a));
   }
 
   return (
@@ -540,20 +528,32 @@ export function AddonSearch({
 
         {/* Results / states — internal scroll on mobile. */}
         <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+          {manualFinalAmount != null && (
+            <p className="mx-3 mb-2 rounded-lg border border-amber-border bg-amber-soft px-3 py-2 text-[11px] leading-snug text-ink">
+              {NEGOTIATED_TOTAL_ADDON_NOTE}
+            </p>
+          )}
+
           {addedName && (
             <div className="mx-3 mb-2 rounded-lg border border-emerald-border bg-emerald-soft px-3 py-2 text-[12px] font-medium text-emerald">
               <span aria-hidden="true">✓ </span>
               {addedName} добавлен в выдачу
               <div className="mt-1 text-[11px] text-emerald/85">
                 Доб-смета обновлена ·{" "}
-                <a
-                  href={`/api/addon-estimates/${bookingId}/export/pdf`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline hover:no-underline"
-                >
-                  Открыть PDF →
-                </a>
+                {isPinMode ? (
+                  // PIN-киоск: у PDF-маршрута нет PIN-токена, ссылка открыла бы
+                  // JSON «Требуется авторизация».
+                  "PDF — в карточке брони в CRM"
+                ) : (
+                  <a
+                    href={`/api/addon-estimates/${bookingId}/export/pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline hover:no-underline"
+                  >
+                    Открыть PDF →
+                  </a>
+                )}
               </div>
             </div>
           )}
@@ -568,12 +568,18 @@ export function AddonSearch({
             <ConflictWarning
               name={active.name}
               qty={active.qty}
+              maxQty={active.maxQty}
               conflict={active.conflict}
               busy={adding === active.equipmentId}
+              onQty={setActiveQty}
               onCancel={closeWarning}
               onForce={() =>
                 void doAdd(
-                  { equipmentId: active.equipmentId, name: active.name },
+                  {
+                    equipmentId: active.equipmentId,
+                    name: active.name,
+                    rowAckCap: active.maxQty,
+                  },
                   true,
                   active.qty,
                 )
@@ -632,6 +638,9 @@ export function AddonSearch({
                   r.addCap === 0;
                 const isAdding = adding === r.equipmentId;
                 const isPicking = picking?.equipmentId === r.equipmentId;
+                // Вещь физически у клиента — подпись «у клиента», а не
+                // «занято»: кладовщик не путает её с резервом на полке (P26).
+                const atClient = r.conflict?.holderStatus === "ISSUED";
 
                 // Inline qty picker for THIS row — replaces the regular row
                 // tap-target while the operator is choosing N. «Добавить N»
@@ -680,11 +689,22 @@ export function AddonSearch({
                             +
                           </button>
                         </div>
+                        {picking.qty > picking.freeMax && (
+                          <span className="basis-full text-[11px] leading-snug text-amber">
+                            Свободно {picking.freeMax} — остальное только под
+                            ответственность: после «Добавить» покажем, у кого
+                            занято.
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() =>
                             void doAdd(
-                              { equipmentId: r.equipmentId, name: r.name },
+                              {
+                                equipmentId: r.equipmentId,
+                                name: r.name,
+                                rowAckCap: picking.rowAckCap,
+                              },
                               false,
                               picking.qty,
                             )
@@ -720,7 +740,9 @@ export function AddonSearch({
                           ? `${r.name} — уже добран максимум на даты, нельзя добавить`
                           : free
                             ? `${r.name} — свободно, выбрать количество и добавить в выдачу`
-                            : `${r.name} — занят, открыть предупреждение о доборе`
+                            : atClient
+                              ? `${r.name} — у клиента по другой брони, открыть предупреждение о доборе`
+                              : `${r.name} — занят, открыть предупреждение о доборе`
                       }
                       className="flex w-full items-center gap-2 border-t border-surface-subtle px-1 py-2.5 text-left transition-colors first:border-t-0 hover:bg-surface-muted disabled:opacity-60"
                     >
@@ -738,7 +760,7 @@ export function AddonSearch({
                         </span>
                       ) : (
                         <span className="shrink-0 rounded-full bg-rose-soft px-2 py-0.5 text-[10px] font-semibold text-rose">
-                          занято
+                          {atClient ? "у клиента" : "занято"}
                         </span>
                       )}
                       {isAdding && (

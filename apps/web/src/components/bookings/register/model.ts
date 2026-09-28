@@ -155,6 +155,19 @@ export function registerDate(value: string | null, time = false) {
     ...(time ? { hour: "2-digit", minute: "2-digit" } : {}),
   });
 }
+/**
+ * Идёт ли по брони живая сессия киоска: ACTIVE и не устаревшая (выдача на
+ * подтверждённой брони, приёмка — на выданной). Только она ведёт главную
+ * кнопку реестра в киоск и даёт пометку «Идёт в киоске»: прошлая или брошенная
+ * сессия — не повод открывать киоск, само открытие создало бы новую сессию.
+ * Старый ответ API без поля считается «нет».
+ */
+export function hasLiveKioskSession(row: {
+  id: string;
+  liveScanSession?: boolean;
+}): boolean {
+  return row.liveScanSession === true;
+}
 export type SavedRegisterView = { id: string; name: string; query: string };
 export function parseSavedViews(raw: string | null): SavedRegisterView[] {
   try {

@@ -19,12 +19,20 @@ import {
   type RepairUnit,
   type ProblemUnit,
 } from "../services/warehouseScan";
+import {
+  assertSessionWritable,
+  CLIENT_CANCEL_REASONS,
+  SCAN_ERR,
+  SCAN_MSG,
+} from "../services/scanSessionPolicy";
 import { createRepair } from "../services/repairService";
 import {
   checkUnit,
   uncheckUnit,
   getChecklistState,
   addExtraItem,
+  saveChecklistDraft,
+  saveChecklistDraftBodySchema,
 } from "../services/checklistService";
 import { searchAddonCandidates } from "../services/bookingAddon";
 import { bookingItemKey, sortLinesByCatalogAsync } from "../services/lineOrder";
@@ -226,6 +234,19 @@ warehouseRouter.delete("/workers/:id", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
 
 export const warehouseScanRouter = express.Router();
 
+/**
+ * Автор аудита действия в киоске: сотрудник CRM — только если склад открыт его
+ * же главной сессией. Если на планшете вошли по PIN (warehouseAuth проверяет
+ * PIN-токен первым), а в браузере заодно висит cookie CRM, действует
+ * кладовщик по PIN: автор — `_system_` (null здесь), имя — в записи. Иначе
+ * выдачу «Ивана» журнал приписал бы учётке планшета.
+ */
+function kioskAuditUserId(req: express.Request): string | null {
+  const admin = req.adminUser;
+  if (!admin || !req.warehouseWorker) return null;
+  return req.warehouseWorker.name === admin.username ? admin.userId : null;
+}
+
 const operationSchema = z.enum(["ISSUE", "RETURN"]);
 
 const createSessionBodySchema = z.object({
@@ -258,7 +279,9 @@ warehouseScanRouter.get("/bookings", warehouseAuth, async (req, res, next) => {
         startDate: true,
         endDate: true,
         status: true,
-        items: { select: { id: true } },
+        // Строки ×0 (обнулены на выдаче) принимать нечего — в «N позиций» не считаем,
+        // как и в «В работе».
+        items: { where: { quantity: { gt: 0 } }, select: { id: true } },
       },
     });
 
@@ -330,7 +353,7 @@ warehouseScanRouter.get("/sessions/:id/vehicles", warehouseAuth, async (req, res
       where: { id: req.params.id },
       select: { bookingId: true },
     });
-    if (!session) throw new HttpError(404, "Сессия не найдена");
+    if (!session) throw new HttpError(404, SCAN_MSG.SESSION_NOT_FOUND, SCAN_ERR.SESSION_NOT_FOUND);
 
     const vehicles = await prisma.bookingVehicle.findMany({
       where: { bookingId: session.bookingId },
@@ -384,7 +407,7 @@ warehouseScanRouter.patch(
         where: { id: sessionId },
         select: { id: true, bookingId: true, operation: true },
       });
-      if (!session) throw new HttpError(404, "Сессия не найдена");
+      if (!session) throw new HttpError(404, SCAN_MSG.SESSION_NOT_FOUND, SCAN_ERR.SESSION_NOT_FOUND);
 
       const existing = await prisma.bookingVehicle.findUnique({
         where: { id: bookingVehicleId },
@@ -565,6 +588,8 @@ const problemUnitSchema = z.union([
 const issuanceAdjustmentSchema = z.object({
   bookingItemId: z.string().min(1),
   actualQuantity: z.number().int().min(0),
+  // Выдать сверх свободного, забрав у чужой брони («под ответственность»).
+  acknowledgedConflict: z.boolean().optional(),
 });
 
 const vehicleMileageEntrySchema = z.object({
@@ -582,6 +607,12 @@ const completeSessionBodySchema = z.object({
   // есть BookingVehicle — это валидирует сам completeSession. Здесь только
   // Zod-форма: каждая запись { vehicleId, mileage ≥ 0 }.
   vehicleMileages: z.array(vehicleMileageEntrySchema).optional(),
+  // Выдача раньше, чем за сутки до начала, — осознанно (повтор после ISSUE_TOO_EARLY).
+  force: z.boolean().optional(),
+  // Защита от устаревшего экрана: версия состава и ревизия черновика, на
+  // которых построен чек-лист. Обе необязательны — старый JS на планшетах их не шлёт.
+  itemsVersion: z.string().min(1).max(64).optional(),
+  draftRevision: z.number().int().min(0).optional(),
 }).optional();
 
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
@@ -595,8 +626,14 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       repairUnits,
       problemUnits,
       createdBy: req.warehouseWorker?.name,
+      // Главная сессия SA/WH — автор аудита она; вход по PIN — `_system_` с
+      // именем кладовщика в записи.
+      auditUserId: kioskAuditUserId(req),
       issuanceAdjustments: body?.issuanceAdjustments,
       vehicleMileages: body?.vehicleMileages,
+      force: body?.force,
+      itemsVersion: body?.itemsVersion,
+      draftRevision: body?.draftRevision,
     });
 
     // Enrich unit ID arrays with name and barcode data
@@ -654,6 +691,12 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       // UI использует для OVERPAID-callout «К возврату клиенту».
       paymentStatus: summary.paymentStatus,
       amountPaid: summary.amountPaid,
+      // Контракт 2.5: статус брони после завершения, кто нажал «Готово»,
+      // договорной итог (добор его не меняет) и число доборов этой сессии.
+      bookingStatus: summary.bookingStatus,
+      completedBy: summary.completedBy,
+      manualFinalAmount: summary.manualFinalAmount,
+      addonsAddedInSession: summary.addonsAddedInSession,
     });
   } catch (err) {
     next(err);
@@ -768,6 +811,27 @@ warehouseScanRouter.get("/sessions/:id/state", warehouseAuth, async (req, res, n
   }
 });
 
+/**
+ * PUT /api/warehouse/sessions/:id/draft — сохранить черновик чек-листа.
+ * Тело `{ revision, draft }` → `{ revision, savedAt }`. Ревизия устарела
+ * (сохранил другой планшет) — 409 DRAFT_OUTDATED со свежим черновиком;
+ * больше 256 КБ — 413 DRAFT_TOO_LARGE. Приходит и keepalive-запросом при
+ * закрытии вкладки — в любом порядке с остальными.
+ */
+warehouseScanRouter.put("/sessions/:id/draft", warehouseAuth, async (req, res, next) => {
+  try {
+    const body = saveChecklistDraftBodySchema.parse(req.body);
+    const result = await saveChecklistDraft(
+      req.params.id,
+      { revision: body.revision, draft: body.draft },
+      req.warehouseWorker?.name ?? null,
+    );
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** POST /api/warehouse/sessions/:id/check — отметить UNIT-позицию */
 warehouseScanRouter.post("/sessions/:id/check", warehouseAuth, async (req, res, next) => {
   try {
@@ -799,16 +863,12 @@ warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req,
   try {
     const { q } = addonSearchQuerySchema.parse(req.query);
 
-    const session = await prisma.scanSession.findUnique({
-      where: { id: req.params.id },
-      select: { bookingId: true },
-    });
-    if (!session) {
-      res.status(404).json({ message: "Сессия не найдена", code: "SESSION_NOT_FOUND" });
-      return;
-    }
+    // Закрытая или устаревшая сессия — 409 SESSION_* (устаревшая здесь же закрывается).
+    const { session } = await assertSessionWritable(prisma, req.params.id);
 
-    const results = await searchAddonCandidates({ bookingId: session.bookingId, q });
+    // Киоск выдаёт прямо сейчас: окно проверки — с текущего момента до конца
+    // брони, а не плановые даты (выданное заранее и просроченное уже у клиента).
+    const results = await searchAddonCandidates({ bookingId: session.bookingId, q, issuingNow: true });
     res.json({ results });
   } catch (err) {
     next(err);
@@ -826,9 +886,9 @@ warehouseScanRouter.post("/sessions/:id/items", warehouseAuth, async (req, res, 
       quantity,
       createdBy,
       acknowledgedConflict ?? false,
-      // req.adminUser есть, когда киоск открыт главной сессией SA/WAREHOUSE —
-      // тогда аудит проходит FK. При PIN-входе undefined (аудит пропускается).
-      req.adminUser?.userId,
+      // Киоск открыт главной сессией SA/WAREHOUSE — она и автор аудита. При
+      // PIN-входе undefined: автор `_system_`, имя кладовщика — в записи.
+      kioskAuditUserId(req) ?? undefined,
     );
     res.status(201).json(result);
   } catch (err) {
@@ -836,10 +896,31 @@ warehouseScanRouter.post("/sessions/:id/items", warehouseAuth, async (req, res, 
   }
 });
 
-/** POST /api/warehouse/sessions/:id/cancel — отменить сессию */
+const cancelSessionBodySchema = z
+  .object({
+    reason: z.enum(CLIENT_CANCEL_REASONS).optional(),
+    // «Ушёл, ничего не сделав»: сессию с черновиком, отметками или добором не трогать.
+    onlyIfEmpty: z.boolean().optional(),
+  })
+  .optional();
+
+/**
+ * POST /api/warehouse/sessions/:id/cancel — прервать сессию.
+ * Тело необязательно: `{ reason?, onlyIfEmpty? }`. Ответ — сессия и
+ * `cancelled: boolean` (false — при `onlyIfEmpty` в сессии уже была работа).
+ * Завершённая или уже прерванная сессия — 409, не 500.
+ */
 warehouseScanRouter.post("/sessions/:id/cancel", warehouseAuth, async (req, res, next) => {
   try {
-    const session = await cancelSession(req.params.id);
+    const body = cancelSessionBodySchema.parse(req.body);
+    const session = await cancelSession(req.params.id, {
+      reason: body?.reason,
+      onlyIfEmpty: body?.onlyIfEmpty,
+      // Главная сессия CRM — автор аудита она сама; PIN-кладовщик — `_system_`
+      // с именем в записи (правило журнала киоска).
+      actorUserId: kioskAuditUserId(req),
+      actorName: kioskAuditUserId(req) ? null : req.warehouseWorker?.name ?? null,
+    });
     res.json(session);
   } catch (err) {
     next(err);
@@ -1158,6 +1239,8 @@ warehouseScanRouter.get("/in-work/:bookingId/details", warehouseAuth, async (req
       include: {
         client: { select: { name: true, phone: true } },
         items: {
+          // Строки, обнулённые на выдаче, у клиента не лежат — в «В работе» их нет.
+          where: { quantity: { gt: 0 } },
           orderBy: { createdAt: "asc" },
           include: {
             equipment: {

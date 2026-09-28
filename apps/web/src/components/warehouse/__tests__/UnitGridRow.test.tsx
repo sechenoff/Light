@@ -164,6 +164,39 @@ describe("UnitGridRow", () => {
     expect(screen.queryByLabelText(/Проблема/)).not.toBeInTheDocument();
   });
 
+  it("«Сломан безвозвратно» подписан как списание и объясняет, что искать не будут", () => {
+    const units = makeUnits(2);
+    units[0].status = "PROBLEM";
+    units[0].problem.reason = "DESTROYED";
+    render(<UnitGridRow {...baseProps} units={units} />);
+    expect(
+      screen.getByRole("option", { name: "Сломан безвозвратно — списать" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/списание прибора, искать не будем/)).toBeInTheDocument();
+  });
+
+  it("у пропажи подсказка «заявка на поиск», пока причина не выбрана — подсказки нет", () => {
+    const units = makeUnits(2);
+    units[0].status = "PROBLEM";
+    const { rerender } = render(<UnitGridRow {...baseProps} units={units} />);
+    expect(screen.queryByText(/→ в «Потеряшки»/)).not.toBeInTheDocument();
+    units[0].problem.reason = "LOST";
+    rerender(<UnitGridRow {...baseProps} units={[...units]} />);
+    expect(screen.getByText(/заявка на поиск/)).toBeInTheDocument();
+  });
+
+  it("жёлтая пометка строки (notice) — статус, не ошибка", () => {
+    render(
+      <UnitGridRow
+        {...baseProps}
+        units={makeUnits(2)}
+        notice="Количество в брони изменилось — отметки по этой строке сброшены, отметьте заново"
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(/отметки по этой строке сброшены/);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("renders rowError as alert when provided", () => {
     render(
       <UnitGridRow

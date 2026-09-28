@@ -719,7 +719,32 @@ describe("project workflows", () => {
         items: { create: { equipmentId: f.eq.id, quantity: 2 } },
       },
     });
+    // Позицию видит уже подтверждение: просроченная невозвращённая бронь
+    // занимает окно, в которое попадает текущий момент (занятость по факту,
+    // а не по плану).
+    await expect(
+      service.confirmProject(f.id, await revision(f.id), uid),
+    ).rejects.toThrow("доступно 0");
+  });
+  it("does not issue COUNT stock when an overdue ordinary booking appears after confirmation", async () => {
+    const f = await fixture("COUNT", 2);
+    await prisma.projectLot.update({
+      where: { id: f.lot.id },
+      data: { fromDate: today },
+    });
+    // Проект подтверждён, пока склад свободен…
     await service.confirmProject(f.id, await revision(f.id), uid);
+    // …а потом выяснилось, что обычную бронь выдали и не вернули в срок.
+    await prisma.booking.create({
+      data: {
+        clientId: f.client.id,
+        projectName: "Overdue rental after confirm",
+        startDate: new Date(start),
+        endDate: new Date(nextDate(today, -1)),
+        status: "ISSUED",
+        items: { create: { equipmentId: f.eq.id, quantity: 2 } },
+      },
+    });
     await expect(
       service.issueProjectLot(
         f.id,
@@ -727,7 +752,11 @@ describe("project workflows", () => {
         { revision: await revision(f.id), fromDate: today, unitIds: [] },
         uid,
       ),
-    ).rejects.toThrow("физически");
+    ).rejects.toThrow(/Недостаточно|физически/);
+    expect(
+      (await prisma.projectLot.findUniqueOrThrow({ where: { id: f.lot.id } }))
+        .status,
+    ).toBe("PLANNED");
   });
   it("supports the warehouse PIN path without exposing prices and rejects invalid dates", async () => {
     const f = await fixture();

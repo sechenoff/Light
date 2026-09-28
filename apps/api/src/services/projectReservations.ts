@@ -67,6 +67,35 @@ export async function projectReservations(
       }));
   });
 }
+/**
+ * Часть резерва, попадающая в окно запроса, или null, если не попадает.
+ * Одна граница окна на всех: пик занятости и «кто держит позицию»
+ * (addonAvailability) обязаны видеть один и тот же набор резервов.
+ *
+ * Окно и резервы полуоткрытые — [start, end): бронь, которая кончается ровно
+ * в момент начала окна, его не задевает (стык-в-стык). Окно нулевой длины
+ * («что занято в момент t») читается как [t, t + 1 мс).
+ */
+function clipToWindow(
+  r: Reservation,
+  start: number,
+  end: number,
+): [number, number] | null {
+  const windowEnd = end > start ? end : start + 1;
+  const a = Math.max(start, r.start),
+    b = Math.min(windowEnd, r.end);
+  return b > a ? [a, b] : null;
+}
+
+/** Попадает ли резерв в окно — по тем же границам, что peakOccupancy. */
+export function reservationOverlaps(
+  r: Reservation,
+  start: number,
+  end: number,
+): boolean {
+  return clipToWindow(r, start, end) !== null;
+}
+
 /** Peak simultaneous occupancy, with half-open intervals. */
 export function peakOccupancy(
   rows: Reservation[],
@@ -75,9 +104,9 @@ export function peakOccupancy(
 ): number {
   const events: Array<[number, number]> = [];
   for (const r of rows) {
-    const a = Math.max(start, r.start),
-      b = Math.min(end + 1, r.end);
-    if (b > a) {
+    const clipped = clipToWindow(r, start, end);
+    if (clipped) {
+      const [a, b] = clipped;
       events.push([a, r.quantity], [b, -r.quantity]);
     }
   }

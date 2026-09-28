@@ -26,7 +26,7 @@ let prisma: any;
 let quoteEstimate: any;
 let createBookingDraft: any;
 let rebuildBookingEstimate: any;
-let recreateMainEstimate: any;
+let applyIssuanceToMainEstimate: any;
 let resolveCatalogLinePrice: any;
 let splitEquipmentDiscount: any;
 
@@ -55,7 +55,7 @@ beforeAll(async () => {
   quoteEstimate = svc.quoteEstimate;
   createBookingDraft = svc.createBookingDraft;
   rebuildBookingEstimate = svc.rebuildBookingEstimate;
-  recreateMainEstimate = (await import("../services/mainEstimate")).recreateMainEstimate;
+  applyIssuanceToMainEstimate = (await import("../services/mainEstimate")).applyIssuanceToMainEstimate;
   const pricing = await import("../services/pricing");
   resolveCatalogLinePrice = pricing.resolveCatalogLinePrice;
   splitEquipmentDiscount = pricing.splitEquipmentDiscount;
@@ -220,15 +220,20 @@ describe("договорная цена переживает пересборк�
     expect(Number(est.totalAfterDiscount)).toBe(162000);
   });
 
-  it("пересборка после приёмки на складе тоже не теряет договорную цену", async () => {
-    await recreateMainEstimate(bookingId);
+  it("недовыдача на складе правит смету точечно и не теряет договорную цену", async () => {
+    // Выдали 2 Aputure из 3: MAIN уменьшается по снимку цен, договорная
+    // строка SkyPanel остаётся со своей ценой и без процента скидки.
+    await prisma.bookingItem.updateMany({ where: { bookingId, equipmentId: apuId }, data: { quantity: 2 } });
+    await prisma.$transaction((tx: any) => applyIssuanceToMainEstimate(tx, bookingId));
     const est = await prisma.estimate.findFirst({
       where: { bookingId, kind: "MAIN" }, include: { lines: true },
     });
     const line = est.lines.find((l: any) => l.equipmentId === skyId);
     expect(Number(line.unitPrice)).toBe(18000 * SHIFTS);
     expect(Number(line.listUnitPrice)).toBe(RATE * SHIFTS);
-    expect(Number(est.totalAfterDiscount)).toBe(162000);
+    expect(est.lines.find((l: any) => l.equipmentId === apuId).quantity).toBe(2);
+    // 2 × 54 000 (договорная, без скидки) + 2 × 36 000 − 50 % = 144 000.
+    expect(Number(est.totalAfterDiscount)).toBe(144000);
   });
 });
 

@@ -4,7 +4,7 @@ import { getBookingIssues } from "../services/bookingIssues";
 import express from "express";
 import { z } from "zod";
 import { PAYMENT_FORMS, computeSurcharge, formatPercent, resolveSurchargePercent } from "../services/paymentForm";
-import { Prisma } from "@prisma/client";
+import { Prisma, type BookingStatus } from "@prisma/client";
 import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
@@ -12,7 +12,15 @@ import { createBookingDraft, createQuickBooking, confirmBooking, quoteEstimate, 
 import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
 import { writeOffBookingDebt, cancelBookingDebtWriteOff } from "../services/debtWriteOff";
-import { archiveBooking, cancelBooking, purgeBooking, restoreBooking } from "../services/bookingLifecycle";
+import { archiveBooking, cancelBookingWithSessions, invalidTransitionError, purgeBooking, restoreBooking } from "../services/bookingLifecycle";
+import {
+  assertIssueNotTooEarly,
+  closeActiveScanSessions,
+  findBlockingScanSession,
+  isSessionLive,
+  scanSessionActiveError,
+} from "../services/scanSessionPolicy";
+import { notEnoughUnitsError } from "../services/stockCap";
 import { BULK_ACTIONS, BULK_MAX_IDS, runBulkBookingAction } from "../services/bookingBulk";
 import { HttpError } from "../utils/errors";
 import {
@@ -306,6 +314,9 @@ function isSchemaOutOfSyncError(err: unknown): boolean {
   );
 }
 
+/** Ручная «Вернуть» брони с машиной: пробег в ней не вводится. */
+const MILEAGE_NOT_RECORDED_WARNING = "Пробег машин не записан — внесите его в карточке машины";
+
 function financeWarningFromError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err ?? "");
   const normalized = raw.toLowerCase();
@@ -598,6 +609,24 @@ router.get("/", async (req, res, next) => {
       : [];
     const deletedByNameById = new Map(deletedByUsers.map((u) => [u.id, u.username]));
 
+    // «Идёт в киоске» — только у живой ACTIVE-сессии: устаревшая (бронь уже
+    // выдана/принята кнопкой) в реестре не должна звать в киоск.
+    const activeSessions = items.length
+      ? await prisma.scanSession.findMany({
+          where: { bookingId: { in: items.map((b) => b.id) }, status: "ACTIVE" },
+          select: { bookingId: true, operation: true },
+        })
+      : [];
+    const bookingById = new Map(items.map((b) => [b.id, b]));
+    const liveScanBookingIds = new Set(
+      activeSessions
+        .filter((s) => {
+          const b = bookingById.get(s.bookingId);
+          return b != null && isSessionLive(s.operation, b);
+        })
+        .map((s) => s.bookingId),
+    );
+
     res.json({
       bookings: items.map((b) => {
         // Не отдаём сырые агрегаты (_count) и вложенные scanSessions в JSON —
@@ -614,6 +643,7 @@ router.get("/", async (req, res, next) => {
           hasScanSessions: _count.scanSessions > 0,
           lastScanOperation: lastScan?.operation ?? null,
           lastScanStatus: lastScan?.status ?? null,
+          liveScanSession: liveScanBookingIds.has(b.id),
         };
       }),
       nextCursor,
@@ -710,6 +740,10 @@ router.get("/:id", async (req, res, next) => {
             status: true,
             startedAt: true,
             completedAt: true,
+            completedBy: true,
+            cancelledAt: true,
+            cancelReason: true,
+            cancelledBy: true,
             _count: { select: { scans: true } },
           },
           orderBy: { startedAt: "desc" },
@@ -717,6 +751,15 @@ router.get("/:id", async (req, res, next) => {
       },
     });
     if (!booking) return res.status(404).json({ message: "Booking not found" });
+    // Черновик чек-листа бывает до 256 КБ — сам JSON не читаем, только факт.
+    const sessionIdsWithDraft = new Set(
+      (
+        await prisma.scanSession.findMany({
+          where: { bookingId: id, status: "ACTIVE", draftJson: { not: null } },
+          select: { id: true },
+        })
+      ).map((s) => s.id),
+    );
     const { financeEvents, scanSessions, payments, ...bookingCore } = booking as any;
     const serialized = await serializeBookingOrdered(bookingCore);
     const displayName = buildBookingHumanName({
@@ -744,6 +787,9 @@ router.get("/:id", async (req, res, next) => {
           ...ev,
           amountDelta: ev.amountDelta?.toString() ?? null,
         })),
+        // stale — ACTIVE-сессия, которая больше не живая (бронь уже выдали,
+        // приняли, отменили или убрали в архив): ничего не блокирует, карточка
+        // показывает её «Устарела». hasDraft — в сессии уже есть отметки.
         scanSessions: (scanSessions ?? []).map((ss: any) => ({
           id: ss.id,
           workerName: ss.workerName,
@@ -751,6 +797,12 @@ router.get("/:id", async (req, res, next) => {
           status: ss.status,
           createdAt: ss.startedAt,
           completedAt: ss.completedAt,
+          completedBy: ss.completedBy ?? null,
+          cancelledAt: ss.cancelledAt ?? null,
+          cancelReason: ss.cancelReason ?? null,
+          cancelledBy: ss.cancelledBy ?? null,
+          stale: ss.status === "ACTIVE" && !isSessionLive(ss.operation, booking),
+          hasDraft: sessionIdsWithDraft.has(ss.id),
           _count: { scanRecords: ss._count.scans },
         })),
       },
@@ -976,6 +1028,19 @@ router.patch("/:id", async (req, res, next) => {
     if (isExtendIssued && body.extendEndDate) end = new Date(body.extendEndDate);
     assertBookingRangeOrder(start, end);
 
+    // Правка состава или дат подтверждённой брони, пока склад выдаёт её в
+    // киоске, ломала выдачу: PATCH пересоздаёт позиции (delete+create) —
+    // каскадом стирал записи добора киоска, а «Готово» со степпером падало
+    // «bookingItem не принадлежит этой брони» (24.09). Блокирует только живая
+    // выдача с работой; комментарий и прочие «бумажные» поля править можно.
+    // Форма шлёт даты при каждом сохранении — считаем только реальную смену.
+    const datesChanged =
+      start.getTime() !== existing.startDate.getTime() || end.getTime() !== existing.endDate.getTime();
+    const touchesKioskChecklist =
+      (Boolean(body.items) || datesChanged) &&
+      (existing.status === "CONFIRMED" || existing.status === "PENDING_APPROVAL");
+    if (touchesKioskChecklist) await assertNoIssueInProgress(prisma, id);
+
     // F4+F5: compute resolved expectedPaymentDate for PATCH
     // null from client = re-default (F5, consistent with POST).
     // If endDate changed and existing date was auto-defaulted → recompute (F4).
@@ -1025,6 +1090,8 @@ router.patch("/:id", async (req, res, next) => {
         : null;
 
     const booking = await prisma.$transaction(async (tx) => {
+      // Повторно внутри транзакции: выдачу могли начать между проверкой и записью.
+      if (touchesKioskChecklist) await assertNoIssueInProgress(tx, id);
       const auditBefore = await bookingAuditSnapshot(tx, id);
       if (body.items) {
         await tx.bookingItem.deleteMany({ where: { bookingId: id } });
@@ -1080,16 +1147,17 @@ router.patch("/:id", async (req, res, next) => {
                 select: { id: true },
                 orderBy: { id: "asc" },
               });
-              const freeUnitIds = availableUnits
+              const allFreeUnitIds = availableUnits
                 .map((u) => u.id)
-                .filter((uid) => !takenByOthers.has(uid))
-                .slice(0, it.quantity);
+                .filter((uid) => !takenByOthers.has(uid));
+              const freeUnitIds = allFreeUnitIds.slice(0, it.quantity);
               if (freeUnitIds.length < it.quantity) {
-                throw new HttpError(
-                  409,
-                  `Недостаточно свободных единиц «${it.equipment?.name ?? it.equipmentId}» на новые даты/количество`,
-                  "NOT_ENOUGH_UNITS",
-                );
+                throw notEnoughUnitsError({
+                  equipmentId: it.equipmentId!,
+                  name: it.equipment?.name ?? it.equipmentId!,
+                  available: allFreeUnitIds.length,
+                  requested: it.quantity,
+                });
               }
               await tx.bookingItemUnit.createMany({
                 data: freeUnitIds.map((unitId) => ({ bookingItemId: it.id, equipmentUnitId: unitId })),
@@ -1258,10 +1326,13 @@ router.patch("/:id", async (req, res, next) => {
     let warning: string | null = null;
     try {
       // Продление выданной брони состав не меняет — доборы остаются отдельной
-      // доп-сметой и пересчитываются под новое число смен. В остальных правках
-      // MAIN собирается из всех позиций, и recomputeAddonEstimate снимает
-      // устаревший ADDON — иначе добор попал бы в финансы дважды.
-      await rebuildBookingEstimate(id, { preserveAddonSplit: isExtendIssued });
+      // доп-сметой и пересчитываются под новое число смен. То же у «бумажной»
+      // правки задним числом (название, комментарий, скидка без состава): раньше
+      // она молча вливала доп-смету в основную без записи BOOKING_ADDON_MERGED.
+      // В остальных правках MAIN собирается из всех позиций, и
+      // recomputeAddonEstimate снимает устаревший ADDON — иначе добор попал бы
+      // в финансы дважды.
+      await rebuildBookingEstimate(id, { preserveAddonSplit: isExtendIssued || (retroactiveEdit && !body.items) });
       await recomputeAddonEstimate(id);
       await recomputeBookingFinance(id);
       await createFinanceEvent({ bookingId: id, eventType: "BOOKING_EDITED" });
@@ -1423,11 +1494,53 @@ router.patch("/:id", async (req, res, next) => {
       }
     }
 
+    // Смета пересобирается по текущему прайсу при любой правке. Если в запросе
+    // не было ничего, что меняет сумму по смыслу (состав, даты, скидка,
+    // транспорт, форма оплаты, договорной итог, продление), а сумма к оплате
+    // изменилась — значит, поменялись цены в каталоге. Говорим об этом прямо,
+    // а не молча. Как не переоценивать вовсе — решение владельца (план, P24).
+    const sumNeutralEdit =
+      !body.items &&
+      !datesChanged &&
+      body.discountPercent === undefined &&
+      body.transport === undefined &&
+      body.manualFinalAmount === undefined &&
+      body.paymentForm === undefined &&
+      body.cashlessSurchargePercent === undefined &&
+      body.skipPartialDay === undefined &&
+      body.extendEndDate == null;
+    if (sumNeutralEdit && freshBooking) {
+      const beforeSum = new Decimal(beforeFinalAmount.toString());
+      const afterSum = new Decimal(freshBooking.finalAmount.toString());
+      if (!beforeSum.equals(afterSum)) {
+        const repriced = `Сумма к оплате пересчитана по текущим ценам каталога: было ${formatRubAmount(beforeSum)}, стало ${formatRubAmount(afterSum)}`;
+        warning = warning ? `${warning} ${repriced}` : repriced;
+      }
+    }
+
     res.json({ booking: await serializeBookingOrdered(freshBooking as any), warning });
   } catch (err) {
     next(err);
   }
 });
+
+/**
+ * 409 SCAN_SESSION_ACTIVE, если на складе идёт выдача этой брони и в ней уже
+ * есть работа (черновик, отметки, добор на месте). «Открыл и посмотрел» и
+ * устаревшие сессии правку не блокируют.
+ */
+async function assertNoIssueInProgress(client: Prisma.TransactionClient | typeof prisma, bookingId: string): Promise<void> {
+  const blocking = await findBlockingScanSession(client, bookingId);
+  if (blocking && blocking.operation === "ISSUE") throw scanSessionActiveError(blocking);
+}
+
+/** «2 000 ₽», «1 999,50 ₽» — для текстов предупреждений. */
+function formatRubAmount(value: Decimal): string {
+  const rounded = value.toDecimalPlaces(2);
+  // Копейки — всегда двумя знаками («1 999,50 ₽», а не «1 999,5 ₽»), целые — без «,00».
+  const digits = rounded.isInteger() ? 0 : 2;
+  return `${rounded.toNumber().toLocaleString("ru-RU", { minimumFractionDigits: digits, maximumFractionDigits: digits })} ₽`;
+}
 
 router.post("/:id/status", async (req, res, next) => {
   try {
@@ -1447,26 +1560,17 @@ router.post("/:id/status", async (req, res, next) => {
     };
     const allowed = allowedActionsByStatus[booking.status] ?? [];
     if (!allowed.includes(body.action)) {
-      throw new HttpError(409, `Недопустимый переход: ${booking.status} -> ${body.action}`);
+      // Понятный текст по паре «статус × действие» и код — интерфейс покажет
+      // его и перечитает бронь (страница устарела: коллега уже выдал/принял).
+      throw invalidTransitionError(booking.status, body.action);
     }
 
     // Мягкий гард дат: выдача раньше начала аренды более чем на сутки — почти
     // всегда промах («не та бронь» / «не тот день»). Не блокируем намертво:
     // менеджер может выдать заранее осознанно, повторив запрос с force: true
-    // (факт ранней выдачи фиксируется в аудите полем forcedEarlyIssue).
-    const ISSUE_EARLY_THRESHOLD_MS = 24 * 60 * 60 * 1000;
-    if (body.action === "issue" && !body.force) {
-      const msUntilStart = booking.startDate.getTime() - Date.now();
-      if (msUntilStart > ISSUE_EARLY_THRESHOLD_MS) {
-        const [y, m, d] = toMoscowDateString(booking.startDate).split("-");
-        throw new HttpError(
-          409,
-          `Аренда начинается ${d}.${m}.${y} — до начала больше суток. Проверьте бронь; если выдаёте заранее осознанно, подтвердите выдачу.`,
-          "ISSUE_TOO_EARLY",
-          { startDate: booking.startDate.toISOString() },
-        );
-      }
-    }
+    // (факт ранней выдачи фиксируется в аудите полем forcedEarlyIssue). Тот же
+    // гард у «Готово» в киоске — общий `assertIssueNotTooEarly`.
+    if (body.action === "issue") assertIssueNotTooEarly(booking.startDate, body.force);
 
     // NB: ветка `body.action === "confirm"` намеренно удалена (C1).
     // Ни один статус в allowedActionsByStatus не содержит "confirm" — DRAFT
@@ -1496,13 +1600,17 @@ router.post("/:id/status", async (req, res, next) => {
     } as const;
 
     let updated;
+    let closedScanSessions = 0;
     if (body.action === "cancel") {
-      // C2: снятие UNIT-резервов идёт в той же транзакции, что смена статуса
-      // и аудит. Реализация — в services/bookingLifecycle (общая с bulk).
-      updated = await cancelBooking(id, req.adminUser?.userId ?? "system", {
+      // C2: снятие UNIT-резервов, закрытие сессий киоска и гард статуса идут в
+      // той же транзакции, что смена статуса и аудит. Реализация — в
+      // services/bookingLifecycle (общая с bulk).
+      const cancelled = await cancelBookingWithSessions(id, req.adminUser?.userId ?? "system", {
         expectedPaymentDate: bookingUpdateData.expectedPaymentDate,
         paymentComment: bookingUpdateData.paymentComment,
       });
+      updated = cancelled.booking;
+      closedScanSessions = cancelled.closedScanSessions;
     } else {
       // Ручные «Выдать»/«Вернуть» (без киоска) обязаны реконсилировать
       // UNIT-резервы в той же транзакции — раньше менялся только статус брони,
@@ -1511,17 +1619,24 @@ router.post("/:id/status", async (req, res, next) => {
       // согласована с warehouseScan.completeSession: юниты, уже обработанные
       // сканером или живущие своим циклом (MAINTENANCE/RETIRED/MISSING),
       // не трогаем — фильтруем по текущему статусу.
-      updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        if (body.action === "issue") await assertProjectStockForBooking(tx, id);
-        const u = await tx.booking.update({
-          where: { id },
+      const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        // Первой записью — условный переход статуса: проверка «можно ли» до
+        // транзакции не защищает от второго нажатия и второго сотрудника.
+        // Три быстрых «Вернуть» писали три события, «Отменить» ‖ «Выдать»
+        // проходили обе. Теперь проигравший получает 409 и откат.
+        const claimed = await tx.booking.updateMany({
+          where: { id, status: booking.status, deletedAt: null },
           data: {
             ...bookingUpdateData,
             // Момент фактической выдачи — как в киоске: пишем только если ещё null.
             ...(body.action === "issue" && !booking.issuedAt ? { issuedAt: new Date() } : {}),
           },
-          include: bookingInclude,
         });
+        if (claimed.count === 0) {
+          const fresh = await tx.booking.findUnique({ where: { id }, select: { status: true } });
+          throw invalidTransitionError(fresh?.status ?? booking.status, body.action);
+        }
+        if (body.action === "issue") await assertProjectStockForBooking(tx, id);
 
         // Живые резервы брони (returnedAt: null) — история приёмки не трогается.
         const reservations = await tx.bookingItemUnit.findMany({
@@ -1553,6 +1668,14 @@ router.post("/:id/status", async (req, res, next) => {
           }
         }
 
+        // Брошенный в киоске чек-лист этой брони больше не нужен: выдачу/приёмку
+        // оформили кнопкой. Раньше сессия оставалась ACTIVE навсегда и запирала
+        // «+ Добор» со страницы (на проде 8 таких сессий на принятых бронях).
+        const closed = await closeActiveScanSessions(tx, id, {
+          reason: body.action === "issue" ? "BOOKING_ISSUED_MANUALLY" : "BOOKING_RETURNED_MANUALLY",
+          actorUserId: req.adminUser?.userId ?? null,
+        });
+
         // Аудит выдачи/возврата — headline-событие пишем ВСЕГДА, не только при
         // UNIT-резервах: физически самые важные операции (оборудование ушло со
         // склада / вернулось) должны быть видны в /admin/audit и для COUNT-броней.
@@ -1571,14 +1694,18 @@ router.post("/:id/status", async (req, res, next) => {
               via: `status:${body.action}`,
               reservations: reservations.length,
               unitsUpdated: touchedUnits,
+              closedScanSessions: closed.length,
               ...(body.action === "issue" && body.force ? { forcedEarlyIssue: true } : {}),
             }),
           });
         }
-        return u;
+        const u = await tx.booking.findUniqueOrThrow({ where: { id }, include: bookingInclude });
+        return { booking: u, closedScanSessions: closed.length };
       });
+      updated = result.booking;
+      closedScanSessions = result.closedScanSessions;
     }
-    let warning: string | null = null;
+    const warnings: string[] = [];
     try {
       await recomputeBookingFinance(id);
       await createFinanceEvent({
@@ -1587,11 +1714,20 @@ router.post("/:id/status", async (req, res, next) => {
         payload: { from: booking.status, to: nextStatus, action: body.action },
       });
     } catch (financeErr) {
-      warning = financeWarningFromError(financeErr);
+      warnings.push(financeWarningFromError(financeErr));
       // eslint-disable-next-line no-console
       console.error("Finance side-effects failed after status change:", financeErr);
     }
-    res.json({ booking: await serializeBookingOrdered(updated as any), warning });
+    // Пробег при ручной приёмке не вводится (поле появится во втором заходе) —
+    // одометр и прогноз ТО иначе молча отстают.
+    if (body.action === "return" && (booking.vehicleId || (await prisma.bookingVehicle.count({ where: { bookingId: id } })) > 0)) {
+      warnings.push(MILEAGE_NOT_RECORDED_WARNING);
+    }
+    res.json({
+      booking: await serializeBookingOrdered(updated as any),
+      warning: warnings.length > 0 ? warnings.join(" ") : null,
+      closedScanSessions,
+    });
   } catch (err) {
     next(err);
   }
@@ -1615,6 +1751,7 @@ router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
       archived: true,
       releasedReservations: released.releasedReservations,
       freedUnits: released.freedUnits,
+      closedScanSessions: released.closedScanSessions,
     });
   } catch (err) {
     next(err);
@@ -2843,7 +2980,7 @@ router.post(
 
       const allowedStatuses = ["DRAFT", "PENDING_APPROVAL", "CONFIRMED"];
       if (!allowedStatuses.includes(booking.status)) {
-        throw new HttpError(409, `Нельзя отменить бронь в статусе ${booking.status}`, "INVALID_BOOKING_STATE");
+        throw invalidTransitionError(booking.status, "cancel");
       }
 
       const depositTotal = booking.payments.reduce(
@@ -2934,15 +3071,22 @@ router.post(
           });
         }
 
-        // Отменяем бронь
-        await tx.booking.update({
-          where: { id: booking.id },
+        // Отменяем бронь. Условно: выдача коллегой между проверкой статуса и
+        // этой записью — штатный 409, а не «отменённая» выданная бронь.
+        const claimed = await tx.booking.updateMany({
+          where: { id: booking.id, status: { in: allowedStatuses as BookingStatus[] }, deletedAt: null },
           data: { status: "CANCELLED" },
         });
+        if (claimed.count === 0) {
+          const fresh = await tx.booking.findUnique({ where: { id: booking.id }, select: { status: true } });
+          throw invalidTransitionError(fresh?.status ?? booking.status, "cancel");
+        }
 
         // C2: освобождаем UNIT-резервы в той же транзакции (статус юнитов
         // обратно в AVAILABLE + снятие BookingItemUnit). Идемпотентно.
         const released = await releaseBookingUnits(booking.id, tx as TxClientLocal);
+        // Брошенный в киоске чек-лист отменённой брони закрываем там же.
+        const closed = await closeActiveScanSessions(tx, booking.id, { reason: "BOOKING_CANCELLED", actorUserId: userId });
         await writeAuditEntry({
           tx: tx as TxClientLocal,
           userId,
@@ -2955,6 +3099,7 @@ router.post(
             via: "cancel-with-deposit",
             releasedReservations: released.releasedReservations,
             freedUnitIds: released.freedUnitIds.length,
+            closedScanSessions: closed.length,
           }),
         });
 
