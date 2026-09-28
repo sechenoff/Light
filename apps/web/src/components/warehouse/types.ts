@@ -5,11 +5,14 @@
  * `apps/web/app/api/[...path]/route.ts`). Source of truth:
  *  - `apps/api/src/services/checklistService.ts` (ChecklistItem/Unit/State)
  *  - `apps/api/src/services/addonAvailability.ts` (AddonConflict)
+ *  - `apps/api/src/services/scanSessionPolicy.ts` (коды ошибок, причины отмены)
  *  - `apps/api/src/routes/warehouse.ts` (request/response shapes)
  *
  * Keep field names byte-identical to the API. Adding/renaming a field here
  * silently desynchronises the UI from the server.
  */
+
+import type { MutableRefObject } from "react";
 
 // ── State machine ────────────────────────────────────────────────────────────
 
@@ -20,6 +23,128 @@
 export type ScanStep = "login" | "operation" | "booking" | "checklist";
 
 export type ScanOperation = "ISSUE" | "RETURN";
+
+/** `ScanSession.status` на бэкенде. */
+export type ScanSessionStatus = "ACTIVE" | "COMPLETED" | "CANCELLED";
+
+/** `Booking.status` — те значения, которые киоск видит в ответах API. */
+export type KioskBookingStatus =
+  | "DRAFT"
+  | "PENDING_APPROVAL"
+  | "CONFIRMED"
+  | "ISSUED"
+  | "RETURNED"
+  | "CANCELLED";
+
+/**
+ * Почему сессию киоска закрыли без завершения (`ScanSession.cancelReason`).
+ * Зеркало `ScanCancelReason` в `apps/api/src/services/scanSessionPolicy.ts`.
+ */
+export type ScanCancelReason =
+  | "KIOSK_ABORT"
+  | "CARD_ABORT"
+  | "EMPTY_LEAVE"
+  | "BOOKING_ISSUED_MANUALLY"
+  | "BOOKING_RETURNED_MANUALLY"
+  | "BOOKING_CANCELLED"
+  | "BOOKING_ARCHIVED"
+  | "STALE";
+
+/**
+ * Причины, которые клиент вправе передать в `POST /sessions/:id/cancel`:
+ * «Прервать» в киоске, «Прервать» на карточке брони, «ушёл, ничего не сделав».
+ * Остальные {@link ScanCancelReason} ставит только сервер.
+ */
+export type KioskCancelReason = "KIOSK_ABORT" | "CARD_ABORT" | "EMPTY_LEAVE";
+
+// ── Черновик чек-листа (PUT /sessions/:id/draft) ─────────────────────────────
+
+/**
+ * Лимиты черновика — те же, что проверяет `checklistDraftSchema` на сервере.
+ * Клиент не шлёт заведомо негодный черновик (413 `DRAFT_TOO_LARGE`).
+ */
+export const CHECKLIST_DRAFT_LIMITS = {
+  /** Размер JSON черновика в байтах UTF-8. */
+  maxBytes: 256 * 1024,
+  /** Суммарное число ключей в словарях черновика. */
+  maxKeys: 500,
+  /** Длина любой строки (комментарий к ремонту, потеряшке). */
+  maxStringLength: 2000,
+} as const;
+
+/** Строка выдачи: сколько грузим, отмечена ли, взято ли «под ответственность». */
+export interface IssueDraftRow {
+  qty: number;
+  checked: boolean;
+  /** Запасной ключ, если позицию брони пересоздали и `bookingItemId` сменился. */
+  equipmentId: string | null;
+  /** Строке разрешён потолок `ackCap` (сверх свободного — под ответственность). */
+  ack?: boolean;
+}
+
+/** Исход штучной единицы на приёмке. */
+export interface ReturnDraftUnit {
+  outcome: ReturnOutcome;
+  repairComment?: string;
+  problem?: ProblemDraft;
+}
+
+/** Статус одной ячейки сетки приёмки по количеству (как `UnitSlot.status`). */
+export type ReturnDraftSlotStatus = "PENDING" | "ACCEPTED" | "REPAIR" | "PROBLEM";
+
+/** Ячейка сетки приёмки — `UnitSlot` без вычисляемого `index`. */
+export interface ReturnDraftSlot {
+  status: ReturnDraftSlotStatus;
+  repairComment: string;
+  problem: ProblemDraft;
+}
+
+/** Сетка строки приёмки по количеству. Число ячеек = количество строки. */
+export interface ReturnDraftGrid {
+  /** Запасной ключ, если позицию брони пересоздали. */
+  equipmentId: string | null;
+  slots: ReturnDraftSlot[];
+}
+
+/**
+ * Черновик чек-листа, который киоск хранит на сервере
+ * (`ScanSession.draftJson`). Контракт 2.5 плана; zod-схема — в
+ * `apps/api/src/services/checklistService.ts` (`checklistDraftSchema`).
+ *
+ * Ключи словарей: `issue.rows` и `return.grids` — `bookingItemId`,
+ * `return.units` — `equipmentUnitId`, `return.mileages` — `vehicleId`.
+ */
+export interface ChecklistDraftV1 {
+  v: 1;
+  issue?: { rows: Record<string, IssueDraftRow> };
+  return?: {
+    units: Record<string, ReturnDraftUnit>;
+    grids: Record<string, ReturnDraftGrid>;
+    mileages?: Record<string, number | null>;
+  };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Проверка формы черновика, пришедшего с сервера (`/state`, 409
+ * `DRAFT_OUTDATED`). Только верхний уровень: строки внутри клиент всё равно
+ * сопоставляет с текущим составом брони и отбрасывает то, чего нет.
+ */
+export function isChecklistDraftV1(value: unknown): value is ChecklistDraftV1 {
+  if (!isPlainObject(value) || value.v !== 1) return false;
+  if (value.issue !== undefined) {
+    if (!isPlainObject(value.issue) || !isPlainObject(value.issue.rows)) return false;
+  }
+  if (value.return !== undefined) {
+    const r = value.return;
+    if (!isPlainObject(r) || !isPlainObject(r.units) || !isPlainObject(r.grids)) return false;
+    if (r.mileages !== undefined && !isPlainObject(r.mileages)) return false;
+  }
+  return true;
+}
 
 // ── Checklist (mirrors checklistService.ts) ──────────────────────────────────
 
@@ -76,6 +201,54 @@ export interface ChecklistItem {
    * Source: `apps/api/src/services/checklistService.ts` (`ChecklistItem`).
    */
   addCap: number;
+
+  // ── Поля контракта 2.5 (сервер v2 присылает их всегда; на клиенте они
+  //    необязательны, чтобы старые фикстуры и ответ старого API не ломались —
+  //    читать через `?? значение по умолчанию`). ─────────────────────────────
+
+  /**
+   * Потолок «под ответственность»: сколько ещё можно добавить, если забрать
+   * единицы, которые числятся за чужими бронями (`physical − alreadyInBooking`).
+   * `ackCap > addCap` — добор сверх свободного возможен только с подтверждением
+   * (`IssuanceAdjustment.acknowledgedConflict`). По умолчанию = `addCap`.
+   */
+  ackCap?: number;
+  /**
+   * Чья бронь держит единицы сверх `addCap` — для подсказки у степпера
+   * («Занято: #ABC “Проект” до ДД.ММ»). Заполнен только при `ackCap > addCap`.
+   */
+  capHolder?: AddonConflict | null;
+  /** Цена произвольной (не каталожной) позиции за весь период, Decimal-строка. */
+  customUnitPrice?: string | null;
+  /** Цена строки основной сметы (MAIN) за весь период, Decimal-строка. */
+  mainUnitPrice?: string | null;
+  /** Строка MAIN с договорной ценой — процент скидки к ней не применяется. */
+  mainNegotiated?: boolean;
+  /** Сколько единиц этой строки добавлено доборами в ЭТОЙ сессии. */
+  addedOnSite?: number;
+}
+
+/** Сессия, к которой относится чек-лист (`GET /sessions/:id/state`). */
+export interface ChecklistSessionInfo {
+  status: ScanSessionStatus;
+  operation: ScanOperation;
+  /** Кто открыл сессию: имя PIN-кладовщика или логин сотрудника. */
+  workerName: string;
+  /** ISO. */
+  startedAt: string;
+}
+
+/** Бронь чек-листа — ровно то, что нужно экрану выдачи/приёмки. */
+export interface ChecklistBookingInfo {
+  status: KioskBookingStatus;
+  /** ISO. */
+  startDate: string;
+  /** ISO. */
+  endDate: string;
+  /** Decimal-строка. */
+  finalAmount: string;
+  /** Договорной итог (Decimal-строка) или `null`, если сумма считается сметой. */
+  manualFinalAmount: string | null;
 }
 
 export interface ChecklistState {
@@ -110,6 +283,27 @@ export interface ChecklistState {
    * Source: `apps/api/src/services/checklistService.ts` (`ChecklistState`).
    */
   mainOriginalAfterDiscount: string;
+
+  // ── Поля контракта 2.5 (сервер v2 присылает всегда; см. ChecklistItem). ────
+
+  session?: ChecklistSessionInfo;
+  booking?: ChecklistBookingInfo;
+  /** Сохранённый черновик чек-листа или `null`, если его ещё не было. */
+  draft?: ChecklistDraftV1 | null;
+  /**
+   * Ревизия черновика на сервере. Её клиент передаёт в `saveDraft` и в
+   * `complete({ draftRevision })`. 0 — черновика не было.
+   */
+  draftRevision?: number;
+  /** ISO — когда черновик сохранили последний раз. */
+  draftSavedAt?: string | null;
+  /** Кто сохранил черновик последним. */
+  draftSavedBy?: string | null;
+  /**
+   * Отпечаток состава брони (`id:quantity` всех позиций). Передаётся в
+   * `complete({ itemsVersion })`: состав поменялся — 409 `CHECKLIST_OUTDATED`.
+   */
+  itemsVersion?: string;
 }
 
 // ── Return-flow outcomes ─────────────────────────────────────────────────────
@@ -123,11 +317,14 @@ export type RepairUrgency = "NOT_URGENT" | "NORMAL" | "URGENT";
 
 // ── Add-on search (mirrors GET /sessions/:id/addon-search response) ──────────
 
+/** Статус чужой брони, которая держит единицы (`BLOCKING_STATUSES`). */
+export type AddonHolderStatus = "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED";
+
 /**
- * Conflict block: an article is busy by another CONFIRMED/ISSUED booking
- * for the dates of the current booking. Shape mirrors
- * `AddonConflict` in `addonAvailability.ts` (the API returns the raw object
- * inside each result, plus the same shape as 409 `details`).
+ * Держатель: чужая бронь, из-за которой свободно меньше, чем просят.
+ * Зеркало `AddonConflict` в `apps/api/src/services/addonAvailability.ts` (v2,
+ * контракт 2.4). Приходит внутри строк поиска добора, в `capHolder` строки
+ * чек-листа и в `details` 409 `ADDON_CONFLICT`.
  */
 export interface AddonConflict {
   bookingId: string;
@@ -138,8 +335,28 @@ export interface AddonConflict {
   from: string;
   /** ISO date. */
   to: string;
-  /** ISO date — nearest conflicting booking endDate. */
-  freeFrom: string;
+  /**
+   * ISO — с какого момента единицы освободятся. `null`, когда срок назвать
+   * нельзя (просроченная выданная бронь: возврат не отмечен) — тогда
+   * «Свободно с …» не показывать.
+   */
+  freeFrom: string | null;
+
+  // ── Поля v2 (сервер присылает всегда; на клиенте необязательны, чтобы
+  //    старые фикстуры и ответ старого API не ломались). ───────────────────
+
+  /** Клиент брони-держателя. */
+  clientName?: string | null;
+  /** ISSUED — вещь у клиента, а не «на бумаге». */
+  holderStatus?: AddonHolderStatus;
+  /** ISO — когда бронь-держатель выдана (только ISSUED). */
+  issuedAt?: string | null;
+  /** Держатель выдан и не возвращён после своего срока. */
+  overdue?: boolean;
+  /** Сколько свободно для нашей брони на её окно. */
+  freeForUs?: number;
+  /** Потолок «под ответственность» для этой позиции. */
+  ackCap?: number;
 }
 
 export interface AddonResult {
@@ -157,6 +374,13 @@ export interface AddonResult {
   addCap: number;
   availability: "AVAILABLE" | "UNAVAILABLE";
   conflict: AddonConflict | null;
+  /**
+   * Потолок «под ответственность»: с подтверждённым конфликтом можно добрать
+   * до `ackCap`. Сервер v2 присылает всегда; по умолчанию = `addCap`.
+   */
+  ackCap?: number;
+  /** Сколько этой позиции уже в брони (0 — позиции ещё нет). */
+  alreadyInBooking?: number;
 }
 
 // ── Bookings list (mirrors GET /bookings?operation= response) ────────────────
@@ -193,6 +417,51 @@ export interface ScanSessionInfo {
    * продолжает незавершённую работу), false/undefined — сессия новая.
    */
   resumed?: boolean;
+  /** Кто открыл сессию (для плашки «Продолжена выдача, начатая …»). */
+  workerName?: string;
+  /** ISO — когда последний раз сохраняли черновик; `null` — черновика нет. */
+  draftSavedAt?: string | null;
+  /**
+   * Устаревшие ACTIVE-сессии этой брони, которые сервер закрыл при старте
+   * (бронь уже выдана/принята/отменена на карточке).
+   */
+  closedStaleSessionIds?: string[];
+}
+
+/**
+ * Пропсы, которые страница киоска (`app/warehouse/scan/page.tsx`) передаёт
+ * обоим чек-листам — `IssueChecklist` и `ReturnChecklist` — сверх прежних
+ * `sessionId`/`projectName`/`onBack`/`onComplete`/`onCompleted`. Чек-лист
+ * монтируется с `key={sessionId}`, поэтому смена брони даёт свежий экземпляр.
+ */
+export interface ChecklistSessionProps {
+  /**
+   * `createSession` вернул уже идущую сессию (`resumed: true`) — чек-лист
+   * рендерит над собой `ResumedSessionBanner` (кто и когда начал, восстановлен
+   * ли черновик). `null`/`undefined` — сессия новая, плашки нет.
+   */
+  resumed?: ScanSessionInfo | null;
+  /**
+   * Страница зовёт `leaveRef.current?.()` на «←» и при выборе другой брони.
+   * Чек-лист передаёт ref в `useChecklistDraft({ leaveRef })` — хук досылает
+   * черновик или прерывает пустую сессию. Если ref пуст, страница делает то
+   * же сама (`leaveChecklistSession`).
+   */
+  leaveRef?: MutableRefObject<(() => void) | null>;
+  /**
+   * «К списку броней» на `SessionClosedNotice` (коды `SESSION_*`): страница
+   * закрывает чек-лист и обновляет списки броней.
+   */
+  onSessionClosed?: () => void;
+}
+
+/** Ответ `POST /sessions/:id/cancel`. */
+export interface CancelSessionResult extends ScanSessionInfo {
+  /**
+   * false — сессию НЕ отменили: при `onlyIfEmpty` в ней уже была работа
+   * (черновик, отметки или добор), и она остаётся ACTIVE.
+   */
+  cancelled: boolean;
 }
 
 // ── Auth (mirrors POST /auth + GET /workers/names) ───────────────────────────
@@ -257,6 +526,12 @@ export type ProblemUnitInput =
 export interface IssuanceAdjustment {
   bookingItemId: string;
   actualQuantity: number;
+  /**
+   * Прибавку сверх свободного подтвердили «под ответственность» — потолок
+   * строки `ackCap` вместо `addCap`. Без флага превышение → 409
+   * `ADDON_OVER_STOCK` с `details.bookingItemId`.
+   */
+  acknowledgedConflict?: boolean;
 }
 
 export interface VehicleMileageEntry {
@@ -280,6 +555,21 @@ export interface CompletePayload {
    * 409 MILEAGE_DECREASE.
    */
   vehicleMileages?: VehicleMileageEntry[];
+  /**
+   * Выдать раньше, чем за сутки до начала аренды, осознанно — повтор после
+   * 409 `ISSUE_TOO_EARLY` (только ISSUE).
+   */
+  force?: boolean;
+  /**
+   * `ChecklistState.itemsVersion`, на котором построен экран. Состав брони
+   * поменялся — 409 `CHECKLIST_OUTDATED`, чек-лист надо перечитать.
+   */
+  itemsVersion?: string;
+  /**
+   * Ревизия черновика, на которой построен экран. Меньше серверной (другое
+   * устройство сохранило позже) — 409 `DRAFT_OUTDATED`.
+   */
+  draftRevision?: number;
 }
 
 // ── Summary / complete response (mirrors GET /summary, POST /complete) ────────
@@ -392,6 +682,17 @@ export interface CompleteResult extends SummaryResult {
   failedBrokenUnits?: FailedBrokenUnit[];
   createdProblemItemIds?: string[];
   failedProblemUnits?: FailedProblemUnit[];
+
+  // ── Поля контракта 2.5 (сервер v2 присылает всегда). ────────────────────
+
+  /** Статус брони после завершения (ISSUED после выдачи, RETURNED после приёмки). */
+  bookingStatus?: KioskBookingStatus;
+  /** Кто нажал «Готово» (может отличаться от того, кто открыл сессию). */
+  completedBy?: string | null;
+  /** Договорной итог брони (Decimal-строка) или `null`. */
+  manualFinalAmount?: string | null;
+  /** Сколько доборов сделано в этой сессии (строк, где выдали больше исходного). */
+  addonsAddedInSession?: number;
 }
 
 // ── Mutation results ─────────────────────────────────────────────────────────
@@ -486,6 +787,178 @@ export function isScanApiError(value: unknown): value is ScanApiError {
     "status" in value &&
     "message" in value
   );
+}
+
+// ── Коды ошибок киоска (таблица 2.2 плана; API и web — один список) ──────────
+//
+// Текст для человека всегда приходит с сервера (`ScanApiError.message`, по-русски).
+// Код нужен, чтобы выбрать реакцию экрана: перечитать чек-лист, показать
+// «Сессию закрыли», предложить «Выдать заранее», подсветить строку.
+
+export const SCAN_ERROR = {
+  SESSION_NOT_FOUND: "SESSION_NOT_FOUND",
+  SESSION_ALREADY_COMPLETED: "SESSION_ALREADY_COMPLETED",
+  SESSION_CANCELLED: "SESSION_CANCELLED",
+  SESSION_STALE: "SESSION_STALE",
+  CHECKLIST_OUTDATED: "CHECKLIST_OUTDATED",
+  DRAFT_OUTDATED: "DRAFT_OUTDATED",
+  DRAFT_TOO_LARGE: "DRAFT_TOO_LARGE",
+  NOTHING_TO_ISSUE: "NOTHING_TO_ISSUE",
+  ISSUE_TOO_EARLY: "ISSUE_TOO_EARLY",
+  ADDON_ONLY_ON_ISSUE: "ADDON_ONLY_ON_ISSUE",
+  ADDON_OVER_STOCK: "ADDON_OVER_STOCK",
+  ADDON_CONFLICT: "ADDON_CONFLICT",
+  SCAN_SESSION_ACTIVE: "SCAN_SESSION_ACTIVE",
+  INVALID_BOOKING_STATE: "INVALID_BOOKING_STATE",
+  NOT_ENOUGH_UNITS: "NOT_ENOUGH_UNITS",
+  BOOKING_WRONG_STATUS: "BOOKING_WRONG_STATUS",
+  /** Клиентский: запрос не дошёл до сервера (status 0). */
+  NETWORK_ERROR: "NETWORK_ERROR",
+} as const;
+
+export type ScanErrorCode = (typeof SCAN_ERROR)[keyof typeof SCAN_ERROR];
+
+/**
+ * Коды «с этой сессией больше работать нельзя» — экран показывает
+ * `SessionClosedNotice` («К списку броней»), а не тост.
+ */
+export const SESSION_CLOSED_CODES = [
+  SCAN_ERROR.SESSION_NOT_FOUND,
+  SCAN_ERROR.SESSION_ALREADY_COMPLETED,
+  SCAN_ERROR.SESSION_CANCELLED,
+  SCAN_ERROR.SESSION_STALE,
+] as const;
+
+export type SessionClosedCode = (typeof SESSION_CLOSED_CODES)[number];
+
+export interface SessionAlreadyCompletedDetails {
+  sessionId: string;
+  operation: ScanOperation;
+  /** ISO. */
+  completedAt: string | null;
+  completedBy: string | null;
+}
+
+export interface SessionCancelledDetails {
+  sessionId: string;
+  operation: ScanOperation;
+  cancelReason: ScanCancelReason | null;
+  /** ISO. */
+  cancelledAt: string | null;
+  cancelledBy: string | null;
+}
+
+export interface SessionStaleDetails {
+  sessionId: string;
+  operation: ScanOperation;
+  bookingStatus: KioskBookingStatus;
+}
+
+export interface ChecklistOutdatedDetails {
+  /** Позиции из запроса, которых в брони уже нет. */
+  unknownBookingItemIds?: string[];
+}
+
+export interface DraftOutdatedDetails {
+  /** Актуальная ревизия на сервере — от неё считать следующее сохранение. */
+  revision: number;
+  draft: ChecklistDraftV1 | null;
+  /** ISO. */
+  savedAt: string | null;
+  savedBy: string | null;
+}
+
+export interface IssueTooEarlyDetails {
+  /** ISO — начало аренды. */
+  startDate: string;
+}
+
+export interface AddonOverStockDetails {
+  /** Есть, когда превышение найдено в `/complete` (строка степпера). */
+  bookingItemId?: string;
+  equipmentId: string;
+  name: string;
+  addCap: number;
+  requested: number;
+  alreadyInBooking: number;
+}
+
+/** 409 `ADDON_CONFLICT`: держатель + из `/complete` ещё и строка. */
+export interface AddonConflictDetails extends AddonConflict {
+  bookingItemId?: string;
+  equipmentId?: string;
+}
+
+export interface ScanSessionActiveDetails {
+  sessionId: string;
+  operation: ScanOperation;
+  workerName: string;
+  /** ISO. */
+  startedAt: string;
+  hasDraft: boolean;
+}
+
+export interface InvalidBookingStateDetails {
+  status: KioskBookingStatus;
+  action: string;
+}
+
+export interface NotEnoughUnitsDetails {
+  equipmentId: string;
+  available: number;
+  requested: number;
+}
+
+export interface BookingWrongStatusDetails {
+  status: KioskBookingStatus;
+}
+
+/** Что лежит в `details` у каждого кода (коды без деталей — `null`). */
+export interface ScanErrorDetailsMap {
+  SESSION_NOT_FOUND: null;
+  SESSION_ALREADY_COMPLETED: SessionAlreadyCompletedDetails;
+  SESSION_CANCELLED: SessionCancelledDetails;
+  SESSION_STALE: SessionStaleDetails;
+  CHECKLIST_OUTDATED: ChecklistOutdatedDetails;
+  DRAFT_OUTDATED: DraftOutdatedDetails;
+  DRAFT_TOO_LARGE: null;
+  NOTHING_TO_ISSUE: null;
+  ISSUE_TOO_EARLY: IssueTooEarlyDetails;
+  ADDON_ONLY_ON_ISSUE: null;
+  ADDON_OVER_STOCK: AddonOverStockDetails;
+  ADDON_CONFLICT: AddonConflictDetails;
+  SCAN_SESSION_ACTIVE: ScanSessionActiveDetails;
+  INVALID_BOOKING_STATE: InvalidBookingStateDetails;
+  NOT_ENOUGH_UNITS: NotEnoughUnitsDetails;
+  BOOKING_WRONG_STATUS: BookingWrongStatusDetails;
+  NETWORK_ERROR: null;
+}
+
+/** Код ошибки из отказа любого вызова `api.ts` или `null`. */
+export function scanErrorCode(err: unknown): string | null {
+  return isScanApiError(err) && typeof err.code === "string" ? err.code : null;
+}
+
+/** Сессия закрыта (выдача/приёмка оформлена, прервана, устарела или удалена). */
+export function isSessionClosedError(
+  err: unknown,
+): err is ScanApiError & { code: SessionClosedCode } {
+  const code = scanErrorCode(err);
+  return code !== null && (SESSION_CLOSED_CODES as readonly string[]).includes(code);
+}
+
+/**
+ * Детали ошибки с нужным кодом — или `null`, если код другой или деталей нет.
+ * Форма деталей не перепроверяется (её гарантирует сервер); пришедший не
+ * объект (например, HTML-страница прокси) деталями не считается.
+ */
+export function getScanErrorDetails<C extends keyof ScanErrorDetailsMap>(
+  err: unknown,
+  code: C,
+): ScanErrorDetailsMap[C] | null {
+  if (scanErrorCode(err) !== code) return null;
+  const details = (err as ScanApiError).details;
+  return isPlainObject(details) ? (details as unknown as ScanErrorDetailsMap[C]) : null;
 }
 
 // ── COUNT-mode return split (Task 2) ─────────────────────────────────────────

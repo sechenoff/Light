@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
-import type { ScanSession, ScanRecord, EquipmentUnit, BookingItem, Booking } from "@prisma/client";
 
 // Set env vars before any imports
 beforeAll(() => {
@@ -17,6 +16,7 @@ vi.mock("../../prisma", () => ({
     },
     scanSession: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -98,17 +98,41 @@ describe("createSession", () => {
   it("rejects ISSUE when booking is not CONFIRMED", async () => {
     const { createSession } = await getSvc();
     const db = await getPrisma();
-    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "DRAFT" });
+    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "DRAFT", deletedAt: null });
 
-    await expect(createSession("b1", "Иван", "ISSUE")).rejects.toThrow("CONFIRMED");
+    await expect(createSession("b1", "Иван", "ISSUE")).rejects.toMatchObject({
+      status: 409,
+      code: "BOOKING_WRONG_STATUS",
+      message: "Выдать можно только подтверждённую бронь",
+    });
+  });
+
+  it("rejects ISSUE on an already issued booking with a hint about «+ Добор»", async () => {
+    const { createSession } = await getSvc();
+    const db = await getPrisma();
+    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "ISSUED", deletedAt: null });
+
+    await expect(createSession("b1", "Иван", "ISSUE")).rejects.toThrow(/«\+ Добор»/);
+  });
+
+  it("rejects ISSUE on an archived booking", async () => {
+    const { createSession } = await getSvc();
+    const db = await getPrisma();
+    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "CONFIRMED", deletedAt: new Date() });
+
+    await expect(createSession("b1", "Иван", "ISSUE")).rejects.toMatchObject({ code: "BOOKING_ARCHIVED" });
   });
 
   it("rejects RETURN when booking is not ISSUED", async () => {
     const { createSession } = await getSvc();
     const db = await getPrisma();
-    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "CONFIRMED" });
+    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "CONFIRMED", deletedAt: null });
 
-    await expect(createSession("b1", "Иван", "RETURN")).rejects.toThrow("ISSUED");
+    await expect(createSession("b1", "Иван", "RETURN")).rejects.toMatchObject({
+      status: 409,
+      code: "BOOKING_WRONG_STATUS",
+      message: "Принять можно только выданную бронь",
+    });
   });
 
   it("returns the existing ACTIVE session instead of throwing (idempotent re-open)", async () => {
@@ -118,7 +142,8 @@ describe("createSession", () => {
     // «Внутренняя ошибка сервера» and silently broke the UI.
     const { createSession } = await getSvc();
     const db = await getPrisma();
-    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "CONFIRMED" });
+    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "CONFIRMED", deletedAt: null });
+    db.scanSession.findMany.mockResolvedValue([]);
     const existing = {
       id: "s1",
       bookingId: "b1",
@@ -132,7 +157,7 @@ describe("createSession", () => {
     const out = await createSession("b1", "Борис", "ISSUE");
     // Существующая сессия возвращается с resumed=true — киоск по этому флагу
     // показывает плашку «Продолжена незавершённая сессия».
-    expect(out).toEqual({ ...existing, resumed: true });
+    expect(out).toEqual({ ...existing, hasDraft: false, resumed: true, closedStaleSessionIds: [] });
     // create MUST NOT be invoked when an ACTIVE session already exists.
     expect(db.scanSession.create).not.toHaveBeenCalled();
   });
@@ -140,7 +165,8 @@ describe("createSession", () => {
   it("creates and returns session for valid ISSUE booking", async () => {
     const { createSession } = await getSvc();
     const db = await getPrisma();
-    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "CONFIRMED" });
+    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "CONFIRMED", deletedAt: null });
+    db.scanSession.findMany.mockResolvedValue([]);
     db.scanSession.findFirst.mockResolvedValue(null);
 
     const mockSession = {
@@ -155,7 +181,7 @@ describe("createSession", () => {
     db.$transaction.mockImplementation(async (fn: any) => fn(db));
 
     const result = await createSession("b1", "Иван", "ISSUE");
-    expect(result).toEqual({ ...mockSession, resumed: false });
+    expect(result).toEqual({ ...mockSession, hasDraft: false, resumed: false, closedStaleSessionIds: [] });
     expect(db.scanSession.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -171,7 +197,8 @@ describe("createSession", () => {
   it("creates session for valid RETURN booking", async () => {
     const { createSession } = await getSvc();
     const db = await getPrisma();
-    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "ISSUED" });
+    db.booking.findUnique.mockResolvedValue({ id: "b1", status: "ISSUED", deletedAt: null });
+    db.scanSession.findMany.mockResolvedValue([]);
     db.scanSession.findFirst.mockResolvedValue(null);
 
     const mockSession = {
@@ -186,189 +213,17 @@ describe("createSession", () => {
     db.$transaction.mockImplementation(async (fn: any) => fn(db));
 
     const result = await createSession("b1", "Петр", "RETURN");
-    expect(result).toEqual({ ...mockSession, resumed: false });
+    expect(result).toEqual({ ...mockSession, hasDraft: false, resumed: false, closedStaleSessionIds: [] });
   });
 });
 
 // ─────────────────────────────────────────────
-// 5.3 completeSession
+// 5.3 completeSession / 5.4 cancelSession
+//
+// Проверяются на настоящей SQLite, а не моками: захват сессии, транзакции и
+// аудит моками не воспроизводятся — scanSessionLifecycle.test.ts,
+// warehouseKioskAudit.test.ts, warehouseScanUnitKiosk.test.ts.
 // ─────────────────────────────────────────────
-describe("completeSession", () => {
-  it("rejects if session is not ACTIVE", async () => {
-    const { completeSession } = await getSvc();
-    const db = await getPrisma();
-    db.scanSession.findUnique.mockResolvedValue({
-      id: "s1",
-      status: "COMPLETED",
-      bookingId: "b1",
-      operation: "ISSUE",
-      booking: { status: "CONFIRMED" },
-      scans: [],
-    });
-
-    await expect(completeSession("s1")).rejects.toThrow("активной");
-  });
-
-  it("rejects if booking is CANCELLED", async () => {
-    const { completeSession } = await getSvc();
-    const db = await getPrisma();
-    db.scanSession.findUnique.mockResolvedValue({
-      id: "s1",
-      status: "ACTIVE",
-      bookingId: "b1",
-      operation: "ISSUE",
-      booking: { status: "CANCELLED" },
-      scans: [],
-    });
-
-    await expect(completeSession("s1")).rejects.toThrow("отменена");
-  });
-
-  it("completes ISSUE session: sets units to ISSUED, creates BookingItemUnit, returns summary", async () => {
-    const { completeSession } = await getSvc();
-    const db = await getPrisma();
-
-    const scannedUnitId = "unit-1";
-    const session = {
-      id: "s1",
-      status: "ACTIVE",
-      bookingId: "b1",
-      operation: "ISSUE",
-      booking: { status: "CONFIRMED" },
-      scans: [
-        {
-          id: "sr-1",
-          equipmentUnitId: scannedUnitId,
-          equipmentUnit: { id: scannedUnitId, equipmentId: "eq-1" },
-        },
-      ],
-    };
-    db.scanSession.findUnique.mockResolvedValue(session);
-
-    db.bookingItem.findMany.mockResolvedValue([
-      { id: "bi-1", equipmentId: "eq-1", quantity: 1, unitReservations: [] },
-    ]);
-
-    db.projectLot.findMany.mockResolvedValue([]);
-    db.projectLotUnit.count.mockResolvedValue(0);
-
-    // Reserved units (BookingItemUnit) — same unit is reserved
-    db.bookingItemUnit.findMany.mockResolvedValue([
-      { id: "biu-1", bookingItemId: "bi-1", equipmentUnitId: scannedUnitId },
-    ]);
-
-    // Transaction mock: execute the callback
-    db.$transaction.mockImplementation(async (fn: any) => fn(db));
-
-    // Unit update and session update mocks
-    db.equipmentUnit.update.mockResolvedValue({});
-    db.bookingItemUnit.create.mockResolvedValue({});
-    db.bookingItemUnit.delete.mockResolvedValue({});
-    db.scanSession.update.mockResolvedValue({
-      id: "s1",
-      status: "COMPLETED",
-      completedAt: new Date(),
-    });
-
-    const result = await completeSession("s1");
-    expect(result).toMatchObject({
-      scanned: 1,
-      expected: 1,
-      missing: [],
-      substituted: [],
-    });
-  });
-
-  it("completes RETURN session: reverts unit status, sets returnedAt, flags missing", async () => {
-    const { completeSession } = await getSvc();
-    const db = await getPrisma();
-
-    const scannedUnitId = "unit-1";
-    const notScannedUnitId = "unit-2";
-
-    const session = {
-      id: "s1",
-      status: "ACTIVE",
-      bookingId: "b1",
-      operation: "RETURN",
-      booking: { status: "ISSUED" },
-      scans: [
-        {
-          id: "sr-1",
-          equipmentUnitId: scannedUnitId,
-          equipmentUnit: { id: scannedUnitId, equipmentId: "eq-1" },
-        },
-      ],
-    };
-    db.scanSession.findUnique.mockResolvedValue(session);
-
-    db.bookingItem.findMany.mockResolvedValue([
-      { id: "bi-1", equipmentId: "eq-1", quantity: 2 },
-    ]);
-
-    // Both units were issued
-    db.bookingItemUnit.findMany.mockResolvedValue([
-      {
-        id: "biu-1",
-        bookingItemId: "bi-1",
-        equipmentUnitId: scannedUnitId,
-        equipmentUnit: { id: scannedUnitId },
-      },
-      {
-        id: "biu-2",
-        bookingItemId: "bi-1",
-        equipmentUnitId: notScannedUnitId,
-        equipmentUnit: { id: notScannedUnitId },
-      },
-    ]);
-
-    db.$transaction.mockImplementation(async (fn: any) => fn(db));
-    db.equipmentUnit.update.mockResolvedValue({});
-    // ws-1: не отсканированные и не помеченные юниты переводятся в MISSING батчем.
-    db.equipmentUnit.updateMany.mockResolvedValue({ count: 1 });
-    db.bookingItemUnit.update.mockResolvedValue({});
-    db.scanSession.update.mockResolvedValue({ id: "s1", status: "COMPLETED" });
-    // Фича пробега: у брони нет машин → проверка обязательного пробега пропускается.
-    db.bookingVehicle.findMany.mockResolvedValue([]);
-
-    const result = await completeSession("s1");
-    expect(result.scanned).toBe(1);
-    expect(result.expected).toBe(2);
-    expect(result.missing).toContain(notScannedUnitId);
-    expect(result.substituted).toEqual([]);
-    // ws-1: недостающий юнит уходит из ISSUED в MISSING (а не остаётся выданным).
-    expect(db.equipmentUnit.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ id: { in: [notScannedUnitId] }, status: "ISSUED" }),
-        data: { status: "MISSING" },
-      }),
-    );
-  });
-});
-
-// ─────────────────────────────────────────────
-// 5.4 cancelSession
-// ─────────────────────────────────────────────
-describe("cancelSession", () => {
-  it("rejects if session is not ACTIVE", async () => {
-    const { cancelSession } = await getSvc();
-    const db = await getPrisma();
-    db.scanSession.findUnique.mockResolvedValue({ id: "s1", status: "COMPLETED" });
-
-    await expect(cancelSession("s1")).rejects.toThrow("активной");
-  });
-
-  it("sets session status to CANCELLED without touching units", async () => {
-    const { cancelSession } = await getSvc();
-    const db = await getPrisma();
-    db.scanSession.findUnique.mockResolvedValue({ id: "s1", status: "ACTIVE" });
-    db.scanSession.update.mockResolvedValue({ id: "s1", status: "CANCELLED" });
-
-    const result = await cancelSession("s1");
-    expect(result.status).toBe("CANCELLED");
-    expect(db.equipmentUnit.update).not.toHaveBeenCalled();
-  });
-});
 
 // ─────────────────────────────────────────────
 // 5.5 getSessionWithDetails

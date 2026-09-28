@@ -227,6 +227,23 @@ describe("ReturnResultView", () => {
     expect(container.textContent || "").not.toMatch(/LR-[A-Z0-9]+-\d+/);
   });
 
+  it("пишет, кто оформил приёмку (completedBy), а без поля строки нет", () => {
+    const { rerender } = render(
+      <ReturnResultView
+        result={okResult({ completedBy: "Иван Кладовщик" })}
+        acceptedCount={3}
+        projectName="P"
+        onDone={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Кто оформил:/)).toHaveTextContent("Кто оформил: Иван Кладовщик");
+
+    rerender(
+      <ReturnResultView result={okResult()} acceptedCount={3} projectName="P" onDone={() => {}} />,
+    );
+    expect(screen.queryByText(/Кто оформил:/)).not.toBeInTheDocument();
+  });
+
   it("invokes onDone when «Готово» is pressed", () => {
     const onDone = vi.fn();
     render(

@@ -311,6 +311,45 @@ describe("POST /api/warehouse/sessions/:id/complete", () => {
     );
   });
 
+  it("forwards force, itemsVersion, draftRevision and acknowledgedConflict; PIN-вход без автора CRM", async () => {
+    mockCompleteSession.mockResolvedValue({ scanned: 0, expected: 0, missing: [], substituted: [] });
+    mockPrisma.equipmentUnit.findMany.mockResolvedValue([]);
+    mockPrisma.scanSession.findUnique.mockResolvedValue({ id: "sess-1", operation: "ISSUE" });
+
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/complete")
+      .set("Authorization", "Bearer valid-token")
+      .send({
+        force: true,
+        itemsVersion: "0123456789abcdef",
+        draftRevision: 3,
+        issuanceAdjustments: [{ bookingItemId: "bi-1", actualQuantity: 4, acknowledgedConflict: true }],
+      });
+
+    expect(res.status).toBe(200);
+    expect(mockCompleteSession).toHaveBeenCalledWith(
+      "sess-1",
+      expect.objectContaining({
+        createdBy: "Иван",
+        auditUserId: null,
+        force: true,
+        itemsVersion: "0123456789abcdef",
+        draftRevision: 3,
+        issuanceAdjustments: [{ bookingItemId: "bi-1", actualQuantity: 4, acknowledgedConflict: true }],
+      }),
+    );
+  });
+
+  it("rejects negative draftRevision with 400", async () => {
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/complete")
+      .set("Authorization", "Bearer valid-token")
+      .send({ draftRevision: -1 });
+
+    expect(res.status).toBe(400);
+    expect(mockCompleteSession).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed issuanceAdjustments with 400", async () => {
     const res = await request(app)
       .post("/api/warehouse/sessions/sess-1/complete")
@@ -428,6 +467,38 @@ describe("POST /api/warehouse/sessions/:id/cancel", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(cancelled);
-    expect(mockCancelSession).toHaveBeenCalledWith("sess-1");
+    // Без тела: причина по умолчанию выберется в сервисе; PIN-кладовщик — автор по имени.
+    expect(mockCancelSession).toHaveBeenCalledWith("sess-1", {
+      reason: undefined,
+      onlyIfEmpty: undefined,
+      actorUserId: null,
+      actorName: "Иван",
+    });
+  });
+
+  it("forwards reason and onlyIfEmpty", async () => {
+    mockCancelSession.mockResolvedValue({ id: "sess-1", status: "ACTIVE", cancelled: false });
+
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/cancel")
+      .set("Authorization", "Bearer valid-token")
+      .send({ reason: "EMPTY_LEAVE", onlyIfEmpty: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.cancelled).toBe(false);
+    expect(mockCancelSession).toHaveBeenCalledWith(
+      "sess-1",
+      expect.objectContaining({ reason: "EMPTY_LEAVE", onlyIfEmpty: true }),
+    );
+  });
+
+  it("rejects a reason the kiosk may not send with 400", async () => {
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/cancel")
+      .set("Authorization", "Bearer valid-token")
+      .send({ reason: "BOOKING_ISSUED_MANUALLY" });
+
+    expect(res.status).toBe(400);
+    expect(mockCancelSession).not.toHaveBeenCalled();
   });
 });

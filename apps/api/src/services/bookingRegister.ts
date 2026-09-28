@@ -18,6 +18,7 @@ import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { toMoscowDateString } from "../utils/moscowDate";
 import { getBookingIssueSummaries, emptyIssueSummary } from "./bookingIssues";
+import { isSessionLive } from "./scanSessionPolicy";
 import { nextDate, suggestedPeriodEnd } from "./projectPricing";
 
 const date = z.string().refine((v) => {
@@ -231,6 +232,7 @@ export function projectRegisterRow(
   openProblems: number,
   now: Date,
   issues = emptyIssueSummary(),
+  liveScanSession = false,
 ): BookingRegisterRow {
   const total = dec(b.finalAmount),
     paid = dec(b.amountPaid),
@@ -362,6 +364,7 @@ export function projectRegisterRow(
     hasScanSessions: b.scanSessions.length > 0,
     lastScanOperation: b.scanSessions[0]?.operation ?? null,
     lastScanStatus: b.scanSessions[0]?.status ?? null,
+    liveScanSession,
     financeState,
     overdueAmount: overdue.toFixed(2),
     overdueDays,
@@ -592,13 +595,27 @@ export async function listBookingRegister(
   now = new Date(),
 ): Promise<BookingRegisterResponse> {
   const q = registerQuerySchema.parse(input);
-  const [sources, summaries] = await Promise.all([
+  const [sources, summaries, activeSessions] = await Promise.all([
     prisma.booking.findMany({ where: { deletedAt: null }, select }),
     getBookingIssueSummaries(now),
+    // Открытых сессий единицы — одним запросом, а не relation на каждую бронь.
+    prisma.scanSession.findMany({
+      where: { status: "ACTIVE", booking: { deletedAt: null } },
+      select: { bookingId: true, operation: true },
+    }),
   ]);
+  const activeByBooking = new Map<string, Array<(typeof activeSessions)[number]["operation"]>>();
+  for (const s of activeSessions) {
+    activeByBooking.set(s.bookingId, [...(activeByBooking.get(s.bookingId) ?? []), s.operation]);
+  }
   const all = sources.map((b) => {
     const issues = summaries.get(b.id) ?? emptyIssueSummary();
-    return projectRegisterRow(b, issues.missingCases, now, issues);
+    // «Идёт в киоске» — только живая сессия; устаревшая (бронь уже выдана или
+    // принята кнопкой) не должна звать сотрудника в киоск.
+    const live = (activeByBooking.get(b.id) ?? []).some((op) =>
+      isSessionLive(op, { status: b.status, deletedAt: null }),
+    );
+    return projectRegisterRow(b, issues.missingCases, now, issues, live);
   });
   const base = all.filter((r) => matches(r, q));
   const scopeCounts = Object.fromEntries(

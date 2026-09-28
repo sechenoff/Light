@@ -6,9 +6,10 @@
  * 1. EstimateLine.unitPrice — цена ЗА ВЕСЬ ПЕРИОД (ставка × смены). Так пишет
  *    quoteEstimate, и на этом построен экспорт: buildSmetaExportDocument делит
  *    unitPrice на число смен, чтобы напечатать колонку «цена/смена».
- *    recreateMainEstimate (вызывается при завершении приёмки на складе) писал
- *    туда ставку за смену — итог сходился, а колонка в PDF многосменной брони
- *    уменьшалась во столько раз, сколько смен в периоде.
+ *    Правка MAIN после выдачи на складе (applyIssuanceToMainEstimate) берёт
+ *    цену из снимка строки и не пересчитывает её — раньше пересборка писала
+ *    туда ставку за смену, и колонка в PDF многосменной брони уменьшалась во
+ *    столько раз, сколько смен в периоде.
  *
  * 2. Счёт выписывается на ту же сумму, которую видит витрина долгов. При
  *    зафиксированном вручную итоге счёт считался по смете и расходился с
@@ -27,7 +28,7 @@ process.env.JWT_SECRET = "test-jwt-secret-estimate-unit-16ch";
 process.env.BARCODE_SECRET = "test-secret-eu";
 
 let prisma: any;
-let recreateMainEstimate: (bookingId: string) => Promise<void>;
+let applyIssuance: (bookingId: string) => Promise<unknown>;
 let buildSmetaExportDocument: any;
 
 const RATE = 4000;
@@ -50,7 +51,8 @@ beforeAll(async () => {
   });
 
   prisma = (await import("../prisma")).prisma;
-  recreateMainEstimate = (await import("../services/mainEstimate")).recreateMainEstimate;
+  const { applyIssuanceToMainEstimate } = await import("../services/mainEstimate");
+  applyIssuance = (id: string) => prisma.$transaction((tx: any) => applyIssuanceToMainEstimate(tx, id));
   buildSmetaExportDocument = (await import("../services/smetaExport/buildDocument"))
     .buildSmetaExportDocument;
 
@@ -93,18 +95,34 @@ beforeAll(async () => {
   await prisma.bookingItem.create({
     data: { bookingId, equipmentId, quantity: QTY },
   });
+  // Снимок MAIN — как его пишет quoteEstimate: unitPrice за весь период.
   await prisma.estimate.create({
     data: {
       bookingId,
       kind: "MAIN",
       shifts: SHIFTS,
       discountPercent: 0,
-      subtotal: 0,
+      subtotal: RATE * SHIFTS * QTY,
       discountAmount: 0,
-      totalAfterDiscount: 0,
+      totalAfterDiscount: RATE * SHIFTS * QTY,
+      lines: {
+        create: [
+          {
+            equipmentId,
+            categorySnapshot: "Свет",
+            nameSnapshot: "ARRI SkyPanel S60",
+            quantity: QTY,
+            unitPrice: RATE * SHIFTS,
+            lineSum: RATE * SHIFTS * QTY,
+          },
+        ],
+      },
     },
   });
 });
+
+/** Выдали на складе на один прибор меньше, чем в смете. */
+const ISSUED = QTY - 1;
 
 afterAll(async () => {
   await prisma?.$disconnect();
@@ -115,8 +133,9 @@ afterAll(async () => {
 });
 
 describe("единица цены в снапшоте сметы", () => {
-  it("recreateMainEstimate пишет unitPrice за весь период, как quoteEstimate", async () => {
-    await recreateMainEstimate(bookingId);
+  it("выдача на складе меньше сметы сохраняет unitPrice за весь период, как quoteEstimate", async () => {
+    await prisma.bookingItem.updateMany({ where: { bookingId, equipmentId }, data: { quantity: ISSUED } });
+    await applyIssuance(bookingId);
 
     const estimate = await prisma.estimate.findFirst({
       where: { bookingId, kind: "MAIN" },
@@ -127,12 +146,13 @@ describe("единица цены в снапшоте сметы", () => {
 
     // Цена за период: ставка × смены. Не ставка за смену.
     expect(Number(line.unitPrice)).toBe(RATE * SHIFTS);
-    // Сумма строки при этом не меняется — она и раньше была верной.
-    expect(Number(line.lineSum)).toBe(RATE * SHIFTS * QTY);
+    expect(line.quantity).toBe(ISSUED);
+    expect(Number(line.lineSum)).toBe(RATE * SHIFTS * ISSUED);
+    expect(Number(estimate.totalAfterDiscount)).toBe(RATE * SHIFTS * ISSUED);
   });
 
   it("экспорт печатает в колонке «цена/смена» именно прайсовую ставку", async () => {
-    await recreateMainEstimate(bookingId);
+    await applyIssuance(bookingId);
     const estimate = await prisma.estimate.findFirst({
       where: { bookingId, kind: "MAIN" },
       include: { lines: true },
@@ -152,14 +172,14 @@ describe("единица цены в снапшоте сметы", () => {
       hourCalculationText: "",
       shifts: SHIFTS,
       discountPercent: "0",
-      subtotal: String(RATE * SHIFTS * QTY),
+      subtotal: String(RATE * SHIFTS * ISSUED),
       discountAmount: "0",
-      totalAfterDiscount: String(RATE * SHIFTS * QTY),
+      totalAfterDiscount: String(RATE * SHIFTS * ISSUED),
       lines: estimate.lines,
     });
 
     expect(Number(doc.lines[0].pricePerShift)).toBe(RATE);
-    expect(Number(doc.lines[0].lineSum)).toBe(RATE * SHIFTS * QTY);
+    expect(Number(doc.lines[0].lineSum)).toBe(RATE * SHIFTS * ISSUED);
   });
 });
 

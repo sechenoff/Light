@@ -58,9 +58,10 @@ export interface CreateProblemArgs {
   source?: ProblemSource;
 }
 
-type PlannedStatus = "EXPECTED" | "SEARCHING" | "WROTE_OFF";
+export type PlannedStatus = "EXPECTED" | "SEARCHING" | "WROTE_OFF";
 
-function plannedStatus(reason: ProblemReason): PlannedStatus {
+/** Статус новой карточки по причине — общий для штучной и безъюнитной потеряшки. */
+export function plannedStatus(reason: ProblemReason): PlannedStatus {
   if (reason === "LEFT_ON_SITE") return "EXPECTED";
   if (reason === "DESTROYED") return "WROTE_OFF";
   return "SEARCHING"; // LOST, STOLEN, NOT_ON_SHELF
@@ -77,7 +78,7 @@ const WRITE_OFF_NOTE: Record<ProblemSource, string> = {
 };
 
 /** Поля закрытия для карточки, которая рождается уже списанной. */
-function writeOffFields(status: PlannedStatus, source: ProblemSource, by: string) {
+export function writeOffFields(status: PlannedStatus, source: ProblemSource, by: string) {
   const closed = status === "WROTE_OFF";
   return {
     resolvedAt: closed ? new Date() : null,

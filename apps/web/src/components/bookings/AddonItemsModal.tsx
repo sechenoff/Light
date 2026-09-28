@@ -14,8 +14,14 @@
  *
  * Конфликт по датам (позиция числится за другой бронью) — предупреждение, а не
  * блокировка: кнопка меняется на «Добавить под ответственность», сервер пишет
- * это в аудит. Физический склад обойти нельзя — 409 ADDON_OVER_STOCK показывается
- * прямо у позиции.
+ * это в аудит. Карточка конфликта говорит, где прибор: «сейчас у клиента» (бронь
+ * выдана), «возврат не отмечен» (выдана и просрочена) или «бронь на даты».
+ * Под ответственность можно взять не больше ackCap — физический склад обойти
+ * нельзя, 409 ADDON_OVER_STOCK показывается прямо у позиции.
+ *
+ * Незавершённая выдача или приёмка в киоске (409 SCAN_SESSION_ACTIVE) —
+ * показываем, кто и когда её начал, и даём прервать её прямо отсюда: иначе
+ * совет «завершите в киоске» часто выполнить нечем.
  *
  * Канон модалок (EquipmentPickerModal): Esc / клик по фону закрывают, фокус на
  * поле поиска, Tab не утекает наружу, debounce поиска 250 мс.
@@ -26,17 +32,36 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { formatMoneyRub, pluralize } from "../../lib/format";
 import { toMoscowDateString } from "../../lib/moscowDate";
+import { quoteName } from "../inventory/format";
 import { toast } from "../ToastProvider";
 
 export type AddonMode = "ADDON" | "MERGE";
 
+/** Статус брони, которая держит позицию. */
+export type AddonHolderStatus = "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED";
+
+/**
+ * Кто держит позицию на даты добора (контракт 2.4). Поля держателя
+ * необязательны: старый ответ API их не присылает.
+ */
 export interface AddonConflictInfo {
   bookingId: string;
   bookingNo: string;
   projectName: string;
+  clientName?: string | null;
   from: string;
   to: string;
-  freeFrom: string;
+  /** Когда освободится; null — выданная бронь просрочена, дата возврата неизвестна. */
+  freeFrom: string | null;
+  holderStatus?: AddonHolderStatus;
+  /** Когда выдали держателю (только выданная бронь). */
+  issuedAt?: string | null;
+  /** Выдана, срок прошёл, возврат не отмечен. */
+  overdue?: boolean;
+  /** Сколько можно добрать без подтверждения. */
+  freeForUs?: number;
+  /** Сколько можно добрать под ответственность. */
+  ackCap?: number;
 }
 
 export interface AddonSearchRow {
@@ -50,6 +75,8 @@ export interface AddonSearchRow {
   availableQuantity: number;
   /** Сколько ещё можно добрать в эту бронь. */
   addCap: number;
+  /** Сколько можно добрать под ответственность (чужие брони подвинуть можно, склад — нет). */
+  ackCap?: number;
   alreadyInBooking: number;
   availability: "AVAILABLE" | "UNAVAILABLE";
   conflict: AddonConflictInfo | null;
@@ -74,6 +101,16 @@ type CartRow = {
 
 type ServerConflict = AddonConflictInfo & { equipmentId: string; name: string; quantity: number };
 
+/** Незавершённая сессия киоска, из-за которой сервер не принял добор (409 SCAN_SESSION_ACTIVE). */
+type BlockingSession = {
+  sessionId: string;
+  operation: "ISSUE" | "RETURN";
+  workerName: string;
+  startedAt: string | null;
+  hasDraft: boolean;
+  message: string;
+};
+
 interface Props {
   open: boolean;
   bookingId: string;
@@ -85,17 +122,80 @@ interface Props {
   hasManualFinalAmount: boolean;
   onClose: () => void;
   onAdded: (result: AddonAddedResult) => void | Promise<void>;
+  /** Сессию киоска прервали из модалки — родитель перечитывает карточку брони. */
+  onSessionClosed?: () => void | Promise<void>;
 }
 
 const DEBOUNCE_MS = 250;
 const ADDON_CONFLICT_CODE = "ADDON_CONFLICT";
 const ADDON_OVER_STOCK_CODE = "ADDON_OVER_STOCK";
 const NOT_ENOUGH_UNITS_CODE = "NOT_ENOUGH_UNITS";
+const SCAN_SESSION_ACTIVE_CODE = "SCAN_SESSION_ACTIVE";
 
 /** «21.05» — день.месяц по московскому времени. */
 function shortDate(iso: string): string {
   const [, m, d] = toMoscowDateString(new Date(iso)).split("-");
   return `${d}.${m}`;
+}
+
+/** «03.09 19:46» по Москве. */
+function shortDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+    .format(d)
+    .replace(",", "");
+}
+
+/** Потолок «под ответственность»: из строки поиска или из карточки держателя; null — сервер не сообщил. */
+function ackCapOf(r: Pick<AddonSearchRow, "ackCap" | "conflict">): number | null {
+  if (typeof r.ackCap === "number") return r.ackCap;
+  if (typeof r.conflict?.ackCap === "number") return r.conflict.ackCap;
+  return null;
+}
+
+/**
+ * Где сейчас позиция — ответ на вопрос «подвинуть бронь или вещь у клиента».
+ *   выдана:              «сейчас у клиента «…» с ДД.ММ · бронь #… «…». Свободно с ДД.ММ.»
+ *   выдана и просрочена: «у клиента «…» с ДД.ММ · бронь #… «…»: возврат не отмечен, срок был ДД.ММ.»
+ *   бронь на даты:       «бронь #… «…» · ДД.ММ–ДД.ММ. Свободно с ДД.ММ.»
+ */
+function holderText(c: ServerConflict): string {
+  const project = c.projectName?.trim() ? ` ${quoteName(c.projectName)}` : "";
+  const booking = `бронь ${c.bookingNo}${project}`;
+  const freeFrom = c.freeFrom ? ` Свободно с ${shortDate(c.freeFrom)}.` : "";
+  if (c.holderStatus === "ISSUED") {
+    // Без имени клиента — просто «у клиента»: подставлять проект вместо имени
+    // значило бы назвать клиентом название съёмки.
+    const holder = c.clientName?.trim() ? ` ${quoteName(c.clientName)}` : "";
+    const since = c.issuedAt ? ` с ${shortDate(c.issuedAt)}` : "";
+    if (c.overdue) {
+      return `${c.name} — у клиента${holder}${since} · ${booking}: возврат не отмечен, срок был ${shortDate(c.to)}.`;
+    }
+    return `${c.name} — сейчас у клиента${holder}${since} · ${booking}.${freeFrom}`;
+  }
+  const pending = c.holderStatus === "PENDING_APPROVAL" ? " на согласовании" : "";
+  return `${c.name} — ${booking}${pending} · ${shortDate(c.from)}–${shortDate(c.to)}.${freeFrom}`;
+}
+
+function blockingFromError(details: unknown, message: string | undefined): BlockingSession | null {
+  if (typeof details !== "object" || details === null) return null;
+  const d = details as Record<string, unknown>;
+  if (typeof d.sessionId !== "string" || !d.sessionId) return null;
+  return {
+    sessionId: d.sessionId,
+    operation: d.operation === "ISSUE" ? "ISSUE" : "RETURN",
+    workerName: typeof d.workerName === "string" && d.workerName.trim() ? d.workerName.trim() : "кладовщик",
+    startedAt: typeof d.startedAt === "string" ? d.startedAt : null,
+    hasDraft: d.hasDraft === true,
+    message: message?.trim() || "На складе идёт работа с этой бронью в киоске",
+  };
 }
 
 function isApiError(e: unknown): e is { status?: number; code?: string; details?: unknown; message?: string } {
@@ -120,6 +220,7 @@ export function AddonItemsModal({
   hasManualFinalAmount,
   onClose,
   onAdded,
+  onSessionClosed,
 }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AddonSearchRow[] | null>(null);
@@ -131,8 +232,13 @@ export function AddonItemsModal({
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Конфликты, о которых сообщил сервер уже на отправке (гонка с другой бронью).
   const [serverConflicts, setServerConflicts] = useState<ServerConflict[]>([]);
+  // Незавершённая сессия киоска, из-за которой добор не прошёл, и её прерывание.
+  const [blocking, setBlocking] = useState<BlockingSession | null>(null);
+  const [abortAsk, setAbortAsk] = useState(false);
+  const [aborting, setAborting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const blockingRef = useRef<HTMLElement>(null);
 
   // Сброс при закрытии: следующий раз модалка открывается чистой.
   useEffect(() => {
@@ -147,8 +253,18 @@ export function AddonItemsModal({
     setMode("ADDON");
     setSubmitError(null);
     setServerConflicts([]);
+    setBlocking(null);
+    setAbortAsk(false);
     return undefined;
   }, [open]);
+
+  // Блок про сессию киоска появляется внизу прокрутки — при длинной корзине его
+  // не видно, а без него непонятно, почему добор не прошёл. Раскрытое
+  // подтверждение «Да, прервать» тоже прокручиваем в видимую часть: на телефоне
+  // оно уходит под нижнюю панель кнопок.
+  useEffect(() => {
+    if (blocking) blockingRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [blocking, abortAsk]);
 
   // Поиск с debounce; устаревшие ответы отбрасываются через AbortController.
   useEffect(() => {
@@ -190,7 +306,7 @@ export function AddonItemsModal({
     if (!open) return undefined;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        if (!busy) onClose();
+        if (!busy && !aborting) onClose();
         return;
       }
       if (e.key !== "Tab") return;
@@ -215,7 +331,7 @@ export function AddonItemsModal({
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, busy, onClose]);
+  }, [open, busy, aborting, onClose]);
 
   const inCart = useMemo(() => new Set(cart.map((r) => r.equipmentId)), [cart]);
 
@@ -223,10 +339,11 @@ export function AddonItemsModal({
     setSubmitError(null);
     setCart((prev) => {
       if (prev.some((c) => c.equipmentId === r.equipmentId)) return prev;
-      // Конфликтную позицию можно взять «под ответственность»: потолок тогда
-      // знает только сервер (физический склад), поэтому степпер не ограничиваем —
+      // Конфликтную позицию можно взять «под ответственность» — не больше, чем
+      // есть физически (ackCap). Старый ответ без ackCap: степпер не ограничиваем,
       // отказ ADDON_OVER_STOCK подрежет количество до реального.
-      const max = r.conflict ? 99 : Math.max(1, r.addCap);
+      const ackCap = ackCapOf(r);
+      const max = r.conflict ? Math.max(1, ackCap ?? 99) : Math.max(1, r.addCap);
       return [
         ...prev,
         {
@@ -281,9 +398,11 @@ export function AddonItemsModal({
   const discountNum = discountPercent != null ? Number(discountPercent) : 0;
 
   async function submit() {
-    if (busy || cart.length === 0) return;
+    if (busy || aborting || cart.length === 0) return;
     setBusy(true);
     setSubmitError(null);
+    setBlocking(null);
+    setAbortAsk(false);
     try {
       const result = await apiFetch<AddonAddedResult>(`/api/bookings/${bookingId}/addon-items`, {
         method: "POST",
@@ -326,8 +445,15 @@ export function AddonItemsModal({
         setSubmitError(e.message ?? "Не хватает на складе");
         return;
       }
-      // Прочие 409 (например, SCAN_SESSION_ACTIVE — на складе идёт приёмка) —
-      // объяснение сервера показываем прямо в модалке, оно содержит подсказку.
+      if (isApiError(e) && e.status === 409 && e.code === SCAN_SESSION_ACTIVE_CODE) {
+        const session = blockingFromError(e.details, e.message);
+        if (session) {
+          setBlocking(session);
+          return;
+        }
+      }
+      // Прочие 409 — объяснение сервера показываем прямо в модалке, оно
+      // содержит подсказку.
       if (isApiError(e) && e.status === 409 && e.message) {
         setSubmitError(e.message);
         return;
@@ -338,9 +464,64 @@ export function AddonItemsModal({
     }
   }
 
+  async function afterSessionClosed() {
+    setBlocking(null);
+    setAbortAsk(false);
+    setSubmitError(null);
+    try {
+      await onSessionClosed?.();
+    } catch {
+      // Карточка брони перечитается при следующем действии — сессия уже закрыта.
+    }
+  }
+
+  async function abortBlockingSession() {
+    if (!blocking || aborting) return;
+    const noun = blocking.operation === "ISSUE" ? "Выдача" : "Приёмка";
+    setAborting(true);
+    try {
+      await apiFetch(`/api/warehouse/sessions/${blocking.sessionId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ reason: "CARD_ABORT" }),
+      });
+      toast.success(`${noun} в киоске прервана — теперь можно добавить добор`);
+      await afterSessionClosed();
+    } catch (e: unknown) {
+      const code = isApiError(e) ? e.code : undefined;
+      if (code === "SESSION_STALE") {
+        toast.success("Сессия киоска закрыта — теперь можно добавить добор");
+        await afterSessionClosed();
+      } else if (typeof code === "string" && code.startsWith("SESSION_")) {
+        // Сессию успели завершить или прервать — говорим, что с ней на самом деле.
+        toast.info(isApiError(e) && e.message ? e.message : "Сессия киоска уже закрыта");
+        await afterSessionClosed();
+      } else {
+        toast.error(isApiError(e) && e.message ? e.message : "Не удалось прервать сессию киоска");
+      }
+    } finally {
+      setAborting(false);
+    }
+  }
+
   if (!open) return null;
 
   const visibleResults = results ?? [];
+  // Кто и когда — обычно уже в тексте сервера; старый сервер его не пишет.
+  // Без черновика сервер блокирует только из-за отметок или добора в самой
+  // сессии, поэтому «отметок нет» не пишем — это было бы неправдой.
+  const blockingDetail = blocking
+    ? [
+        blocking.message.includes(blocking.workerName)
+          ? ""
+          : `${blocking.operation === "ISSUE" ? "Выдачу" : "Приёмку"} начал ${blocking.workerName}${
+              blocking.startedAt ? ` ${shortDateTime(blocking.startedAt)}` : ""
+            }.`,
+        blocking.hasDraft ? "В чек-листе есть сохранённые отметки." : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "";
+  const holderOnHand = allConflicts.some((c) => c.holderStatus === "ISSUED");
   const submitLabel = busy
     ? "Добавляю…"
     : needsAck
@@ -353,7 +534,7 @@ export function AddonItemsModal({
     <div
       className="fixed inset-0 z-50 bg-scrim/40 flex items-end sm:items-start justify-center sm:pt-[6vh] px-0 sm:px-4"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose();
+        if (e.target === e.currentTarget && !busy && !aborting) onClose();
       }}
     >
       <div
@@ -375,7 +556,7 @@ export function AddonItemsModal({
           <button
             type="button"
             onClick={onClose}
-            disabled={busy}
+            disabled={busy || aborting}
             aria-label="Закрыть"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-lg leading-none text-ink-3 hover:bg-surface-muted hover:text-ink disabled:opacity-40"
           >
@@ -413,11 +594,18 @@ export function AddonItemsModal({
                 {visibleResults.map((r) => {
                   const added = inCart.has(r.equipmentId);
                   const free = r.addCap > 0;
-                  const canTake = free || r.conflict != null;
+                  const ackCap = ackCapOf(r);
+                  const canTake = free || (r.conflict != null && (ackCap == null || ackCap > 0));
+                  const busyText =
+                    r.conflict?.holderStatus === "ISSUED"
+                      ? r.conflict.overdue
+                        ? "не вернули"
+                        : "у клиента"
+                      : "занято";
                   const pill = free
                     ? { text: `свободно ×${r.addCap}`, cls: "bg-emerald-soft text-emerald border-emerald-border" }
                     : r.conflict
-                      ? { text: "занято", cls: "bg-rose-soft text-rose border-rose-border" }
+                      ? { text: busyText, cls: "bg-rose-soft text-rose border-rose-border" }
                       : { text: "нет на складе", cls: "bg-surface text-ink-3 border-border" };
                   return (
                     <li key={r.equipmentId} className="flex items-center gap-3 px-3 py-2">
@@ -457,13 +645,20 @@ export function AddonItemsModal({
             ) : (
               <ul className="divide-y divide-border rounded border border-border" aria-label="Позиции добора">
                 {cart.map((c) => (
-                  <li key={c.equipmentId} className="flex items-center gap-2 px-3 py-2">
-                    <div className="min-w-0 flex-1">
+                  // На телефоне название — отдельной строкой: в одну строку со
+                  // степпером и суммой оно сжималось до «Ка…», а цена за смену
+                  // наезжала на кнопку «−».
+                  <li key={c.equipmentId} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2 sm:flex-nowrap">
+                    <div className="min-w-0 w-full sm:w-auto sm:flex-1">
                       <div className="text-sm font-medium text-ink truncate">{c.name}</div>
                       <div className="text-xs text-ink-3">
                         {formatMoneyRub(c.rentalRatePerShift)}/смена
                         {c.alreadyInBooking > 0 ? ` · в брони уже ×${c.alreadyInBooking}` : ""}
-                        {c.conflict ? <span className="text-rose"> · занято другой бронью</span> : null}
+                        {c.conflict ? (
+                          <span className="text-rose">
+                            {c.conflict.holderStatus === "ISSUED" ? " · числится у клиента" : " · занято другой бронью"}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                     <div className="flex items-center gap-1" role="group" aria-label={`Количество: ${c.name}`}>
@@ -496,7 +691,7 @@ export function AddonItemsModal({
                         +
                       </button>
                     </div>
-                    <div className="w-24 text-right text-sm mono-num text-ink">
+                    <div className="ml-auto w-24 text-right text-sm mono-num text-ink sm:ml-0">
                       {formatMoneyRub(Number(c.rentalRatePerShift) * shiftsSafe * c.qty)}
                     </div>
                     <button
@@ -567,6 +762,57 @@ export function AddonItemsModal({
             )}
           </div>
 
+          {/* Незавершённая выдача / приёмка в киоске блокирует добор */}
+          {blocking && (
+            <section
+              ref={blockingRef}
+              role="region"
+              aria-label="Незавершённая сессия киоска"
+              className="mx-4 mb-3 rounded-lg border border-amber-border bg-amber-soft px-3 py-2.5"
+            >
+              <p className="text-sm font-semibold text-ink">{blocking.message}</p>
+              {blockingDetail && <p className="mt-1 text-xs text-ink-2">{blockingDetail}</p>}
+              {!abortAsk ? (
+                <button
+                  type="button"
+                  onClick={() => setAbortAsk(true)}
+                  disabled={busy}
+                  className="mt-2 rounded border border-rose-border bg-surface px-3 py-1.5 text-xs text-rose hover:bg-rose-soft disabled:opacity-50"
+                >
+                  Прервать {blocking.operation === "ISSUE" ? "выдачу" : "приёмку"} в киоске
+                </button>
+              ) : (
+                <div className="mt-2 rounded border border-rose-border bg-surface px-3 py-2">
+                  <p className="text-xs text-ink">
+                    {blocking.operation === "ISSUE"
+                      ? "Чек-лист выдачи закроется: количества и отметки сбросятся, бронь останется «Подтверждена». Позиции, добавленные на месте, останутся в брони."
+                      : "Чек-лист приёмки закроется: отметки приёмки сбросятся, бронь останется «Выдана» — принять её можно будет заново."}
+                    {blocking.hasDraft ? " Сохранённые отметки пропадут." : ""} Если кладовщик сейчас работает с
+                    чек-листом, предупредите его.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={abortBlockingSession}
+                      disabled={aborting}
+                      className="rounded bg-rose px-3 py-1.5 text-xs text-surface hover:bg-rose/90 disabled:opacity-50"
+                    >
+                      {aborting ? "Прерываю…" : "Да, прервать"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAbortAsk(false)}
+                      disabled={aborting}
+                      className="rounded border border-border px-3 py-1.5 text-xs text-ink-2 hover:bg-surface-muted disabled:opacity-50"
+                    >
+                      Не прерывать
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
           {/* Конфликты — soft-warn */}
           {allConflicts.length > 0 && (
             <div role="alert" className="mx-4 mb-3 rounded-lg border border-rose-border bg-rose-soft px-3 py-2.5">
@@ -576,14 +822,13 @@ export function AddonItemsModal({
               </p>
               <ul className="mt-1 space-y-0.5 text-xs text-rose">
                 {allConflicts.map((c) => (
-                  <li key={c.equipmentId}>
-                    {c.name} — бронь {c.bookingNo} «{c.projectName}» · {shortDate(c.from)}–{shortDate(c.to)}. Свободно с{" "}
-                    {shortDate(c.freeFrom)}.
-                  </li>
+                  <li key={c.equipmentId}>{holderText(c)}</li>
                 ))}
               </ul>
               <p className="mt-1.5 text-[11px] text-rose/80">
-                Можно довезти под ответственность — конфликт зафиксируется в аудите.
+                {holderOnHand
+                  ? "Прибор числится у клиента — довозите под ответственность, только если он физически на полке. Конфликт зафиксируется в аудите."
+                  : "Можно довезти под ответственность — конфликт зафиксируется в аудите."}
               </p>
             </div>
           )}
@@ -599,7 +844,7 @@ export function AddonItemsModal({
           <button
             type="button"
             onClick={onClose}
-            disabled={busy}
+            disabled={busy || aborting}
             className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
           >
             Отмена
@@ -607,7 +852,7 @@ export function AddonItemsModal({
           <button
             type="button"
             onClick={submit}
-            disabled={busy || cart.length === 0}
+            disabled={busy || aborting || cart.length === 0}
             className={`rounded px-4 py-2 text-sm text-surface disabled:opacity-50 ${
               needsAck ? "bg-rose hover:bg-rose/90" : "bg-accent-bright hover:bg-accent"
             }`}

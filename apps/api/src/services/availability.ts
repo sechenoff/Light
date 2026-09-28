@@ -1,9 +1,10 @@
 import type { Equipment, BookingStatus } from "@prisma/client";
 
 import { prisma } from "../prisma";
-import { projectReservations, peakOccupancy, type Reservation } from "./projectReservations";
+import { projectReservations, peakOccupancy, reservationOverlaps, type Reservation } from "./projectReservations";
 import { getMergedCategoryOrder } from "./categoryOrder";
 import { compareEquipmentTransportLast } from "../utils/equipmentSort";
+import { searchMatches } from "../utils/searchNormalize";
 
 type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
 
@@ -21,9 +22,32 @@ export type AvailabilityRow = {
     | "rentalRatePerShift"
     | "comment"
   >;
+  /**
+   * Физический склад позиции — то, от чего считается «Доступно»: для COUNT
+   * totalQuantity минус открытые потеряшки и безъюнитные ремонты, для UNIT
+   * пригодные единицы (AVAILABLE | ISSUED) минус безъюнитные ремонты. Нужен
+   * потолку «под ответственность» (stockCap): чужую бронь подвинуть можно,
+   * а мастерскую и потерянное — нет.
+   */
+  baseQuantity: number;
   occupiedQuantity: number;
   availableQuantity: number;
 };
+
+type AvailabilityEquipment = AvailabilityRow["equipment"];
+
+const AVAILABILITY_EQUIPMENT_SELECT = {
+  id: true,
+  category: true,
+  name: true,
+  brand: true,
+  model: true,
+  stockTrackingMode: true,
+  sortOrder: true,
+  totalQuantity: true,
+  rentalRatePerShift: true,
+  comment: true,
+} as const;
 
 // MF-1: PENDING_APPROVAL резервирует оборудование наравне с CONFIRMED/ISSUED —
 // бронь, отправленная на согласование, в одном клике от подтверждения и не должна
@@ -156,54 +180,107 @@ export async function getRepairCountByEquipmentMap(
   return inRepairByEquipment;
 }
 
-export async function getAvailability(args: {
-  startDate: Date;
-  endDate: Date;
-  equipmentIds?: string[];
-  search?: string;
-  category?: string;
-  excludeBookingId?: string;
-  excludeProjectLotId?: string;
-  tx?: TxClient;
-}) {
-  const tx = args.tx ?? prisma;
-  const searchNeedle = args.search?.trim().toLocaleLowerCase("ru-RU") ?? "";
+/**
+ * Интервал, в который бронь занимает склад, — полуоткрытый [start, end):
+ * бронь до 12:00 и бронь с 12:00 того же дня не пересекаются (стык-в-стык).
+ *
+ * Выданная бронь (ISSUED) держит оборудование по факту, а не по плану:
+ *  - выданная раньше срока занимает склад с момента выдачи — иначе прибор,
+ *    который уже у клиента, «свободен» до даты начала и его сдают второй раз;
+ *  - просроченная и не принятая занимает всё окно, в которое попадает текущий
+ *    момент: срок прошёл, а на полке прибора нет. Окна целиком в будущем
+ *    считаются свободными — исходим из того, что к ним вернут (решение
+ *    владельца: строже, «до приёмки на любые даты», заблокировало бы
+ *    подтверждение будущих броней, пока не нажат «Вернуть»).
+ *
+ * `now + 1`, а не `now`: окно «выдаю сейчас» (stockCap.addonWindow) начинается
+ * ровно в момент запроса, и полуоткрытый хвост [.., now) его бы не задел.
+ */
+export function bookingOccupancyInterval(
+  b: { status: BookingStatus; startDate: Date; endDate: Date; issuedAt: Date | null },
+  now: number = Date.now(),
+): { start: number; end: number } {
+  if (b.status !== "ISSUED") return { start: b.startDate.getTime(), end: b.endDate.getTime() };
+  const issuedAt = b.issuedAt?.getTime() ?? b.startDate.getTime();
+  return {
+    start: Math.min(b.startDate.getTime(), issuedAt),
+    end: Math.max(b.endDate.getTime(), now + 1),
+  };
+}
 
-  const categoryOrder = await getMergedCategoryOrder();
-
-  const rawEquipments = await tx.equipment.findMany({
+/**
+ * Резервы обычных (не проектных) броней на позиции в окне — ровно те, что
+ * занимают склад в getAvailability: блокирующие статусы, без архива, только
+ * mode = STANDARD (у проектов свои лоты, см. projectReservations). Интервал
+ * брони — `bookingOccupancyInterval`; в ответ попадают только резервы, которые
+ * задевают окно (`reservationOverlaps`).
+ *
+ * Экспортируется, чтобы «кто держит позицию» (addonAvailability) выбирал
+ * держателей из того же списка, по которому посчитана занятость: иначе
+ * «занято» и «занято вот этой бронью» разъехались бы.
+ */
+export async function standardReservations(
+  tx: TxClient,
+  args: { start: Date; end: Date; equipmentIds?: string[]; excludeBookingId?: string },
+): Promise<Reservation[]> {
+  const itemFilter = args.equipmentIds
+    ? { equipmentId: { in: args.equipmentIds } }
+    : { equipmentId: { not: null } };
+  const ordinary = await tx.booking.findMany({
     where: {
-      ...(args.equipmentIds ? { id: { in: args.equipmentIds } } : {}),
-      ...(args.category ? { category: args.category } : {}),
+      mode: "STANDARD",
+      status: { in: BLOCKING_STATUSES },
+      deletedAt: null,
+      // Плановые даты задевают окно — или бронь выдана: у выданной интервал
+      // фактический (ранняя выдача, просрочка), по плановым датам её не найти.
+      OR: [
+        { startDate: { lte: args.end }, endDate: { gte: args.start } },
+        { status: "ISSUED" },
+      ],
+      ...(args.excludeBookingId ? { id: { not: args.excludeBookingId } } : {}),
+      ...(args.equipmentIds ? { items: { some: itemFilter } } : {}),
     },
-    orderBy: { id: "asc" },
     select: {
       id: true,
-      category: true,
-      name: true,
-      brand: true,
-      model: true,
-      stockTrackingMode: true,
-      sortOrder: true,
-      totalQuantity: true,
-      rentalRatePerShift: true,
-      comment: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      issuedAt: true,
+      items: {
+        where: itemFilter,
+        select: { equipmentId: true, quantity: true, unitReservations: { select: { id: true } } },
+      },
     },
   });
-  const equipments =
-    searchNeedle.length === 0
-      ? rawEquipments
-      : rawEquipments.filter((e) => {
-          const haystack = [e.name, e.brand ?? "", e.model ?? "", e.category]
-            .join(" ")
-            .toLocaleLowerCase("ru-RU");
-          return haystack.includes(searchNeedle);
-        });
+  const now = Date.now();
+  const windowStart = args.start.getTime();
+  const windowEnd = args.end.getTime();
+  return ordinary.flatMap((b) => {
+    const interval = bookingOccupancyInterval(b, now);
+    return b.items
+      .filter((i) => i.equipmentId)
+      .map((i) => ({
+        bookingId: b.id,
+        equipmentId: i.equipmentId!,
+        start: interval.start,
+        end: interval.end,
+        quantity: Math.max(i.quantity, i.unitReservations.length),
+      }))
+      .filter((r) => reservationOverlaps(r, windowStart, windowEnd));
+  });
+}
 
-  equipments.sort((a, b) => compareEquipmentTransportLast(a, b, categoryOrder));
-
-  if (equipments.length === 0) return [] as AvailabilityRow[];
-
+/**
+ * Сердце доступности: физический склад, резервы обычных броней и проектных
+ * лотов, пик занятости. Общее для витрины (getAvailability) и для потолков
+ * склада (getAvailabilityForIds → stockCap) — одна формула на все экраны.
+ */
+async function computeAvailabilityRows(
+  tx: TxClient,
+  equipments: AvailabilityEquipment[],
+  args: { startDate: Date; endDate: Date; excludeBookingId?: string; excludeProjectLotId?: string },
+): Promise<AvailabilityRow[]> {
+  if (equipments.length === 0) return [];
   const equipmentIds = equipments.map((e) => e.id);
 
   // eu-2: см. getUsableUnitBaseMap. F-LOST-1: COUNT-база = totalQuantity минус
@@ -222,23 +299,85 @@ export async function getAvailability(args: {
       : clampNonNegative(e.totalQuantity - (lostCountBase.get(e.id) ?? 0) - inRepair);
   };
 
-  const ordinary = await tx.booking.findMany({
-    where: {
-      mode: "STANDARD", status: { in: BLOCKING_STATUSES }, deletedAt: null,
-      startDate: { lte: args.endDate }, endDate: { gte: args.startDate },
-      ...(args.excludeBookingId ? { id: { not: args.excludeBookingId } } : {}),
-    },
-    include: { items: { where: { equipmentId: { in: equipmentIds } }, include: { unitReservations: true } } },
+  const reservations: Reservation[] = await standardReservations(tx, {
+    start: args.startDate,
+    end: args.endDate,
+    equipmentIds,
+    excludeBookingId: args.excludeBookingId,
   });
-  const reservations: Reservation[] = ordinary.flatMap(b => b.items.filter(i => i.equipmentId).map(i => ({
-    bookingId: b.id, equipmentId: i.equipmentId!, start: b.startDate.getTime(), end: b.endDate.getTime() + 1,
-    quantity: Math.max(i.quantity, i.unitReservations.length),
-  })));
   reservations.push(...await projectReservations({ start: args.startDate, end: args.endDate, equipmentIds,
     excludeBookingId: args.excludeBookingId, excludeLotId: args.excludeProjectLotId }, tx));
-  return equipments.map(e => {
-    const occupied = peakOccupancy(reservations.filter(r => r.equipmentId === e.id), args.startDate.getTime(), args.endDate.getTime());
-    return { equipment: e, occupiedQuantity: occupied, availableQuantity: clampNonNegative(baseQtyOf(e) - occupied) };
+  return equipments.map((e) => {
+    const baseQuantity = baseQtyOf(e);
+    const occupied = peakOccupancy(reservations.filter((r) => r.equipmentId === e.id), args.startDate.getTime(), args.endDate.getTime());
+    return {
+      equipment: e,
+      baseQuantity,
+      occupiedQuantity: occupied,
+      availableQuantity: clampNonNegative(baseQuantity - occupied),
+    };
   });
 }
 
+export async function getAvailability(args: {
+  startDate: Date;
+  endDate: Date;
+  equipmentIds?: string[];
+  search?: string;
+  category?: string;
+  excludeBookingId?: string;
+  excludeProjectLotId?: string;
+  tx?: TxClient;
+}): Promise<AvailabilityRow[]> {
+  const tx = args.tx ?? prisma;
+  const search = args.search ?? "";
+
+  const categoryOrder = await getMergedCategoryOrder();
+
+  const rawEquipments = await tx.equipment.findMany({
+    where: {
+      ...(args.equipmentIds ? { id: { in: args.equipmentIds } } : {}),
+      ...(args.category ? { category: args.category } : {}),
+    },
+    orderBy: { id: "asc" },
+    select: AVAILABILITY_EQUIPMENT_SELECT,
+  });
+  // P11: кириллица и латиница в названиях перемешаны («СF16», «8х8») —
+  // сравниваем нормализованный текст (utils/searchNormalize), не сырой.
+  const equipments =
+    search.trim().length === 0
+      ? rawEquipments
+      : rawEquipments.filter((e) =>
+          searchMatches([e.name, e.brand ?? "", e.model ?? "", e.category].join(" "), search),
+        );
+
+  equipments.sort((a, b) => compareEquipmentTransportLast(a, b, categoryOrder));
+
+  return computeAvailabilityRows(tx, equipments, args);
+}
+
+/**
+ * Та же доступность, что у витрины, но по списку позиций: без поиска, фильтра
+ * категории и сортировки витрины, с ответом по id. Для потолков склада
+ * (stockCap) — вызывается и внутри транзакций, поэтому ходит только через `tx`
+ * (сортировка витрины читает порядок категорий глобальным клиентом).
+ */
+export async function getAvailabilityForIds(args: {
+  startDate: Date;
+  endDate: Date;
+  equipmentIds: string[];
+  excludeBookingId?: string;
+  excludeProjectLotId?: string;
+  tx?: TxClient;
+}): Promise<Map<string, AvailabilityRow>> {
+  const tx = args.tx ?? prisma;
+  const ids = Array.from(new Set(args.equipmentIds));
+  if (ids.length === 0) return new Map();
+  const equipments = await tx.equipment.findMany({
+    where: { id: { in: ids } },
+    orderBy: { id: "asc" },
+    select: AVAILABILITY_EQUIPMENT_SELECT,
+  });
+  const rows = await computeAvailabilityRows(tx, equipments, args);
+  return new Map(rows.map((r) => [r.equipment.id, r]));
+}

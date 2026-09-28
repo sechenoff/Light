@@ -961,6 +961,9 @@ export default function BookingDetailPage() {
               bookingId={booking.id}
               bookingStatus={booking.status}
               scanSessions={booking.scanSessions}
+              userRole={user?.role}
+              archived={isArchived}
+              onChanged={reloadBooking}
             />
 
             {/* ── ФИНАНСЫ ── вынесено в BookingFinancePanel (фаза 4.7);
@@ -1124,6 +1127,7 @@ export default function BookingDetailPage() {
             setAddonOpen(false);
             await reloadBooking();
           }}
+          onSessionClosed={reloadBooking}
         />
       )}
 

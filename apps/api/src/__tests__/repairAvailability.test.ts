@@ -20,8 +20,10 @@ process.env.DATABASE_URL = `file:${TEST_DB_PATH}`;
 process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-repair-avail";
 
-const WINDOW_START = new Date("2026-09-01T00:00:00.000Z");
-const WINDOW_END = new Date("2026-09-03T00:00:00.000Z");
+// Окно в будущем, от текущего момента: киоск проверяет добор на окне «выдаю
+// сейчас» (с текущего момента до конца брони), и прошедшие даты его не задевают.
+const WINDOW_START = new Date(Date.now() + 24 * 3_600_000);
+const WINDOW_END = new Date(Date.now() + 3 * 24 * 3_600_000);
 
 beforeAll(() => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -270,12 +272,12 @@ describe("Витрина, добор на складе и чек-лист выд
       data: { bookingId: other.id, equipmentId: eq.id, quantity: 1 },
     });
 
-    // Текущая бронь: одна штука уже в смете (выдаётся сегодня).
+    // Текущая бронь: одна штука уже в смете, выдача открыта в киоске.
     const mine = await prisma.booking.create({
       data: {
         clientId: client.id,
         projectName: "Наш проект",
-        status: "ISSUED",
+        status: "CONFIRMED",
         startDate: WINDOW_START,
         endDate: WINDOW_END,
       },

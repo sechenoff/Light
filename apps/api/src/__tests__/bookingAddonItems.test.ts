@@ -235,7 +235,10 @@ describe("GET /api/bookings/:id/addon-search", () => {
 
     const count = byId.get(eqCountId);
     expect(count.alreadyInBooking).toBe(1);
-    expect(count.addCap).toBe(9);
+    // Склад 10 − в брони 1 − 1 штука у брони B: её выдали сегодня заранее, и с
+    // момента выдачи прибор физически у клиента (A выдана — окно добора «сейчас»).
+    expect(count.addCap).toBe(8);
+    expect(count.ackCap).toBe(9);
     expect(count.availability).toBe("AVAILABLE");
     expect(count.stockTrackingMode).toBe("COUNT");
 
@@ -392,11 +395,12 @@ describe("POST /api/bookings/:id/addon-items", () => {
 
   it("hard cap: сверх реально свободных юнитов → 409 ADDON_OVER_STOCK с деталями", async () => {
     // Агрегат по датам обещал бы ещё 1 (пригодных 3 − в брони 2), но третий юнит
-    // застрял у просроченной брони — свободных 0.
+    // застрял у просроченной брони — свободных 0. Даже «под ответственность»
+    // (просроченная бронь держит его прямо сейчас) чужой экземпляр не отдаём.
     const res = await request(app)
       .post(`/api/bookings/${bookingAId}/addon-items`)
       .set(H(whToken))
-      .send({ items: [{ equipmentId: eqUnitId, quantity: 1 }] });
+      .send({ items: [{ equipmentId: eqUnitId, quantity: 1 }], acknowledgedConflict: true });
     expect(res.status).toBe(409);
     expect(res.body.code).toBe("ADDON_OVER_STOCK");
     expect(res.body.details).toMatchObject({ equipmentId: eqUnitId, addCap: 0, requested: 1, alreadyInBooking: 2 });
@@ -477,9 +481,36 @@ describe("POST /api/bookings/:id/addon-estimate/merge", () => {
 });
 
 describe("активная складская сессия блокирует добор", () => {
-  it("RETURN-сессия открыта → 409 SCAN_SESSION_ACTIVE; после отмены сессии добор проходит", async () => {
+  async function rollbackBookingB() {
+    // Откатываем, чтобы сценарий продления ниже считал от исходного состава.
+    await prisma.addonRecord.deleteMany({ where: { bookingId: bookingBId } });
+    await prisma.bookingItem.update({
+      where: { bookingId_equipmentId: { bookingId: bookingBId, equipmentId: eqCountId } },
+      data: { quantity: 1 },
+    });
+    const { recomputeAddonEstimate } = await import("../services/addonEstimate");
+    const { recomputeBookingFinance } = await import("../services/finance");
+    await recomputeAddonEstimate(bookingBId);
+    await recomputeBookingFinance(bookingBId);
+  }
+
+  it("приёмку открыли и ничего не сделали — добор проходит; с черновиком — 409 SCAN_SESSION_ACTIVE; после отмены — снова проходит", async () => {
     const session = await prisma.scanSession.create({
       data: { bookingId: bookingBId, workerName: "Иван Кладовщик", operation: "RETURN", status: "ACTIVE" },
+    });
+    // «Открыл и посмотрел» ничего не блокирует.
+    const idle = await request(app)
+      .post(`/api/bookings/${bookingBId}/addon-items`)
+      .set(H(saToken))
+      .send({ items: [{ equipmentId: eqCountId, quantity: 1 }] });
+    expect(idle.status, JSON.stringify(idle.body)).toBe(201);
+    await rollbackBookingB();
+
+    // Кладовщик начал отмечать — появился черновик: добор со страницы попал бы
+    // в «не принято», поэтому 409 с именем кладовщика и советом.
+    await prisma.scanSession.update({
+      where: { id: session.id },
+      data: { draftJson: JSON.stringify({ v: 1 }), draftRevision: 1, draftSavedAt: new Date() },
     });
     const blocked = await request(app)
       .post(`/api/bookings/${bookingBId}/addon-items`)
@@ -487,8 +518,9 @@ describe("активная складская сессия блокирует д
       .send({ items: [{ equipmentId: eqCountId, quantity: 1 }] });
     expect(blocked.status).toBe(409);
     expect(blocked.body.code).toBe("SCAN_SESSION_ACTIVE");
-    expect(blocked.body.details).toMatchObject({ sessionId: session.id, operation: "RETURN", workerName: "Иван Кладовщик" });
+    expect(blocked.body.details).toMatchObject({ sessionId: session.id, operation: "RETURN", workerName: "Иван Кладовщик", hasDraft: true });
     expect(blocked.body.message).toMatch(/приёмка/);
+    expect(blocked.body.message).toMatch(/Иван Кладовщик/);
 
     // Ничего не записано.
     const item = await prisma.bookingItem.findUnique({
@@ -502,15 +534,7 @@ describe("активная складская сессия блокирует д
       .set(H(saToken))
       .send({ items: [{ equipmentId: eqCountId, quantity: 1 }] });
     expect(ok.status).toBe(201);
-    // Откатываем, чтобы сценарий продления ниже считал от исходного состава.
-    await prisma.bookingItem.update({
-      where: { bookingId_equipmentId: { bookingId: bookingBId, equipmentId: eqCountId } },
-      data: { quantity: 1 },
-    });
-    const { recomputeAddonEstimate } = await import("../services/addonEstimate");
-    const { recomputeBookingFinance } = await import("../services/finance");
-    await recomputeAddonEstimate(bookingBId);
-    await recomputeBookingFinance(bookingBId);
+    await rollbackBookingB();
   });
 });
 

@@ -7,6 +7,10 @@
  *  - `row.availableQuantity` уже исключает текущую бронь через `excludeBookingId`
  *    в getAvailability.
  *  - `alreadyInThisBooking` = BookingItem.quantity для текущего booking × equipmentId.
+ *
+ * Киоск выдаёт прямо сейчас: окно проверки — с текущего момента до конца брони
+ * (`issuingNow`), поэтому даты броней считаются от Date.now(), и чужая бронь
+ * должна идти прямо сейчас, а не когда-то в прошлом.
  */
 
 import path from "path";
@@ -25,6 +29,10 @@ process.env.BARCODE_SECRET = "test-secret-addon-search-route";
 process.env.WAREHOUSE_SECRET = "test-warehouse-addon-search-1";
 process.env.VISION_PROVIDER = "mock";
 process.env.JWT_SECRET = "test-jwt-addon-search-route-min16";
+
+const HOUR = 60 * 60 * 1000;
+/** Смещение от «сейчас». */
+const at = (hours: number) => new Date(Date.now() + hours * HOUR);
 
 let app: any;
 let prisma: any;
@@ -88,8 +96,8 @@ beforeAll(async () => {
     data: {
       clientId: client.id,
       projectName: "Other booking — partial",
-      startDate: new Date("2026-07-01"),
-      endDate: new Date("2026-07-05"),
+      startDate: at(-48),
+      endDate: at(48),
       status: "CONFIRMED",
       amountPaid: 0,
       amountOutstanding: 0,
@@ -103,8 +111,8 @@ beforeAll(async () => {
     data: {
       clientId: client.id,
       projectName: "This booking — partial",
-      startDate: new Date("2026-07-03"),
-      endDate: new Date("2026-07-04"),
+      startDate: at(-1),
+      endDate: at(24),
       status: "CONFIRMED",
       amountPaid: 0,
       amountOutstanding: 0,
@@ -143,8 +151,8 @@ beforeAll(async () => {
     data: {
       clientId: client.id,
       projectName: "Other booking — exhausted",
-      startDate: new Date("2026-08-01"),
-      endDate: new Date("2026-08-05"),
+      startDate: at(-48),
+      endDate: at(48),
       status: "CONFIRMED",
       amountPaid: 0,
       amountOutstanding: 0,
@@ -158,8 +166,8 @@ beforeAll(async () => {
     data: {
       clientId: client.id,
       projectName: "This booking — exhausted",
-      startDate: new Date("2026-08-03"),
-      endDate: new Date("2026-08-04"),
+      startDate: at(-1),
+      endDate: at(24),
       status: "CONFIRMED",
       amountPaid: 0,
       amountOutstanding: 0,

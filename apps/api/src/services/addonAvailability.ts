@@ -1,87 +1,212 @@
-import { prisma } from "../prisma";
-import { getLostCountByEquipmentMap, getRepairCountByEquipmentMap } from "./availability";
+/**
+ * Конфликт добора и «кто держит» позицию.
+ *
+ * v2 (2026-09-28): считается той же формулой, что витрина и потолок добора
+ * (stockCap → getAvailability): занятость — пик, а не сумма; черновик и архив
+ * склад не держат; бронь на согласовании держит; мастерская и потеряшки
+ * вычтены. Старое правило «сумма чужих броней + 1 ≤ totalQuantity» давало
+ * ложный «занят» при двух непересекающихся бронях и не знало, сколько просят.
+ *
+ * Конфликт ⇔ в окне есть чужие брони И свободно меньше, чем «уже в брони +
+ * запрошено». Если позиции не хватает только из-за мастерской или потерь,
+ * держателя нет — это не конфликт, а отказ по складу (ADDON_OVER_STOCK).
+ *
+ * Карточка держателя отвечает на вопрос кладовщика «где прибор и когда
+ * освободится»: статус брони, дата выдачи, просрочен ли возврат, сколько
+ * свободно нам и сколько можно взять под ответственность.
+ */
+import type { Prisma } from "@prisma/client";
 
-// PENDING_APPROVAL резервирует оборудование (единая политика с availability.ts
-// и calendar.ts) — quick-add на выдаче предупреждает и о бронях на согласовании.
-const BLOCKING_STATUSES = ["PENDING_APPROVAL", "CONFIRMED", "ISSUED"] as const;
+import { prisma } from "../prisma";
+import { bookingOccupancyInterval, standardReservations } from "./availability";
+import { projectReservations, reservationOverlaps, type Reservation } from "./projectReservations";
+import { computeAddCaps } from "./stockCap";
+
+type Db = Prisma.TransactionClient | typeof prisma;
+
+export type HolderStatus = "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED";
 
 export interface AddonConflict {
   bookingId: string;
   bookingNo: string;          // "#A1B2C3"
   projectName: string;
-  from: string;               // ISO
-  to: string;                 // ISO
-  freeFrom: string;           // ISO — nearest conflicting booking endDate
+  clientName: string | null;
+  from: string;               // ISO — начало брони-держателя
+  to: string;                 // ISO — конец брони-держателя
+  /**
+   * ISO — когда держатель освободит позицию (конец его брони). null, если
+   * выданная бронь просрочена: срок прошёл, а возврат не отмечен — когда
+   * вернут, неизвестно, и обещать дату нельзя.
+   */
+  freeFrom: string | null;
+  holderStatus: HolderStatus;
+  /** ISO — когда держателю выдали (только ISSUED). */
+  issuedAt: string | null;
+  /** Выдана, срок возврата прошёл, возврат не отмечен. */
+  overdue: boolean;
+  /** Сколько можно добрать без подтверждения (addCap). */
+  freeForUs: number;
+  /** Сколько можно добрать под ответственность (ackCap). */
+  ackCap: number;
 }
 
-function bookingNo(id: string): string {
+type Holder = Omit<AddonConflict, "freeForUs" | "ackCap">;
+
+export function bookingNo(id: string): string {
   return "#" + id.slice(-6).toUpperCase();
 }
 
+function asHolderStatus(status: string): HolderStatus {
+  return status === "ISSUED" || status === "PENDING_APPROVAL" ? status : "CONFIRMED";
+}
+
 /**
- * Находит ближайшую конфликтующую бронь (CONFIRMED/ISSUED), которая делает
- * equipment недоступным в окне [start,end], исключая текущую бронь.
- * Возвращает null если конфликта нет (с учётом totalQuantity).
+ * Держатель по каждой позиции: чужая бронь, чей резерв (обычный или проектный
+ * лот) попадает в окно — из того же списка резервов и по тем же границам, что
+ * занятость в getAvailability. Из нескольких держателей показывается тот, кто
+ * занял позицию раньше (выданная заранее — с момента выдачи): при выдаче
+ * «сейчас» это тот, у кого прибор сейчас.
+ */
+async function loadHolders(
+  client: Db,
+  a: { equipmentIds: string[]; start: Date; end: Date; excludeBookingId: string; now: Date },
+): Promise<Map<string, Holder>> {
+  const holders = new Map<string, Holder>();
+  if (a.equipmentIds.length === 0) return holders;
+
+  const windowArgs = {
+    start: a.start,
+    end: a.end,
+    equipmentIds: a.equipmentIds,
+    excludeBookingId: a.excludeBookingId,
+  };
+  const reservations: Reservation[] = [
+    ...(await standardReservations(client, windowArgs)),
+    ...(await projectReservations(windowArgs, client)),
+  ].filter(
+    (r) =>
+      r.quantity > 0 &&
+      r.bookingId !== a.excludeBookingId &&
+      reservationOverlaps(r, a.start.getTime(), a.end.getTime()),
+  );
+  if (reservations.length === 0) return holders;
+
+  const bookings = await client.booking.findMany({
+    where: { id: { in: Array.from(new Set(reservations.map((r) => r.bookingId))) } },
+    select: {
+      id: true,
+      projectName: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      issuedAt: true,
+      client: { select: { name: true } },
+    },
+  });
+  const bookingById = new Map(bookings.map((b) => [b.id, b]));
+
+  const byEquipment = new Map<string, typeof bookings>();
+  for (const r of reservations) {
+    const b = bookingById.get(r.bookingId);
+    if (!b) continue;
+    const list = byEquipment.get(r.equipmentId) ?? [];
+    if (!list.some((x) => x.id === b.id)) list.push(b);
+    byEquipment.set(r.equipmentId, list);
+  }
+
+  const nowMs = a.now.getTime();
+  for (const [equipmentId, list] of byEquipment) {
+    const occupiedFrom = (b: (typeof list)[number]) => bookingOccupancyInterval(b, nowMs).start;
+    const nearest = [...list].sort(
+      (x, y) => occupiedFrom(x) - occupiedFrom(y) || x.id.localeCompare(y.id),
+    )[0];
+    const holderStatus = asHolderStatus(nearest.status);
+    const overdue = holderStatus === "ISSUED" && nearest.endDate.getTime() < nowMs;
+    holders.set(equipmentId, {
+      bookingId: nearest.id,
+      bookingNo: bookingNo(nearest.id),
+      projectName: nearest.projectName,
+      clientName: nearest.client?.name ?? null,
+      from: nearest.startDate.toISOString(),
+      to: nearest.endDate.toISOString(),
+      freeFrom: overdue ? null : nearest.endDate.toISOString(),
+      holderStatus,
+      issuedAt: holderStatus === "ISSUED" ? nearest.issuedAt?.toISOString() ?? null : null,
+      overdue,
+    });
+  }
+  return holders;
+}
+
+/**
+ * Конфликт добора позиции в бронь `excludeBookingId` на окне [start, end].
+ * null — конфликта нет (свободно хватает, либо держателя нет вовсе).
+ *
+ * opts:
+ *  - `requested` — сколько добираем (по умолчанию 1);
+ *  - `alreadyInBooking` — сколько позиции уже в брони (по умолчанию 0: так
+ *    считало старое правило; новые вызовы передают реальное число);
+ *  - `tx` — клиент транзакции.
  */
 export async function findAddonConflict(
   equipmentId: string,
   start: Date,
   end: Date,
   excludeBookingId: string,
+  opts?: { requested?: number; alreadyInBooking?: number; tx?: Db },
 ): Promise<AddonConflict | null> {
-  const eq = await prisma.equipment.findUnique({
-    where: { id: equipmentId },
-    select: { totalQuantity: true },
+  const client = opts?.tx ?? prisma;
+  const requested = Math.max(0, opts?.requested ?? 1);
+  const alreadyInBooking = Math.max(0, opts?.alreadyInBooking ?? 0);
+
+  const caps = await computeAddCaps(client, {
+    bookingId: excludeBookingId,
+    equipmentIds: [equipmentId],
+    window: { start, end },
+    alreadyInBooking: new Map([[equipmentId, alreadyInBooking]]),
   });
-  if (!eq) return null;
+  const cap = caps.get(equipmentId);
+  if (!cap) return null;
 
-  const overlapping = await prisma.booking.findMany({
-    where: {
-      id: { not: excludeBookingId },
-      status: { in: [...BLOCKING_STATUSES] },
-      // RR-2: архивные брони не считаются конфликтом добора.
-      deletedAt: null,
-      startDate: { lte: end },
-      endDate: { gte: start },
-      items: { some: { equipmentId } },
-    },
-    select: {
-      id: true, projectName: true, startDate: true, endDate: true,
-      items: { where: { equipmentId }, select: { quantity: true } },
-    },
-    orderBy: { startDate: "asc" },
+  const available = Math.max(0, cap.physicalStock - cap.occupiedByOthers);
+  if (available >= alreadyInBooking + requested) return null;
+
+  const holders = await loadHolders(client, {
+    equipmentIds: [equipmentId],
+    start,
+    end,
+    excludeBookingId,
+    now: new Date(),
   });
+  const holder = holders.get(equipmentId);
+  if (!holder) return null;
+  return { ...holder, freeForUs: cap.addCap, ackCap: cap.ackCap };
+}
 
-  if (overlapping.length === 0) return null;
+/**
+ * Держатели по нескольким позициям одним вызовом — для чек-листа (подпись
+ * «Занято: …» у степпера), поиска и текста ошибки подтверждения брони.
+ * В ответе только позиции, у которых в окне есть чужие брони; «уже в брони»
+ * для freeForUs / ackCap берётся из самой брони `excludeBookingId`.
+ */
+export async function findHoldersBatch(
+  client: Db,
+  a: { equipmentIds: string[]; start: Date; end: Date; excludeBookingId: string },
+): Promise<Map<string, AddonConflict>> {
+  const result = new Map<string, AddonConflict>();
+  const equipmentIds = Array.from(new Set(a.equipmentIds));
+  if (equipmentIds.length === 0) return result;
 
-  const reservedQty = overlapping.reduce(
-    (s, b) => s + b.items.reduce((q, i) => q + i.quantity, 0), 0,
-  );
-  // Ёмкость склада — физически доступное количество, а не сырой totalQuantity:
-  // из него вычитаем открытые потеряшки и активные безъюнитные ремонты, ровно как
-  // это делает витрина (getAvailability). Иначе добор на складе предлагает то,
-  // что лежит в мастерской или потеряно, и три экрана считают по-разному.
-  const [lostByEquipment, inRepairByEquipment] = await Promise.all([
-    getLostCountByEquipmentMap([equipmentId]),
-    getRepairCountByEquipmentMap([equipmentId]),
-  ]);
-  // totalQuantity=0 исторически трактуется как «склад не заполнен» → считаем 1
-  // экземпляр. Вычеты применяем уже к этой базе.
-  const capacity = Math.max(
-    0,
-    (eq.totalQuantity || 1)
-      - (lostByEquipment.get(equipmentId) ?? 0)
-      - (inRepairByEquipment.get(equipmentId) ?? 0),
-  );
-  if (reservedQty + 1 <= capacity) return null; // ещё есть свободный экземпляр
-
-  const nearest = overlapping[0];
-  return {
-    bookingId: nearest.id,
-    bookingNo: bookingNo(nearest.id),
-    projectName: nearest.projectName,
-    from: nearest.startDate.toISOString(),
-    to: nearest.endDate.toISOString(),
-    freeFrom: nearest.endDate.toISOString(),
-  };
+  const holders = await loadHolders(client, { ...a, equipmentIds, now: new Date() });
+  if (holders.size === 0) return result;
+  const caps = await computeAddCaps(client, {
+    bookingId: a.excludeBookingId,
+    equipmentIds: Array.from(holders.keys()),
+    window: { start: a.start, end: a.end },
+  });
+  for (const [equipmentId, holder] of holders) {
+    const cap = caps.get(equipmentId);
+    result.set(equipmentId, { ...holder, freeForUs: cap?.addCap ?? 0, ackCap: cap?.ackCap ?? 0 });
+  }
+  return result;
 }

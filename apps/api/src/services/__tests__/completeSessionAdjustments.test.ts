@@ -28,6 +28,11 @@ process.env.JWT_SECRET = "test-jwt-issue-adj-min16ch00000";
 
 let prisma: any;
 
+const HOUR = 60 * 60 * 1000;
+/** Аренда идёт: началась час назад, закончится через двое суток (не «раньше срока»). */
+const RENT_START = () => new Date(Date.now() - HOUR);
+const RENT_END = () => new Date(Date.now() + 48 * HOUR);
+
 interface CountFixture {
   bookingId: string;
   equipmentId: string;
@@ -46,6 +51,8 @@ async function seedCountFixture(opts: {
   discountAmount?: string;
   subtotal?: string;
   totalAfterDiscount?: string;
+  /** Вторая позиция брони (1 шт.), чтобы обнуление первой не обнуляло всю выдачу. */
+  withSecondItem?: boolean;
 }): Promise<CountFixture> {
   const rate = opts.rentalRatePerShift ?? "1000";
   const shifts = opts.shifts ?? 1;
@@ -84,8 +91,8 @@ async function seedCountFixture(opts: {
     data: {
       clientId: client.id,
       projectName: "Issue adj project",
-      startDate: new Date("2026-06-01"),
-      endDate: new Date("2026-06-03"),
+      startDate: RENT_START(),
+      endDate: RENT_END(),
       status: "CONFIRMED",
       amountPaid: paid,
       amountOutstanding: "0",
@@ -121,6 +128,21 @@ async function seedCountFixture(opts: {
   const bi = await prisma.bookingItem.create({
     data: { bookingId: booking.id, equipmentId: equipment.id, quantity: opts.bookingItemQty },
   });
+  if (opts.withSecondItem) {
+    const other = await prisma.equipment.create({
+      data: {
+        importKey: `issue-adj-eq2-${Math.random().toString(36).slice(2, 10)}`,
+        name: "Стойка C-stand",
+        category: "Грип",
+        rentalRatePerShift: rate,
+        stockTrackingMode: "COUNT",
+        totalQuantity: 10,
+      },
+    });
+    await prisma.bookingItem.create({
+      data: { bookingId: booking.id, equipmentId: other.id, quantity: 1 },
+    });
+  }
 
   // Опциональный платёж (для OVERPAID).
   if (Number(paid) > 0) {
@@ -208,8 +230,8 @@ async function seedUnitFixture(opts: {
     data: {
       clientId: client.id,
       projectName: "Issue adj unit project",
-      startDate: new Date("2026-06-01"),
-      endDate: new Date("2026-06-03"),
+      startDate: RENT_START(),
+      endDate: RENT_END(),
       status: "CONFIRMED",
       amountPaid: "0",
       amountOutstanding: "0",
@@ -334,6 +356,7 @@ describe("completeSession with issuanceAdjustments", () => {
       finalAmount: "3000",
       subtotal: "3000",
       totalAfterDiscount: "3000",
+      withSecondItem: true,
     });
     const { completeSession } = await import("../warehouseScan");
 
@@ -349,13 +372,32 @@ describe("completeSession with issuanceAdjustments", () => {
       where: { bookingId: fx.bookingId, kind: "MAIN" },
       include: { lines: true },
     });
-    // Если у брони не осталось позиций с qty>0, MAIN удаляется.
-    if (main) {
-      expect(main.lines.find((l: any) => l.equipmentId === fx.equipmentId)).toBeUndefined();
-    } else {
-      // ok — MAIN был удалён (нет позиций > 0)
-      expect(main).toBeNull();
-    }
+    // Смета правится точечно: строка удалена, сама MAIN (и её id) осталась.
+    expect(main).not.toBeNull();
+    expect(main.lines.find((l: any) => l.equipmentId === fx.equipmentId)).toBeUndefined();
+    expect(main.totalAfterDiscount.toString()).toBe("0");
+  });
+
+  it("все строки обнулены → 409 NOTHING_TO_ISSUE, выдача не записана", async () => {
+    const fx = await seedCountFixture({
+      bookingItemQty: 3,
+      mainLineQty: 3,
+      finalAmount: "3000",
+      subtotal: "3000",
+      totalAfterDiscount: "3000",
+    });
+    const { completeSession } = await import("../warehouseScan");
+
+    await expect(
+      completeSession(fx.sessionId, {
+        issuanceAdjustments: [{ bookingItemId: fx.bookingItemId, actualQuantity: 0 }],
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "NOTHING_TO_ISSUE" });
+
+    const booking = await prisma.booking.findUnique({ where: { id: fx.bookingId } });
+    expect(booking.status).toBe("CONFIRMED");
+    expect((await prisma.bookingItem.findUnique({ where: { id: fx.bookingItemId } })).quantity).toBe(3);
+    expect((await prisma.scanSession.findUnique({ where: { id: fx.sessionId } })).status).toBe("ACTIVE");
   });
 
   it("UNIT-mode: releases (M − N) BookingItemUnit records for non-scanned units", async () => {
@@ -514,11 +556,12 @@ describe("completeSession with issuanceAdjustments", () => {
     expect(audit).not.toBeNull();
   });
 
-  it("rejects actualQuantity > bi.quantity + addCap with 409 ADDON_OVER_STOCK", async () => {
+  it("rejects actualQuantity > bi.quantity + ackCap with 409 ADDON_OVER_STOCK (naming the row)", async () => {
     // Seed: Equipment.totalQuantity=5, BookingItem.quantity=2; добавим другую
     // пересекающуюся бронь с quantity=2 → occupiedByOthers=2.
-    // addCap = 5 − 2 − 2 = 1. Adjustment actualQuantity=5 (delta +3) > addCap=1
-    // → 409 ADDON_OVER_STOCK { addCap: 1, requested: 5, alreadyInBooking: 2 }.
+    // addCap = 5 − 2 − 2 = 1, ackCap = 5 − 2 = 3. Adjustment actualQuantity=6
+    // (delta +4) — больше даже «под ответственность» → 409 ADDON_OVER_STOCK
+    // { bookingItemId, addCap: 1, requested: 6, alreadyInBooking: 2 }.
     const fx = await seedCountFixture({
       bookingItemQty: 2,
       mainLineQty: 2,
@@ -542,8 +585,8 @@ describe("completeSession with issuanceAdjustments", () => {
       data: {
         clientId: otherClient.id,
         projectName: "Other overlapping",
-        startDate: new Date("2026-06-01"),
-        endDate: new Date("2026-06-03"),
+        startDate: RENT_START(),
+        endDate: RENT_END(),
         status: "CONFIRMED",
         totalEstimateAmount: "2000",
         discountAmount: "0",
@@ -561,7 +604,7 @@ describe("completeSession with issuanceAdjustments", () => {
     let captured: any = null;
     try {
       await completeSession(fx.sessionId, {
-        issuanceAdjustments: [{ bookingItemId: fx.bookingItemId, actualQuantity: 5 }],
+        issuanceAdjustments: [{ bookingItemId: fx.bookingItemId, actualQuantity: 6 }],
         createdBy: fx.adminUserId,
       });
     } catch (e) {
@@ -571,49 +614,73 @@ describe("completeSession with issuanceAdjustments", () => {
     expect(captured.status).toBe(409);
     expect(captured.code).toBe("ADDON_OVER_STOCK");
     expect(captured.details).toMatchObject({
+      bookingItemId: fx.bookingItemId,
       addCap: 1,
-      requested: 5,
+      requested: 6,
       alreadyInBooking: 2,
     });
 
-    // Транзакция откатилась — BookingItem.quantity не изменился.
+    // Транзакция откатилась — BookingItem.quantity не изменился, сессия открыта.
     const bi = await prisma.bookingItem.findUnique({ where: { id: fx.bookingItemId } });
     expect(bi.quantity).toBe(2);
+    expect((await prisma.scanSession.findUnique({ where: { id: fx.sessionId } })).status).toBe("ACTIVE");
+
+    // Сверх свободного, но в пределах склада — конфликт с чужой бронью, а с
+    // подтверждением «под ответственность» проходит.
+    await expect(
+      completeSession(fx.sessionId, {
+        issuanceAdjustments: [{ bookingItemId: fx.bookingItemId, actualQuantity: 5 }],
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "ADDON_CONFLICT",
+      details: expect.objectContaining({ bookingItemId: fx.bookingItemId, bookingId: otherBooking.id }),
+    });
+    await completeSession(fx.sessionId, {
+      issuanceAdjustments: [{ bookingItemId: fx.bookingItemId, actualQuantity: 5, acknowledgedConflict: true }],
+    });
+    expect((await prisma.bookingItem.findUnique({ where: { id: fx.bookingItemId } })).quantity).toBe(5);
+    const ackAudit = await prisma.auditEntry.findFirst({
+      where: { action: "BOOKING_ITEM_ADDED_WITH_CONFLICT", entityId: fx.bookingId },
+    });
+    expect(JSON.parse(ackAudit.after)).toMatchObject({ conflictBookingId: otherBooking.id, quantity: 3 });
   });
 
-  it("UNIT-mode positive delta: bumps quantity without creating BookingItemUnit reservations", async () => {
-    // 3 unit-reservations, scan только первые 2. actualQuantity=4 (delta +1).
-    // Equipment.totalQuantity по seedUnitFixture не задан явно → дефолт 0,
-    // что даст addCap < 0. Пересчитаем с totalQuantity=5 после сидинга,
-    // чтобы addCap = 5 − 0 − 3 = 2 (других пересекающихся броней нет).
-    const fx = await seedUnitFixture({ unitCount: 3, scannedIndices: [0, 1] });
-    await prisma.equipment.update({
-      where: { id: fx.equipmentId },
-      data: { totalQuantity: 5 },
-    });
+  it("UNIT-mode positive delta: резервирует свободные экземпляры, выдача переводит их в ISSUED", async () => {
+    // 3 резерва без отметок (чек-лист выдачи экземпляры не отмечает) + 2 свободных
+    // экземпляра на полке. actualQuantity=4 (delta +1) → добавился 1 резерв,
+    // все 4 экземпляра выданы.
+    const fx = await seedUnitFixture({ unitCount: 3, scannedIndices: [] });
+    for (let i = 0; i < 2; i++) {
+      await prisma.equipmentUnit.create({
+        data: { equipmentId: fx.equipmentId, barcode: `IADJ-FREE-${i}-${Math.random().toString(36).slice(2, 8)}`, status: "AVAILABLE" },
+      });
+    }
 
     const { completeSession } = await import("../warehouseScan");
-
     await completeSession(fx.sessionId, {
       issuanceAdjustments: [{ bookingItemId: fx.bookingItemId, actualQuantity: 4 }],
       createdBy: fx.adminUserId,
     });
 
-    // BookingItem.quantity = 4 (физическая выдача operator-ом).
     const bi = await prisma.bookingItem.findUnique({ where: { id: fx.bookingItemId } });
     expect(bi.quantity).toBe(4);
-
-    // BookingItemUnit reservations: inline-добор НЕ создаёт новых резерваций,
-    // а основной блок completeSession удаляет не-отсканированные резервации
-    // (стандартная сверка). Итог: остаются 2 резервации (только отсканированные).
-    // Контракт: при положительной дельте мы НЕ добавляем reservation-rows.
-    const reservations = await prisma.bookingItemUnit.findMany({
-      where: { bookingItemId: fx.bookingItemId },
+    const reservations = await prisma.bookingItemUnit.findMany({ where: { bookingItemId: fx.bookingItemId } });
+    expect(reservations).toHaveLength(4);
+    const units = await prisma.equipmentUnit.findMany({
+      where: { id: { in: reservations.map((r: any) => r.equipmentUnitId) } },
     });
-    expect(reservations.length).toBe(2);
-    const scannedReservations = reservations.filter(
-      (r: any) => r.equipmentUnitId === fx.unitIds[0] || r.equipmentUnitId === fx.unitIds[1],
-    );
-    expect(scannedReservations.length).toBe(2);
+    expect(units.every((u: any) => u.status === "ISSUED")).toBe(true);
+  });
+
+  it("UNIT-mode positive delta без свободных экземпляров → 409 ADDON_OVER_STOCK", async () => {
+    const fx = await seedUnitFixture({ unitCount: 3, scannedIndices: [] });
+    const { completeSession } = await import("../warehouseScan");
+    await expect(
+      completeSession(fx.sessionId, {
+        issuanceAdjustments: [{ bookingItemId: fx.bookingItemId, actualQuantity: 4 }],
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "ADDON_OVER_STOCK" });
+    expect(await prisma.bookingItemUnit.count({ where: { bookingItemId: fx.bookingItemId } })).toBe(3);
   });
 });

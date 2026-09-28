@@ -86,6 +86,11 @@ export interface BookingRegisterRow {
   hasScanSessions: boolean;
   lastScanOperation: string | null;
   lastScanStatus: string | null;
+  /**
+   * В киоске идёт живая сессия (ACTIVE, и бронь в статусе, где эта операция
+   * возможна). Устаревшая сессия — false. API присылает всегда.
+   */
+  liveScanSession?: boolean;
   financeState: RegisterFinanceState;
   overdueAmount: string;
   overdueDays: number;

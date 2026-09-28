@@ -15,8 +15,19 @@
  *
  * Новое:
  *  - `?tab=` в URL — раздел переживает перезагрузку планшета;
- *  - страница держит одну activeSession: переключение таба НЕ теряет
- *    открытый чек-лист (сессия ACTIVE, возврат на таб продолжает её);
+ *  - страница держит одну activeSession: переключение таба размонтирует
+ *    чек-лист, но сессия остаётся ACTIVE, а количества, отметки и исходы
+ *    приёмки живут черновиком на сервере (`useChecklistDraft`) — возврат на
+ *    таб восстанавливает экран из черновика (P6);
+ *  - чек-лист монтируется с `key={sessionId}`: следующая бронь в левом списке
+ *    получает свежий экземпляр, а не итог предыдущей (P7);
+ *  - PIN-вход переживает перезагрузку: живой токен из sessionStorage
+ *    (`getWarehouseAuth`) проверяется после монтирования (P18);
+ *  - «←» и выбор другой брони — «ухожу»: черновик досылается, а сессия без
+ *    работы прерывается (`EMPTY_LEAVE`), чтобы «открыл и посмотрел» не
+ *    оставлял висящих сессий (P25);
+ *  - сессию закрыли (`SESSION_*`) — чек-лист показывает `SessionClosedNotice`,
+ *    «К списку броней» закрывает его и обновляет списки;
  *  - /api/warehouse/shift питает и экран «Смена», и бейджи таб-бара;
  *  - вместе со сменой читается идущая инвентаризация: карточка на «Смене» ведёт
  *    в счёт полки (`?tab=count`, своей вкладки нет). Сбой этого запроса смену
@@ -46,12 +57,17 @@ import {
 } from "../../../src/components/warehouse/ShiftHome";
 import { JournalScreen } from "../../../src/components/warehouse/JournalScreen";
 import { ProblemsScreen } from "../../../src/components/warehouse/ProblemsScreen";
-import { ResumedSessionBanner } from "../../../src/components/warehouse/ResumedSessionBanner";
 import { StockCountScreen } from "../../../src/components/warehouse/StockCountScreen";
 import { scanApi, type ShiftSummaryData } from "../../../src/components/warehouse/api";
+import {
+  leaveChecklistSession,
+  type ChecklistLeaveFn,
+} from "../../../src/components/warehouse/useChecklistDraft";
 import type { StockCountDetail } from "../../../src/components/inventory/types";
+import { isScanApiError } from "../../../src/components/warehouse/types";
 import type {
   BookingSummary,
+  ChecklistSessionProps,
   ScanOperation,
   ScanSessionInfo,
 } from "../../../src/components/warehouse/types";
@@ -82,7 +98,20 @@ interface ActiveSession {
   sessionId: string;
   operation: ScanOperation;
   booking: BookingSummary | null;
+  /** createSession продолжил идущую сессию — чек-лист покажет плашку. */
+  resumed: ScanSessionInfo | null;
 }
+
+/** Ответ createSession → то, что нужно плашке «Продолжена …». */
+function resumedFrom(info: ScanSessionInfo | undefined | null): ScanSessionInfo | null {
+  return info?.resumed ? info : null;
+}
+
+const loadingScreen = (
+  <div className="flex min-h-screen items-center justify-center bg-surface-muted">
+    <div className="text-sm text-ink-3">Загрузка…</div>
+  </div>
+);
 
 function WarehouseScanInner({
   hasMainSession,
@@ -98,20 +127,47 @@ function WarehouseScanInner({
   const router = useRouter();
 
   const [authed, setAuthed] = useState(hasMainSession);
+  // PIN-вход читается из sessionStorage только после монтирования — на
+  // сервере хранилища нет, и разный первый кадр сломал бы гидратацию.
+  const [authChecked, setAuthChecked] = useState(hasMainSession);
   const [tab, setTab] = useState<WorkstationTab>(initialTab);
   // Имя PIN-кладовщика (после логина через киоск). Для main-сессии — username.
   const [pinWorkerName, setPinWorkerName] = useState<string | null>(null);
   const displayName = pinWorkerName ?? workerName;
 
-  // Открытый чек-лист. Переключение таба его НЕ сбрасывает — возврат на таб
-  // Выдача/Приёмка продолжает сессию (она ACTIVE и резюмируема на бэке).
+  // P18: перезагрузка PIN-киоска не выкидывает на вход, пока токен жив.
+  // Истёкший токен getWarehouseAuth вычищает сам; отозванный отобьёт сервер
+  // первым 401 → goToLogin.
+  useEffect(() => {
+    const auth = scanApi.getWarehouseAuth();
+    if (auth) {
+      setAuthed(true);
+      if (auth.workerName) setPinWorkerName(auth.workerName);
+    }
+    setAuthChecked(true);
+  }, []);
+
+  // Открытый чек-лист. Переключение таба размонтирует экран, но не сессию:
+  // возврат на таб Выдача/Приёмка продолжает её, экран восстанавливается из
+  // черновика на сервере.
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  // Последняя отрисованная сессия — для обработчиков, чтобы «уход» не жил
+  // внутри функции-обновления состояния (её React вправе вызвать дважды).
+  const activeRef = useRef<ActiveSession | null>(null);
+  activeRef.current = activeSession;
+
+  // Чек-лист кладёт сюда «ухожу» (useChecklistDraft); пусто — экран
+  // размонтирован, и страница зовёт то же самое через leaveChecklistSession.
+  const leaveRef = useRef<ChecklistLeaveFn | null>(null);
+  const leaveSession = useCallback((sessionId: string) => {
+    const leave = leaveRef.current;
+    leaveRef.current = null;
+    if (leave) leave();
+    else leaveChecklistSession(sessionId);
+  }, []);
 
   const [inWorkSelectedBookingId, setInWorkSelectedBookingId] = useState<string | null>(null);
   const [inWorkOverdueFocus, setInWorkOverdueFocus] = useState(false);
-
-  const [resumedStartedAt, setResumedStartedAt] = useState<string | null>(null);
-  const [showResumedBanner, setShowResumedBanner] = useState(false);
 
   // Монотонные счётчики — bump после успешного complete, чтобы списки
   // (BookingList / InWorkList) перезагрузились и бронь ушла из очереди.
@@ -155,19 +211,6 @@ function WarehouseScanInner({
   }, [authed, shiftVersion]);
 
   const refreshShift = useCallback(() => setShiftVersion((v) => v + 1), []);
-
-  const noteSessionResumed = useCallback(
-    (info?: { resumed?: boolean; startedAt?: string }) => {
-      if (info?.resumed) {
-        setResumedStartedAt(info.startedAt ?? null);
-        setShowResumedBanner(true);
-      } else {
-        setResumedStartedAt(null);
-        setShowResumedBanner(false);
-      }
-    },
-    [],
-  );
 
   // ── Навигация ──────────────────────────────────────────────────────────────
 
@@ -217,11 +260,16 @@ function WarehouseScanInner({
         const op: ScanOperation = inIssue ? "ISSUE" : "RETURN";
         const created = await scanApi.createSession(booking.id, op);
         if (cancelled) return;
-        noteSessionResumed(created);
-        setActiveSession({ sessionId: created.id, operation: op, booking });
+        setActiveSession({
+          sessionId: created.id,
+          operation: op,
+          booking,
+          resumed: resumedFrom(created),
+        });
         setTab(op === "ISSUE" ? "issue" : "return");
-      } catch {
-        if (!cancelled) toast.error("Не удалось открыть бронь");
+      } catch (err: unknown) {
+        // Текст сервера точнее («Бронь уже выдана — выдачу в киоске не открыть…»).
+        if (!cancelled) toast.error(isScanApiError(err) ? err.message : "Не удалось открыть бронь");
       } finally {
         if (!cancelled) {
           setPreselecting(false);
@@ -232,33 +280,68 @@ function WarehouseScanInner({
 
     return () => {
       cancelled = true;
+      // Прерванный запуск (двойной mount в dev StrictMode, смена authed) не должен
+      // «съесть» ссылку: иначе результат отброшен, а экран навсегда «Открываем бронь…».
+      preselectConsumed.current = false;
     };
-  }, [initialBookingId, authed, router, noteSessionResumed]);
+  }, [initialBookingId, authed, router]);
 
   // ── Обработчики потоков ────────────────────────────────────────────────────
 
+  // Выбор другой брони — уход с текущей сессии (P25): черновик досылается,
+  // пустая сессия прерывается. Повторный выбор той же брони — не уход.
+  const switchTo = useCallback(
+    (next: ActiveSession) => {
+      const prev = activeRef.current;
+      if (prev && prev.sessionId !== next.sessionId) leaveSession(prev.sessionId);
+      activeRef.current = next;
+      setActiveSession(next);
+    },
+    [leaveSession],
+  );
+
   const handleBookingSelect = useCallback(
     (sid: string, booking: BookingSummary, sessionInfo?: ScanSessionInfo) => {
-      noteSessionResumed(sessionInfo);
-      setActiveSession({
+      switchTo({
         sessionId: sid,
         operation: tab === "return" ? "RETURN" : "ISSUE",
         booking,
+        resumed: resumedFrom(sessionInfo),
       });
     },
-    [tab, noteSessionResumed],
+    [tab, switchTo],
   );
 
+  /** Закрыть чек-лист без «ухода» — после «Готово» на экране итога. */
   const closeChecklist = useCallback(() => {
+    leaveRef.current = null;
+    activeRef.current = null;
     setActiveSession(null);
-    noteSessionResumed(undefined);
-  }, [noteSessionResumed]);
+  }, []);
+
+  /** «←» с чек-листа: уйти (дослать черновик / прервать пустую) и закрыть. */
+  const backFromChecklist = useCallback(() => {
+    const prev = activeRef.current;
+    if (prev) leaveSession(prev.sessionId);
+    activeRef.current = null;
+    setActiveSession(null);
+  }, [leaveSession]);
 
   const bumpListsAfterComplete = useCallback(() => {
     setListVersion((v) => v + 1);
     setInWorkVersion((v) => v + 1);
     refreshShift();
   }, [refreshShift]);
+
+  /**
+   * «К списку броней» на `SessionClosedNotice`: сессию уже закрыли (оформили,
+   * прервали, бронь изменили на карточке) — закрываем чек-лист и
+   * перечитываем списки: бронь могла уйти из очереди.
+   */
+  const handleSessionClosed = useCallback(() => {
+    closeChecklist();
+    bumpListsAfterComplete();
+  }, [closeChecklist, bumpListsAfterComplete]);
 
   const handleInWorkAcceptBack = useCallback(
     async (bookingId: string) => {
@@ -279,18 +362,24 @@ function WarehouseScanInner({
               items: [],
             }
           : null;
-        noteSessionResumed(session);
-        setActiveSession({ sessionId: session.id, operation: "RETURN", booking });
+        switchTo({
+          sessionId: session.id,
+          operation: "RETURN",
+          booking,
+          resumed: resumedFrom(session),
+        });
         goTab("return");
-      } catch {
-        toast.error("Не удалось открыть приёмку");
+      } catch (err: unknown) {
+        toast.error(isScanApiError(err) ? err.message : "Не удалось открыть приёмку");
         goTab("return");
       }
     },
-    [goTab, noteSessionResumed],
+    [goTab, switchTo],
   );
 
   // ── Логин ──────────────────────────────────────────────────────────────────
+
+  if (!authed && !authChecked) return loadingScreen;
 
   if (!authed) {
     return (
@@ -417,40 +506,43 @@ function WarehouseScanInner({
 
     if (checklistOpen && activeSession) {
       const projectName = activeSession.booking?.projectName ?? "";
+      // Контракт страница → чек-листы (types.ts, ChecklistSessionProps):
+      // плашку «Продолжена …» и SessionClosedNotice рендерят сами чек-листы.
+      const sessionProps: ChecklistSessionProps = {
+        resumed: activeSession.resumed,
+        leaveRef,
+        onSessionClosed: handleSessionClosed,
+      };
       return (
         <WorkstationShell
           {...shellCommon}
           eyebrow={`${opLabel} · ${activeSession.booking ? activeSession.booking.id.slice(-6).toUpperCase() : ""}`}
           title={projectName || opLabel}
-          onBack={closeChecklist}
+          onBack={backFromChecklist}
           list={bookingListSlot}
           mobileList="hidden"
           detail={
-            <>
-              {showResumedBanner && (
-                <ResumedSessionBanner
-                  startedAt={resumedStartedAt}
-                  onDismiss={() => setShowResumedBanner(false)}
-                />
-              )}
-              {operation === "ISSUE" ? (
-                <IssueChecklist
-                  sessionId={activeSession.sessionId}
-                  projectName={projectName}
-                  onBack={closeChecklist}
-                  onComplete={closeChecklist}
-                  onCompleted={bumpListsAfterComplete}
-                />
-              ) : (
-                <ReturnChecklist
-                  sessionId={activeSession.sessionId}
-                  projectName={projectName}
-                  onBack={closeChecklist}
-                  onDone={closeChecklist}
-                  onCompleted={bumpListsAfterComplete}
-                />
-              )}
-            </>
+            operation === "ISSUE" ? (
+              <IssueChecklist
+                key={activeSession.sessionId}
+                sessionId={activeSession.sessionId}
+                projectName={projectName}
+                onBack={backFromChecklist}
+                onComplete={closeChecklist}
+                onCompleted={bumpListsAfterComplete}
+                {...sessionProps}
+              />
+            ) : (
+              <ReturnChecklist
+                key={activeSession.sessionId}
+                sessionId={activeSession.sessionId}
+                projectName={projectName}
+                onBack={backFromChecklist}
+                onDone={closeChecklist}
+                onCompleted={bumpListsAfterComplete}
+                {...sessionProps}
+              />
+            )
           }
         />
       );
@@ -554,13 +646,7 @@ function WarehouseScanPageBody() {
     ? (tabParam as WorkstationTab)
     : "shift";
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-muted">
-        <div className="text-sm text-ink-3">Загрузка…</div>
-      </div>
-    );
-  }
+  if (loading) return loadingScreen;
 
   const hasMainSession = user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
   const workerName = user?.username ?? "Кладовщик";
@@ -578,13 +664,7 @@ function WarehouseScanPageBody() {
 export default function WarehouseScanPage() {
   // useSearchParams требует Suspense boundary в Next.js 14 (App Router).
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center bg-surface-muted">
-          <div className="text-sm text-ink-3">Загрузка…</div>
-        </div>
-      }
-    >
+    <Suspense fallback={loadingScreen}>
       <WarehouseScanPageBody />
     </Suspense>
   );

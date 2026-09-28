@@ -191,11 +191,14 @@ async function loadReturnFacts(returnedIds: string[]): Promise<TrailReturnFacts>
   // Киоск: последняя завершённая сессия возврата по брони.
   const sessions = await prisma.scanSession.findMany({
     where: { bookingId: { in: returnedIds }, operation: "RETURN", status: "COMPLETED" },
-    select: { bookingId: true, workerName: true, completedAt: true },
+    select: { bookingId: true, workerName: true, completedBy: true, completedAt: true },
     orderBy: [{ completedAt: "desc" }, { startedAt: "desc" }],
   });
   for (const s of sessions) {
-    if (!facts.kiosk.has(s.bookingId)) facts.kiosk.set(s.bookingId, { workerName: s.workerName, completedAt: s.completedAt });
+    // Принял тот, кто нажал «Готово»; у старых сессий автор неизвестен — тот, кто открыл.
+    if (!facts.kiosk.has(s.bookingId)) {
+      facts.kiosk.set(s.bookingId, { workerName: s.completedBy ?? s.workerName, completedAt: s.completedAt });
+    }
   }
   // Кнопка / система: последняя запись аудита BOOKING_RETURNED по брони.
   // Сортировка сначала по entityId — именно она заставляет SQLite взять индекс

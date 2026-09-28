@@ -97,6 +97,9 @@ export type RetroBooking = {
   }> | null;
 };
 
+/** Предупреждение о пересчёте суммы держим дольше обычного тоста — его надо дочитать. */
+const RETRO_WARNING_TOAST_MS = 12_000;
+
 export function useRetroEdit(args: {
   booking: RetroBooking | null;
   reloadBooking: () => Promise<void>;
@@ -353,11 +356,15 @@ export function useRetroEdit(args: {
         setRetroEditMode(false);
         return;
       }
-      await apiFetch(`/api/bookings/${booking.id}`, {
+      const res = await apiFetch<{ warning?: string | null }>(`/api/bookings/${booking.id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       });
       toast.success("Изменения сохранены. Запись в аудит-логе.");
+      // Сервер предупреждает, если правка пересчитала сумму к оплате (например,
+      // по текущим ценам каталога) — молча менять долг клиента нельзя.
+      const warning = typeof res?.warning === "string" ? res.warning.trim() : "";
+      if (warning) toast.info(warning, { durationMs: RETRO_WARNING_TOAST_MS });
       setRetroEditMode(false);
       setRetroEdits({});
       await reloadBooking();

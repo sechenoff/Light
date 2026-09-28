@@ -316,4 +316,101 @@ describe("IssueResultView", () => {
     expect(screen.queryByText(/Переплата/)).not.toBeInTheDocument();
     expect(screen.queryByText(/К возврату клиенту/)).not.toBeInTheDocument();
   });
+
+  // ── P17 / P22: рост основной сметы, договорной итог, PIN-киоск ──────────────
+
+  it("показывает «Финансы», когда основная смета выросла на выдаче (без доп-сметы)", () => {
+    render(
+      <IssueResultView
+        result={okResult({
+          mainAfterDiscount: "5000",
+          mainOriginalAfterDiscount: "3000",
+          addonAfterDiscount: "0",
+          finalAmount: "5000",
+        })}
+        bookingId="b1"
+        projectName="P"
+        issuedCount={3}
+        addonsCount={2}
+        substitutedCount={0}
+        onDone={() => {}}
+      />,
+    );
+    expect(screen.getByText("Финансы")).toBeInTheDocument();
+    expect(screen.getByText(/Согласовано \(исходно\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Добавлено на выдаче/)).toBeInTheDocument();
+    expect(screen.getByText(/\+\s?2\s?000/)).toBeInTheDocument();
+    expect(screen.getByText(/Согласовано \(фактически\)/)).toBeInTheDocument();
+  });
+
+  it("договорной итог: строка «Договорная сумма» и предупреждение, что добор не вошёл в оплату", () => {
+    render(
+      <IssueResultView
+        result={okResult({
+          mainAfterDiscount: "1050",
+          mainOriginalAfterDiscount: "1050",
+          addonAfterDiscount: "4000",
+          finalAmount: "1000",
+          manualFinalAmount: "1000",
+        })}
+        bookingId="b1"
+        projectName="P"
+        issuedCount={3}
+        addonsCount={1}
+        substitutedCount={0}
+        onDone={() => {}}
+      />,
+    );
+    const row = screen.getByText(/Договорная сумма/).parentElement as HTMLElement;
+    expect(row.textContent).toMatch(/1\s?000/);
+    expect(
+      screen.getByText(/договорной итог — сумма к оплате не изменится автоматически/),
+    ).toBeInTheDocument();
+  });
+
+  it("без договорного итога строки «Договорная сумма» нет", () => {
+    render(
+      <IssueResultView
+        result={okResult({
+          mainAfterDiscount: "5000",
+          mainOriginalAfterDiscount: "5000",
+          addonAfterDiscount: "500",
+          finalAmount: "5500",
+          manualFinalAmount: null,
+        })}
+        bookingId="b1"
+        projectName="P"
+        issuedCount={3}
+        addonsCount={1}
+        substitutedCount={0}
+        onDone={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/Договорная сумма/)).not.toBeInTheDocument();
+  });
+
+  it("PIN-киоск: ссылок на PDF нет (там 401), вместо них подсказка про карточку брони", () => {
+    window.sessionStorage.setItem("warehouse_token", "tok:sig");
+    try {
+      render(
+        <IssueResultView
+          result={okResult({
+            mainAfterDiscount: "5000",
+            addonAfterDiscount: "3000",
+            finalAmount: "8000",
+          })}
+          bookingId="b1"
+          issuedCount={3}
+          addonsCount={1}
+          substitutedCount={0}
+          projectName="P"
+          onDone={() => {}}
+        />,
+      );
+      expect(screen.queryByRole("link", { name: /PDF/ })).not.toBeInTheDocument();
+      expect(screen.getByText(/PDF — в карточке брони в CRM/)).toBeInTheDocument();
+    } finally {
+      window.sessionStorage.clear();
+    }
+  });
 });

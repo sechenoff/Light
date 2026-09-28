@@ -34,6 +34,8 @@ const api = vi.hoisted(() => ({
   getActiveStockCount: vi.fn(),
   listBookings: vi.fn(),
   clearWarehouseToken: vi.fn(),
+  // PIN-входа нет — страница работает под главной сессией (P18).
+  getWarehouseAuth: vi.fn(() => null),
 }));
 vi.mock("../api", () => ({ scanApi: api }));
 

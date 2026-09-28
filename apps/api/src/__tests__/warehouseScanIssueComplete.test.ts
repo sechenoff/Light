@@ -175,10 +175,10 @@ describe("warehouseScan — ISSUE completion", () => {
 
   it("re-running completeSession on the now-ISSUED booking does not crash and keeps booking ISSUED", async () => {
     const svc = await import("../services/warehouseScan");
-    // Session is already COMPLETED → completeSession refuses (existing guard).
+    // Session is already COMPLETED → понятный 409 с кодом, а не 500.
     await expect(
       svc.completeSession(sessionId, { createdBy: superAdminId }),
-    ).rejects.toThrow(/должна быть активной/i);
+    ).rejects.toMatchObject({ status: 409, code: "SESSION_ALREADY_COMPLETED" });
 
     // Booking still ISSUED — no rollback.
     const booking = await prisma.booking.findUnique({ where: { id: bookingId } });

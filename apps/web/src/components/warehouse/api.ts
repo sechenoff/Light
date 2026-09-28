@@ -15,24 +15,31 @@
  *                       · Content-Type: application/json  (skipped for FormData)
  *                       · credentials: "include"
  *  - Public (NO Bearer): POST /api/warehouse/auth, GET /api/warehouse/workers/names
+ *  - Рядом с токеном: "warehouse_worker_name" и "warehouse_token_expires_at"
+ *    (ISO) — чтобы перезагрузка PIN-киоска не выкидывала на вход (P18).
+ *    `getWarehouseAuth()` — единственный способ узнать, есть ли живой вход.
  *
  * Error model: every call throws `ScanApiError` on non-2xx, parsed from the
  * backend `{ message, code?, details? }` envelope (the central Express error
- * handler surfaces `code` and `details`).
+ * handler surfaces `code` and `details`). Коды — `SCAN_ERROR` в `types.ts`.
  * ────────────────────────────────────────────────────────────────────────────
  */
 
+import { CHECKLIST_DRAFT_LIMITS, SCAN_ERROR } from "./types";
 import type {
   AddItemResult,
   AddonEstimateView,
   BookingSummary,
+  CancelSessionResult,
   CheckResult,
+  ChecklistDraftV1,
   CompletePayload,
   CompleteResult,
   ChecklistState,
   AddonResult,
   InWorkBooking,
   InWorkDetails,
+  KioskCancelReason,
   ScanApiError,
   ScanOperation,
   ScanSessionInfo,
@@ -48,6 +55,17 @@ import type {
 // ── Token + transport ────────────────────────────────────────────────────────
 
 const TOKEN_STORAGE_KEY = "warehouse_token";
+const WORKER_NAME_STORAGE_KEY = "warehouse_worker_name";
+const TOKEN_EXPIRES_STORAGE_KEY = "warehouse_token_expires_at";
+
+/**
+ * Потолок тела keepalive-запроса. Браузеры ограничивают ВСЕ одновременные
+ * keepalive-запросы страницы 64 КиБ; больше — fetch падает сразу. Берём с
+ * запасом под заголовки и параллельную отмену сессии.
+ */
+const KEEPALIVE_MAX_BODY_BYTES = 60 * 1024;
+
+const NETWORK_ERROR_MESSAGE = "Нет связи с сервером — проверьте подключение";
 
 /**
  * Resolve API base identically to `src/lib/api.ts`.
@@ -64,19 +82,114 @@ function resolveApiBaseUrl(): string {
 
 const API_BASE_URL = resolveApiBaseUrl();
 
-export function getWarehouseToken(): string | null {
+// sessionStorage может бросить (заблокированные данные сайта, приватный режим
+// старого Safari) — киоск тогда просто работает без запоминания входа.
+
+function storageGet(key: string): string | null {
   if (typeof window === "undefined") return null;
-  return window.sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
-export function setWarehouseToken(token: string): void {
+function storageSet(key: string, value: string | null): void {
   if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+  try {
+    if (value === null) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, value);
+  } catch {
+    /* хранилище недоступно — вход не запомнится, работа не ломается */
+  }
+}
+
+export function getWarehouseToken(): string | null {
+  return storageGet(TOKEN_STORAGE_KEY);
+}
+
+/**
+ * Сохранить PIN-токен. `meta` — имя кладовщика и срок токена из ответа
+ * `/auth`; без `meta` прежние имя и срок стираются, чтобы не приписать новый
+ * токен предыдущему кладовщику.
+ */
+export function setWarehouseToken(
+  token: string,
+  meta?: { name?: string | null; expiresAt?: string | null },
+): void {
+  storageSet(TOKEN_STORAGE_KEY, token);
+  storageSet(WORKER_NAME_STORAGE_KEY, meta?.name ?? null);
+  storageSet(TOKEN_EXPIRES_STORAGE_KEY, meta?.expiresAt ?? null);
 }
 
 export function clearWarehouseToken(): void {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  storageSet(TOKEN_STORAGE_KEY, null);
+  storageSet(WORKER_NAME_STORAGE_KEY, null);
+  storageSet(TOKEN_EXPIRES_STORAGE_KEY, null);
+}
+
+/** Живой PIN-вход киоска. */
+export interface WarehouseAuthInfo {
+  token: string;
+  /** Имя кладовщика; `null`, если узнать его на клиенте нельзя. */
+  workerName: string | null;
+  /** ISO; `null`, если срок неизвестен — тогда его проверит сервер (401). */
+  expiresAt: string | null;
+}
+
+/**
+ * Разбор полезной нагрузки токена `base64(JSON{name, exp}):hmac` (формат
+ * `generateToken` в `apps/api/src/services/warehouseAuth.ts`). Подпись здесь
+ * не проверяется и не может быть проверена — это только подсказка для экрана
+ * (имя и срок) у токенов, сохранённых до появления отдельных полей.
+ */
+function readTokenPayload(token: string): { name: string | null; exp: number | null } | null {
+  const colon = token.lastIndexOf(":");
+  if (colon <= 0 || typeof atob !== "function") return null;
+  try {
+    const binary = atob(token.slice(0, colon));
+    const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+    const json =
+      typeof TextDecoder === "function" ? new TextDecoder().decode(bytes) : binary;
+    const payload: unknown = JSON.parse(json);
+    if (typeof payload !== "object" || payload === null) return null;
+    const { name, exp } = payload as { name?: unknown; exp?: unknown };
+    return {
+      name: typeof name === "string" ? name : null,
+      exp: typeof exp === "number" && Number.isFinite(exp) ? exp : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Есть ли живой PIN-вход: токен в sessionStorage и срок не вышел. Истёкший
+ * токен вычищается сразу, чтобы экран не пытался работать с ним. Токен без
+ * известного срока считается живым — окончательно решает сервер (401 → вход).
+ */
+export function getWarehouseAuth(now: number = Date.now()): WarehouseAuthInfo | null {
+  const token = getWarehouseToken();
+  if (!token) return null;
+
+  const payload = readTokenPayload(token);
+  const storedExpires = storageGet(TOKEN_EXPIRES_STORAGE_KEY);
+  const expiresAt =
+    storedExpires ?? (payload?.exp != null ? new Date(payload.exp).toISOString() : null);
+
+  if (expiresAt !== null) {
+    const expMs = Date.parse(expiresAt);
+    if (Number.isFinite(expMs) && expMs <= now) {
+      clearWarehouseToken();
+      return null;
+    }
+  }
+
+  return {
+    token,
+    workerName: storageGet(WORKER_NAME_STORAGE_KEY) ?? payload?.name ?? null,
+    expiresAt,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,6 +213,19 @@ interface RequestOptions {
   formData?: FormData;
   /** When true, the Authorization: Bearer header is NOT attached (public route). */
   noAuth?: boolean;
+  /**
+   * Запрос переживает уход со страницы (`fetch keepalive`): досылка черновика
+   * и отмена пустой сессии при закрытии вкладки. Тело больше
+   * {@link KEEPALIVE_MAX_BODY_BYTES} уходит обычным запросом — лучше попытка,
+   * которую может оборвать выгрузка страницы, чем гарантированный отказ fetch.
+   */
+  keepalive?: boolean;
+}
+
+function utf8ByteLength(text: string): number {
+  return typeof TextEncoder === "function"
+    ? new TextEncoder().encode(text).length
+    : text.length * 3; // верхняя оценка без TextEncoder
 }
 
 /**
@@ -116,24 +242,25 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
+  const jsonBody = !isFormData && body !== undefined ? JSON.stringify(body) : undefined;
+  const keepalive =
+    opts.keepalive === true &&
+    !isFormData &&
+    (jsonBody === undefined || utf8ByteLength(jsonBody) <= KEEPALIVE_MAX_BODY_BYTES);
+
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers,
       credentials: "include",
-      body: isFormData
-        ? formData
-        : body !== undefined
-          ? JSON.stringify(body)
-          : undefined,
+      body: isFormData ? formData : jsonBody,
+      ...(keepalive ? { keepalive: true } : {}),
     });
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error
-        ? err.message
-        : "Сеть недоступна — проверьте подключение";
-    throw makeError(0, message, "NETWORK_ERROR", null);
+  } catch {
+    // fetch отклоняется только сетевыми сбоями, и текст у них английский
+    // («Failed to fetch», «Load failed») — кладовщику нужен понятный.
+    throw makeError(0, NETWORK_ERROR_MESSAGE, SCAN_ERROR.NETWORK_ERROR, null);
   }
 
   if (!res.ok) {
@@ -178,7 +305,7 @@ export async function authWorker(
     body: { name, pin },
     noAuth: true,
   });
-  setWarehouseToken(result.token);
+  setWarehouseToken(result.token, { name: result.name, expiresAt: result.expiresAt });
   return result;
 }
 
@@ -203,7 +330,13 @@ export async function listBookings(
   return data.bookings;
 }
 
-/** POST /api/warehouse/sessions { bookingId, operation } */
+/**
+ * POST /api/warehouse/sessions { bookingId, operation }
+ *
+ * Живая ACTIVE-сессия брони продолжается (`resumed: true`, с именем того, кто
+ * её открыл, и временем последнего черновика); устаревшие сервер закрывает
+ * (`closedStaleSessionIds`). 409 `BOOKING_WRONG_STATUS` — бронь уже не та.
+ */
 export async function createSession(
   bookingId: string,
   operation: ScanOperation,
@@ -215,10 +348,49 @@ export async function createSession(
   return data.session;
 }
 
-/** GET /api/warehouse/sessions/:id/state */
+/**
+ * GET /api/warehouse/sessions/:id/state — чек-лист, черновик и
+ * `itemsVersion`. Для закрытой или устаревшей сессии — 409 `SESSION_*`
+ * (устаревшую сервер при этом закрывает: вызов идемпотентный).
+ */
 export function getState(sessionId: string): Promise<ChecklistState> {
   return request<ChecklistState>(
     `/api/warehouse/sessions/${sessionId}/state`,
+  );
+}
+
+/** Ответ `PUT /sessions/:id/draft`. */
+export interface SaveDraftResult {
+  /** Новая ревизия — от неё считать следующее сохранение. */
+  revision: number;
+  /** ISO. */
+  savedAt: string;
+}
+
+/**
+ * PUT /api/warehouse/sessions/:id/draft { revision, draft }
+ *
+ * `revision` — ревизия, от которой построен черновик (`state.draftRevision`
+ * или ответ прошлого сохранения). Сервер пишет только поверх неё; другое
+ * устройство успело раньше — 409 `DRAFT_OUTDATED` со свежим черновиком в
+ * `details` (`DraftOutdatedDetails`).
+ *
+ * `keepalive: true` — досылка при `pagehide`/`visibilitychange`/размонтировании.
+ * Черновик больше лимита сервера не отправляется: сразу 413 `DRAFT_TOO_LARGE`.
+ */
+export async function saveDraft(
+  sessionId: string,
+  revision: number,
+  draft: ChecklistDraftV1,
+  opts: { keepalive?: boolean } = {},
+): Promise<SaveDraftResult> {
+  const draftBytes = utf8ByteLength(JSON.stringify(draft));
+  if (draftBytes > CHECKLIST_DRAFT_LIMITS.maxBytes) {
+    throw makeError(413, "Черновик слишком большой", SCAN_ERROR.DRAFT_TOO_LARGE, null);
+  }
+  return request<SaveDraftResult>(
+    `/api/warehouse/sessions/${sessionId}/draft`,
+    { method: "PUT", body: { revision, draft }, keepalive: opts.keepalive },
   );
 }
 
@@ -495,7 +667,8 @@ export async function addonSearch(
  *
  * Throws `ScanApiError` with `code === "ADDON_CONFLICT"` (status 409) and
  * `details` matching `AddonConflict` when the article is busy and the
- * conflict has not been acknowledged.
+ * conflict has not been acknowledged. С подтверждением потолок — `ackCap`,
+ * сверх него 409 `ADDON_OVER_STOCK`; в RETURN-сессии 409 `ADDON_ONLY_ON_ISSUE`.
  */
 export function addItem(
   sessionId: string,
@@ -563,7 +736,14 @@ export function getSummary(sessionId: string): Promise<SummaryResult> {
   );
 }
 
-/** POST /api/warehouse/sessions/:id/complete { repairUnits?, problemUnits? } */
+/**
+ * POST /api/warehouse/sessions/:id/complete
+ *
+ * Тело — {@link CompletePayload} как есть: исходы приёмки, корректировки
+ * выдачи (`acknowledgedConflict` на строке), пробеги, а также `force` (выдача
+ * раньше срока), `itemsVersion` и `draftRevision` (защита от устаревшего
+ * экрана). Возможные 409 — таблица `SCAN_ERROR` в `types.ts`.
+ */
 export function complete(
   sessionId: string,
   payload: CompletePayload,
@@ -574,11 +754,38 @@ export function complete(
   );
 }
 
-/** POST /api/warehouse/sessions/:id/cancel */
-export function cancel(sessionId: string): Promise<ScanSessionInfo> {
-  return request<ScanSessionInfo>(
+export interface CancelSessionOptions {
+  /** Зачем прерываем; без причины сервер пишет «прервана в киоске». */
+  reason?: KioskCancelReason;
+  /**
+   * Отменить, только если в сессии не было работы (черновик, отметки, добор) —
+   * для «ушёл, ничего не сделав». Иначе сессия остаётся, `cancelled: false`.
+   */
+  onlyIfEmpty?: boolean;
+  /** Запрос должен пережить закрытие вкладки. */
+  keepalive?: boolean;
+}
+
+/**
+ * POST /api/warehouse/sessions/:id/cancel { reason?, onlyIfEmpty? }
+ *
+ * Без опций тело не отправляется — как до появления причин.
+ */
+export function cancel(
+  sessionId: string,
+  opts: CancelSessionOptions = {},
+): Promise<CancelSessionResult> {
+  const body: { reason?: KioskCancelReason; onlyIfEmpty?: boolean } = {
+    ...(opts.reason !== undefined ? { reason: opts.reason } : {}),
+    ...(opts.onlyIfEmpty !== undefined ? { onlyIfEmpty: opts.onlyIfEmpty } : {}),
+  };
+  return request<CancelSessionResult>(
     `/api/warehouse/sessions/${sessionId}/cancel`,
-    { method: "POST" },
+    {
+      method: "POST",
+      body: Object.keys(body).length > 0 ? body : undefined,
+      keepalive: opts.keepalive,
+    },
   );
 }
 
@@ -691,6 +898,7 @@ export const scanApi = {
   listBookings,
   createSession,
   getState,
+  saveDraft,
   getShift,
   getJournal,
   getProblems,
@@ -721,4 +929,5 @@ export const scanApi = {
   getWarehouseToken,
   setWarehouseToken,
   clearWarehouseToken,
+  getWarehouseAuth,
 } as const;

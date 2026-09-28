@@ -1,27 +1,54 @@
 /**
  * Сервис чек-листа склада (без сканера).
  *
- * Кладовщик отмечает позиции вручную. Для каждой позиции хранится «ручная» ScanRecord
- * с hmacVerified=false. COUNT-позиции хранят количество в поле payloadRaw.
+ * Кладовщик отмечает позиции вручную. Штучные (UNIT) отметки хранятся
+ * ScanRecord'ами с hmacVerified=false; количества, отметки строк и исходы
+ * приёмки — черновиком сессии (`checklistDraft.ts`).
  *
  * Ключевые операции:
- * - checkItem — отметить позицию (COUNT целиком или частично, UNIT по unitId)
- * - uncheckItem — снять отметку
- * - getChecklistState — текущее состояние чек-листа для сессии
- * - addExtraItem — добавить позицию из каталога прямо во время выдачи
+ * - getChecklistState — чек-лист, потолки добора, черновик, версия состава;
+ * - checkUnit / uncheckUnit — отметка штучной единицы;
+ * - addExtraItem — добор позиции из каталога прямо на выдаче;
+ * - saveChecklistDraft — черновик (реэкспорт из checklistDraft.ts).
+ *
+ * В сессию пишут только пока она живая (`assertSessionWritable`): завершённая,
+ * прерванная и устаревшая (бронь уже выдали / приняли кнопкой) отвечают 409
+ * `SESSION_*`, устаревшая при этом закрывается.
+ *
+ * Потолок добора — общая формула склада (`stockCap.computeAddCaps`, поверх
+ * витринной доступности): пик занятости, блокирующие статусы, без черновиков
+ * и архива, за вычетом мастерской и потеряшек. Раньше чек-лист считал сам
+ * (сумма броней, DRAFT держал склад, PENDING — нет) и расходился с поиском.
  */
 
+import type { BookingStatus, EstimateLine, Prisma, ScanSessionStatus } from "@prisma/client";
+
 import { prisma } from "../prisma";
+import { HttpError } from "../utils/errors";
 import { writeAuditEntry } from "./audit";
 import { recomputeBookingFinance } from "./finance";
 import { recomputeAddonEstimate } from "./addonEstimate";
-import { findAddonConflict } from "./addonAvailability";
-import { getLostCountByEquipmentMap, getRepairCountByEquipmentMap } from "./availability";
+import { findAddonConflict, findHoldersBatch, type AddonConflict } from "./addonAvailability";
+import { addonWindow, computeAddCaps, overStockError, reserveUnits, type AddCapInfo } from "./stockCap";
 import { bookingItemKey, loadLineOrdering, sortLinesByCatalog } from "./lineOrder";
-import { HttpError } from "../utils/errors";
-import Decimal from "decimal.js";
+import {
+  SCAN_ERR,
+  SCAN_MSG,
+  assertSessionWritable,
+  computeItemsVersion,
+  ensureSystemAuditUser,
+} from "./scanSessionPolicy";
+import { parseStoredDraft, type ChecklistDraftV1 } from "./checklistDraft";
 
-type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
+export {
+  CHECKLIST_DRAFT_LIMITS,
+  checklistDraftSchema,
+  parseStoredDraft,
+  saveChecklistDraft,
+  saveChecklistDraftBodySchema,
+  validateChecklistDraft,
+  type ChecklistDraftV1,
+} from "./checklistDraft";
 
 // ── Типы ────────────────────────────────────────────────────────────────────────
 
@@ -31,31 +58,40 @@ export interface ChecklistItem {
   equipmentName: string;
   category: string;
   quantity: number;             // required qty
-  checkedQty: number;           // how many marked (for COUNT)
+  checkedQty: number;           // how many marked (for UNIT)
   trackingMode: "COUNT" | "UNIT";
-  isExtra: boolean;             // added on-site during this session
-  units?: ChecklistUnit[];      // only for UNIT-mode items
   /**
-   * Per-shift rental rate for this equipment (string Decimal).
-   * Lets the frontend live-compute финансовая разбивка without API roundtrips.
-   * "0" for custom items (no equipmentId).
+   * Устаревшее поле, всегда false. Добор виден по `addedOnSite` (эта сессия)
+   * и `originalQuantity` (сколько было в основной смете).
    */
+  isExtra: boolean;
+  units?: ChecklistUnit[];      // only for UNIT-mode items
+  /** Ставка за смену (Decimal-строка); "0" у произвольной позиции. */
   rentalRatePerShift: string;
   /**
-   * Original quantity from MAIN Estimate snapshot — what was agreed with the
-   * client. If MAIN has no line for this equipment, equals 0 (i.e. this whole
-   * BookingItem is a добор done in a prior session).
-   * Lets the frontend show «исходно ×M» eyebrow distinctly from current quantity.
+   * Количество в основной смете (MAIN) — что согласовано с клиентом.
+   * Произвольная позиция сопоставляется с MAIN по названию. 0 — строки в MAIN
+   * нет (позиция целиком добор).
    */
   originalQuantity: number;
   /**
-   * Additional units that can still be added on top of current bi.quantity
-   * without violating physical stock. Computed as:
-   *   max(0, totalQuantity − occupied_in_other_overlapping_bookings − bi.quantity)
-   * The stepper's max is then bi.quantity + addCap.
-   * 0 for custom items.
+   * Сколько ещё можно добавить к `quantity` без подтверждения (stockCap.addCap
+   * на окне «выдаю сейчас»). Степпер: max = quantity + addCap. 0 у произвольных
+   * позиций и в приёмке.
    */
   addCap: number;
+  /** Потолок «под ответственность» (stockCap.ackCap): чужую бронь подвинуть можно, мастерскую — нет. */
+  ackCap: number;
+  /** Кто держит единицы сверх `addCap` — только при ackCap > addCap. */
+  capHolder: AddonConflict | null;
+  /** Цена произвольной позиции за весь период (Decimal-строка), иначе null. */
+  customUnitPrice: string | null;
+  /** Цена строки основной сметы (MAIN) за весь период (Decimal-строка), иначе null. */
+  mainUnitPrice: string | null;
+  /** Строка MAIN с договорной ценой — процент скидки к ней не применяется. */
+  mainNegotiated: boolean;
+  /** Сколько единиц строки добавлено доборами в ЭТОЙ сессии (AddonRecord). */
+  addedOnSite: number;
 }
 
 export interface ChecklistUnit {
@@ -74,306 +110,329 @@ export interface ChecklistState {
     checkedItems: number;   // items fully checked
     totalItems: number;     // total logical items
   };
-  /**
-   * Shifts count (days) for finance computation. Read from MAIN Estimate;
-   * fallback to 1.
-   */
+  /** Смены из MAIN (для живого расчёта денег); по умолчанию 1. */
   shifts: number;
-  /**
-   * Discount percent (string Decimal "0".."100") from MAIN Estimate.
-   * Frontend applies this to the recomputed subtotal.
-   */
+  /** Процент скидки MAIN ("0".."100"). */
   discountPercent: string;
-  /**
-   * MAIN.totalAfterDiscount snapshot at the moment of /state read.
-   * Frontend uses this as the «Согласовано (исходно)» baseline in the
-   * live-finance sticky block.
-   */
+  /** MAIN.totalAfterDiscount — «Согласовано (исходно)». */
   mainOriginalAfterDiscount: string;
-}
-
-// ── Вспомогательные функции ──────────────────────────────────────────────────────
-
-/**
- * Формирует ключ для ScanRecord COUNT-позиций.
- * Для COUNT-позиций нет реального unitId, поэтому используем виртуальный составной ключ.
- * Формат: "count:{bookingItemId}"
- */
-function countRecordKey(bookingItemId: string): string {
-  return `count:${bookingItemId}`;
+  session: {
+    status: ScanSessionStatus;
+    operation: "ISSUE" | "RETURN";
+    /** Кто открыл сессию. */
+    workerName: string;
+    startedAt: string;
+  };
+  booking: {
+    status: BookingStatus;
+    startDate: string;
+    endDate: string;
+    finalAmount: string;
+    manualFinalAmount: string | null;
+  };
+  draft: ChecklistDraftV1 | null;
+  draftRevision: number;
+  draftSavedAt: string | null;
+  draftSavedBy: string | null;
+  /**
+   * Отпечаток состава брони — computeItemsVersion по ВСЕМ BookingItem брони
+   * (включая строки ×0, которые в приёмку не попадают). Клиент возвращает его
+   * в /complete: состав поменялся — 409 CHECKLIST_OUTDATED.
+   */
+  itemsVersion: string;
 }
 
 // Checklist state model:
-// - COUNT positions: client-managed (no per-event tracking) — qty + checked count.
+// - COUNT positions: qty и отметки — в черновике сессии (клиент + PUT /draft).
 // - UNIT positions: persisted via ScanRecord (one record per unit checked).
-// Frontend optimistically updates; server is authoritative on tap-confirm.
 
-// ── getChecklistState ────────────────────────────────────────────────────────────
+/** Категория произвольной позиции без своей. */
+const CUSTOM_CATEGORY_FALLBACK = "Прочее";
 
-export async function getChecklistState(sessionId: string): Promise<ChecklistState> {
-  const session = await prisma.scanSession.findUnique({
-    where: { id: sessionId },
+const CHECKLIST_SESSION_INCLUDE = {
+  scans: true,
+  booking: {
     include: {
-      scans: true,
-      booking: {
+      items: {
+        orderBy: { createdAt: "asc" },
         include: {
-          items: {
-            orderBy: { createdAt: "asc" },
-            include: {
-              equipment: {
-                select: {
-                  id: true,
-                  name: true,
-                  category: true,
-                  stockTrackingMode: true,
-                  rentalRatePerShift: true,
-                  totalQuantity: true,
-                },
-              },
-              unitReservations: {
-                include: {
-                  equipmentUnit: {
-                    select: { id: true, barcode: true, status: true },
-                  },
-                },
-              },
-            },
+          equipment: {
+            select: { id: true, name: true, category: true, stockTrackingMode: true, rentalRatePerShift: true },
+          },
+          unitReservations: {
+            include: { equipmentUnit: { select: { id: true, barcode: true, status: true } } },
           },
         },
       },
     },
-  });
+  },
+} satisfies Prisma.ScanSessionInclude;
 
-  if (!session) throw new HttpError(404, "Сессия не найдена", "SESSION_NOT_FOUND");
+type LoadedSession = Prisma.ScanSessionGetPayload<{ include: typeof CHECKLIST_SESSION_INCLUDE }>;
+type LoadedItem = LoadedSession["booking"]["items"][number];
 
-  // ── Загружаем MAIN Estimate для originalQuantity / shifts / discountPercent /
-  //    mainOriginalAfterDiscount. Для броней без MAIN-сметы поля заполнятся
-  //    дефолтами (0/1/"0"/"0") — это нормально для DRAFT-броней и
-  //    «грязных» сценариев в тестах.
+interface PricingContext {
+  mainByEquipment: Map<string, EstimateLine>;
+  mainByCustomName: Map<string, EstimateLine>;
+  caps: Map<string, AddCapInfo>;
+  holders: Map<string, AddonConflict>;
+  addedOnSite: Map<string, number>;
+}
+
+// ── getChecklistState ────────────────────────────────────────────────────────────
+
+export async function getChecklistState(sessionId: string): Promise<ChecklistState> {
+  // Завершённая / прерванная → 409 с её состоянием; устаревшая (бронь выдали
+  // или приняли кнопкой) закрывается и → 409 SESSION_STALE.
+  await assertSessionWritable(prisma, sessionId);
+  const session = await prisma.scanSession.findUnique({ where: { id: sessionId }, include: CHECKLIST_SESSION_INCLUDE });
+  if (!session) throw new HttpError(404, SCAN_MSG.SESSION_NOT_FOUND, SCAN_ERR.SESSION_NOT_FOUND);
+  const { booking } = session;
+  const isIssue = session.operation === "ISSUE";
+
   const main = await prisma.estimate.findFirst({
     where: { bookingId: session.bookingId, kind: "MAIN" },
     include: { lines: true },
   });
-  const mainQtyByEquipment = new Map<string, number>();
-  if (main) {
-    for (const line of main.lines) {
-      if (line.equipmentId) {
-        mainQtyByEquipment.set(line.equipmentId, line.quantity);
-      }
-    }
-  }
 
-  // ── Подсчёт occupiedByOthers одним запросом по всем equipmentIds сессии.
-  //    Формула та же, что в /addon-search и addExtraItem:
-  //      occupiedByOthers = SUM(BookingItem.quantity) для пересекающихся
-  //      по датам броней (DRAFT|CONFIRMED|ISSUED), исключая текущую.
-  //    Custom-позиции (equipmentId=null) пропускаем — для них addCap=0.
-  const equipmentIds = session.booking.items
-    .map((bi) => bi.equipmentId)
-    .filter((id): id is string => id !== null);
+  // P5: строка, обнулённая на выдаче (×0), в приёмку не попадает — принимать
+  // по ней нечего, а экран требовал «пометить все 0 шт» и не пускал дальше.
+  const rows = isIssue ? booking.items : booking.items.filter((bi) => bi.quantity > 0);
+  const equipmentIds = Array.from(
+    new Set(rows.map((bi) => bi.equipmentId).filter((id): id is string => id !== null)),
+  );
 
-  const occupiedByOthers = new Map<string, number>();
-  if (equipmentIds.length > 0) {
-    const overlapping = await prisma.bookingItem.findMany({
-      where: {
-        equipmentId: { in: equipmentIds },
-        bookingId: { not: session.bookingId },
-        booking: {
-          status: { in: ["DRAFT", "CONFIRMED", "ISSUED"] },
-          startDate: { lte: session.booking.endDate },
-          endDate: { gte: session.booking.startDate },
-        },
-      },
-      select: { equipmentId: true, quantity: true },
-    });
-    for (const row of overlapping) {
-      if (row.equipmentId) {
-        occupiedByOthers.set(
-          row.equipmentId,
-          (occupiedByOthers.get(row.equipmentId) ?? 0) + row.quantity,
-        );
-      }
-    }
-  }
-
-  // «Сломанное не продаётся»: потолок добора считаем от ФИЗИЧЕСКИ доступного
-  // количества — из totalQuantity вычитаем открытые потеряшки и активные
-  // безъюнитные ремонты, как это делает витрина (getAvailability). Иначе
-  // чек-лист выдачи предлагает добрать то, что лежит в мастерской.
-  const [lostByEquipment, inRepairByEquipment, lineOrdering] = await Promise.all([
-    getLostCountByEquipmentMap(equipmentIds),
-    getRepairCountByEquipmentMap(equipmentIds),
-    loadLineOrdering(equipmentIds),
-  ]);
-  const physicalStockOf = (equipmentId: string | null, totalQuantity: number): number => {
-    if (!equipmentId) return 0;
-    return Math.max(
-      0,
-      totalQuantity
-        - (lostByEquipment.get(equipmentId) ?? 0)
-        - (inRepairByEquipment.get(equipmentId) ?? 0),
-    );
+  const { caps, holders } = isIssue
+    ? await loadIssueCaps(session.bookingId, booking, equipmentIds)
+    : { caps: new Map<string, AddCapInfo>(), holders: new Map<string, AddonConflict>() };
+  const addedGroups = await prisma.addonRecord.groupBy({
+    by: ["bookingItemId"],
+    where: { sessionId },
+    _sum: { quantity: true },
+  });
+  const pricing: PricingContext = {
+    ...indexMainLines(main?.lines ?? []),
+    caps,
+    holders,
+    addedOnSite: new Map(addedGroups.map((g) => [g.bookingItemId, g._sum.quantity ?? 0])),
   };
-
-  const scannedUnitIds = new Set(session.scans.map((s) => s.equipmentUnitId));
-
-  // Для операции RETURN: дополнительно находим все UNIT юниты, связанные с бронью
-  // (BookingItemUnit с returnedAt=null)
-  let issuedUnitsByBookingItem: Map<string, Array<{ id: string; barcode: string | null; status: string }>> | null = null;
-
-  if (session.operation === "RETURN") {
-    const reservations = await prisma.bookingItemUnit.findMany({
-      where: {
-        bookingItem: { bookingId: session.bookingId },
-        returnedAt: null,
-      },
-      include: {
-        equipmentUnit: { select: { id: true, barcode: true, status: true } },
-      },
-    });
-    issuedUnitsByBookingItem = new Map();
-    for (const r of reservations) {
-      const existing = issuedUnitsByBookingItem.get(r.bookingItemId) ?? [];
-      existing.push({
-        id: r.equipmentUnit.id,
-        barcode: r.equipmentUnit.barcode,
-        status: r.equipmentUnit.status,
-      });
-      issuedUnitsByBookingItem.set(r.bookingItemId, existing);
-    }
-  }
-
-  const items: ChecklistItem[] = [];
-  let totalItems = 0;
-  let checkedItems = 0;
 
   // Порядок каталога: кладовщик комплектует бронь категория за категорией, а
   // киоск (PIN-вход) порядок категорий сам запросить не может — берёт наш.
-  // Произвольные позиции («Добавлено на месте») — в конце; createdAt из
-  // выборки остаётся запасным ключом, сортировка стабильная.
-  const orderedItems = sortLinesByCatalog(session.booking.items, bookingItemKey, lineOrdering);
-
-  for (const bi of orderedItems) {
-    const mode = bi.equipment?.stockTrackingMode as "COUNT" | "UNIT" | undefined ?? "COUNT";
-    const isExtra = !bi.equipmentId || bi.customName != null;
-
-    if (mode === "UNIT" && bi.equipmentId) {
-      // UNIT-позиция: каждый юнит — отдельный checkbox
-      let units: Array<{ id: string; barcode: string | null; status: string }> = [];
-
-      if (session.operation === "ISSUE") {
-        // При выдаче: зарезервированные юниты
-        units = bi.unitReservations
-          .filter((r) => r.equipmentUnit?.status === "AVAILABLE" || scannedUnitIds.has(r.equipmentUnit?.id ?? ""))
-          .map((r) => ({
-            id: r.equipmentUnit.id,
-            barcode: r.equipmentUnit.barcode,
-            status: r.equipmentUnit.status,
-          }));
-
-        // Если нет резерваций — не показываем юниты (покажем только qty)
-        if (units.length === 0) {
-          // fallback: используем quantity как количество
-          for (let i = 0; i < bi.quantity; i++) {
-            units.push({
-              id: `placeholder-${bi.id}-${i}`,
-              barcode: null,
-              status: "AVAILABLE",
-            });
-          }
-        }
-      } else {
-        // При возврате: выданные юниты
-        units = issuedUnitsByBookingItem?.get(bi.id) ?? [];
-      }
-
-      const checkedUnits = units.filter((u) => scannedUnitIds.has(u.id));
-      const allChecked = units.length > 0 && checkedUnits.length >= units.length;
-
-      totalItems += units.length;
-      checkedItems += checkedUnits.length;
-
-      // ── Доп-поля для UNIT-позиции ─────────────────────────────────────────
-      const eqId = bi.equipmentId;
-      const totalQty = physicalStockOf(eqId, bi.equipment?.totalQuantity ?? 0);
-      const occ = eqId ? occupiedByOthers.get(eqId) ?? 0 : 0;
-      const computedAddCap = eqId ? Math.max(0, totalQty - occ - bi.quantity) : 0;
-
-      items.push({
-        bookingItemId: bi.id,
-        equipmentId: bi.equipmentId,
-        equipmentName: bi.equipment?.name ?? "Неизвестно",
-        category: bi.equipment?.category ?? "Без категории",
-        quantity: bi.quantity,
-        checkedQty: checkedUnits.length,
-        trackingMode: "UNIT",
-        isExtra: false,
-        units: units.map((u) => ({
-          unitId: u.id,
-          barcode: u.barcode,
-          checked: scannedUnitIds.has(u.id),
-          problemType: null,
-        })),
-        rentalRatePerShift: bi.equipment?.rentalRatePerShift?.toString() ?? "0",
-        originalQuantity: eqId ? mainQtyByEquipment.get(eqId) ?? 0 : 0,
-        addCap: computedAddCap,
-      });
-    } else if (bi.customName) {
-      // Произвольная позиция (добавлена на месте)
-      // COUNT-чекбокс, считаем «все или ничего» — сервер не хранит state для COUNT
-      // Отдаём quantity, checkedQty = 0 (клиент управляет локально)
-      totalItems += 1;
-      items.push({
-        bookingItemId: bi.id,
-        equipmentId: null,
-        equipmentName: bi.customName,
-        category: "Добавлено на месте",
-        quantity: bi.quantity,
-        checkedQty: 0, // клиент управляет локально
-        trackingMode: "COUNT",
-        isExtra: true,
-        // Custom-позиция: нет equipmentId → нет MAIN-line и нет cap.
-        rentalRatePerShift: "0",
-        originalQuantity: 0,
-        addCap: 0,
-      });
-    } else {
-      // COUNT-позиция из каталога
-      totalItems += 1;
-      const eqId = bi.equipmentId;
-      const totalQty = physicalStockOf(eqId, bi.equipment?.totalQuantity ?? 0);
-      const occ = eqId ? occupiedByOthers.get(eqId) ?? 0 : 0;
-      const computedAddCap = eqId ? Math.max(0, totalQty - occ - bi.quantity) : 0;
-
-      items.push({
-        bookingItemId: bi.id,
-        equipmentId: bi.equipmentId,
-        equipmentName: bi.equipment?.name ?? "Неизвестно",
-        category: bi.equipment?.category ?? "Без категории",
-        quantity: bi.quantity,
-        checkedQty: 0, // клиент управляет локально
-        trackingMode: "COUNT",
-        isExtra: false,
-        rentalRatePerShift: bi.equipment?.rentalRatePerShift?.toString() ?? "0",
-        originalQuantity: eqId ? mainQtyByEquipment.get(eqId) ?? 0 : 0,
-        addCap: computedAddCap,
-      });
-    }
-  }
+  // Произвольные позиции — в конце; createdAt из выборки остаётся запасным
+  // ключом, сортировка стабильная.
+  const ordered = sortLinesByCatalog(rows, bookingItemKey, await loadLineOrdering(equipmentIds));
+  const { items, progress } = buildChecklistItems(ordered, {
+    isIssue,
+    pricing,
+    scannedUnitIds: new Set(session.scans.map((s) => s.equipmentUnitId)),
+    issuedUnits: isIssue ? null : await loadIssuedUnits(session.bookingId),
+  });
 
   return {
     sessionId: session.id,
     bookingId: session.bookingId,
     operation: session.operation as "ISSUE" | "RETURN",
     items,
-    progress: { checkedItems, totalItems },
+    progress,
     shifts: main && main.shifts > 0 ? main.shifts : 1,
     discountPercent: main?.discountPercent?.toString() ?? "0",
     mainOriginalAfterDiscount: main?.totalAfterDiscount?.toString() ?? "0",
+    session: {
+      status: session.status,
+      operation: session.operation as "ISSUE" | "RETURN",
+      workerName: session.workerName,
+      startedAt: session.startedAt.toISOString(),
+    },
+    booking: {
+      status: booking.status,
+      startDate: booking.startDate.toISOString(),
+      endDate: booking.endDate.toISOString(),
+      finalAmount: booking.finalAmount.toString(),
+      manualFinalAmount: booking.manualFinalAmount?.toString() ?? null,
+    },
+    draft: parseStoredDraft(session.draftJson),
+    draftRevision: session.draftRevision,
+    draftSavedAt: session.draftSavedAt?.toISOString() ?? null,
+    draftSavedBy: session.draftSavedBy ?? null,
+    itemsVersion: computeItemsVersion(booking.items),
   };
 }
 
-// ── checkUnit ────────────────────────────────────────────────────────────────────
+/** Строки основной сметы: каталожные — по позиции, произвольные — по названию. */
+function indexMainLines(lines: EstimateLine[]): Pick<PricingContext, "mainByEquipment" | "mainByCustomName"> {
+  const mainByEquipment = new Map<string, EstimateLine>();
+  const mainByCustomName = new Map<string, EstimateLine>();
+  for (const line of lines) {
+    if (line.equipmentId) {
+      if (!mainByEquipment.has(line.equipmentId)) mainByEquipment.set(line.equipmentId, line);
+    } else if (!mainByCustomName.has(line.nameSnapshot)) {
+      mainByCustomName.set(line.nameSnapshot, line);
+    }
+  }
+  return { mainByEquipment, mainByCustomName };
+}
+
+type UnitRow = { id: string; barcode: string | null; status: string };
+
+/**
+ * Строки чек-листа и прогресс. Штучная позиция — по единице на отметку;
+ * количественная и произвольная — одна строка (количества и отметки живут в
+ * черновике сессии).
+ */
+function buildChecklistItems(
+  rows: LoadedItem[],
+  ctx: {
+    isIssue: boolean;
+    pricing: PricingContext;
+    scannedUnitIds: ReadonlySet<string>;
+    issuedUnits: Map<string, UnitRow[]> | null;
+  },
+): { items: ChecklistItem[]; progress: ChecklistState["progress"] } {
+  const items: ChecklistItem[] = [];
+  let totalItems = 0;
+  let checkedItems = 0;
+  for (const bi of rows) {
+    const mode = (bi.equipment?.stockTrackingMode as "COUNT" | "UNIT" | undefined) ?? "COUNT";
+    if (mode === "UNIT" && bi.equipmentId) {
+      const units = ctx.isIssue ? issueUnitsOf(bi, ctx.scannedUnitIds) : ctx.issuedUnits?.get(bi.id) ?? [];
+      const checkedCount = units.filter((u) => ctx.scannedUnitIds.has(u.id)).length;
+      totalItems += units.length;
+      checkedItems += checkedCount;
+      items.push({
+        ...catalogRowBase(bi, ctx.pricing),
+        checkedQty: checkedCount,
+        trackingMode: "UNIT",
+        units: units.map((u) => ({
+          unitId: u.id,
+          barcode: u.barcode,
+          checked: ctx.scannedUnitIds.has(u.id),
+          problemType: null,
+        })),
+      });
+    } else if (bi.customName) {
+      // Произвольная позиция: не каталожная, потолка нет, цена — своя.
+      totalItems += 1;
+      items.push(customRow(bi, ctx.pricing));
+    } else {
+      totalItems += 1;
+      items.push({ ...catalogRowBase(bi, ctx.pricing), checkedQty: 0, trackingMode: "COUNT" });
+    }
+  }
+  return { items, progress: { checkedItems, totalItems } };
+}
+
+/**
+ * Потолки степпера на окне «выдаю сейчас» и держатели для строк, где
+ * «под ответственность» даёт больше, чем свободно (подпись «Занято: …»).
+ */
+async function loadIssueCaps(
+  bookingId: string,
+  booking: { startDate: Date; endDate: Date },
+  equipmentIds: string[],
+): Promise<{ caps: Map<string, AddCapInfo>; holders: Map<string, AddonConflict> }> {
+  const window = addonWindow(booking, { issuingNow: true });
+  const caps = await computeAddCaps(prisma, { bookingId, equipmentIds, window });
+  const contested = Array.from(caps.values())
+    .filter((c) => c.ackCap > c.addCap)
+    .map((c) => c.equipmentId);
+  const holders = contested.length > 0
+    ? await findHoldersBatch(prisma, {
+        equipmentIds: contested,
+        start: window.start,
+        end: window.end,
+        excludeBookingId: bookingId,
+      })
+    : new Map<string, AddonConflict>();
+  return { caps, holders };
+}
+
+/** Приёмка: выданные единицы брони (живые резервы) по позициям. */
+async function loadIssuedUnits(bookingId: string): Promise<Map<string, UnitRow[]>> {
+  const reservations = await prisma.bookingItemUnit.findMany({
+    where: { bookingItem: { bookingId }, returnedAt: null },
+    include: { equipmentUnit: { select: { id: true, barcode: true, status: true } } },
+  });
+  const byItem = new Map<string, UnitRow[]>();
+  for (const r of reservations) {
+    const list = byItem.get(r.bookingItemId) ?? [];
+    list.push({ id: r.equipmentUnit.id, barcode: r.equipmentUnit.barcode, status: r.equipmentUnit.status });
+    byItem.set(r.bookingItemId, list);
+  }
+  return byItem;
+}
+
+/**
+ * Выдача: зарезервированные единицы, ещё стоящие на полке (или уже отмеченные).
+ * Нет резервов (старые данные) — заглушки по количеству: отметить их нельзя,
+ * позиция выдаётся количеством.
+ */
+function issueUnitsOf(bi: LoadedItem, scannedUnitIds: ReadonlySet<string>): UnitRow[] {
+  const units = bi.unitReservations
+    .filter((r) => r.equipmentUnit?.status === "AVAILABLE" || scannedUnitIds.has(r.equipmentUnit?.id ?? ""))
+    .map((r) => ({ id: r.equipmentUnit.id, barcode: r.equipmentUnit.barcode, status: r.equipmentUnit.status }));
+  if (units.length > 0) return units;
+  return Array.from({ length: bi.quantity }, (_, i) => ({
+    id: `placeholder-${bi.id}-${i}`,
+    barcode: null,
+    status: "AVAILABLE",
+  }));
+}
+
+/** Общая часть строки каталожной позиции (COUNT и UNIT). */
+function catalogRowBase(
+  bi: LoadedItem,
+  p: PricingContext,
+): Omit<ChecklistItem, "checkedQty" | "trackingMode" | "units"> {
+  const eqId = bi.equipmentId;
+  const cap = eqId ? p.caps.get(eqId) : undefined;
+  const line = eqId ? p.mainByEquipment.get(eqId) : undefined;
+  const addCap = cap?.addCap ?? 0;
+  const ackCap = Math.max(addCap, cap?.ackCap ?? 0);
+  return {
+    bookingItemId: bi.id,
+    equipmentId: bi.equipmentId,
+    equipmentName: bi.equipment?.name ?? "Позиция удалена из каталога",
+    category: bi.equipment?.category ?? "Без категории",
+    quantity: bi.quantity,
+    isExtra: false,
+    rentalRatePerShift: bi.equipment?.rentalRatePerShift?.toString() ?? "0",
+    originalQuantity: line?.quantity ?? 0,
+    addCap,
+    ackCap,
+    capHolder: eqId && ackCap > addCap ? p.holders.get(eqId) ?? null : null,
+    customUnitPrice: null,
+    mainUnitPrice: line ? line.unitPrice.toString() : null,
+    mainNegotiated: line?.listUnitPrice != null,
+    addedOnSite: p.addedOnSite.get(bi.id) ?? 0,
+  };
+}
+
+/** Строка произвольной позиции: своя категория и цена, сопоставление с MAIN по названию. */
+function customRow(bi: LoadedItem, p: PricingContext): ChecklistItem {
+  const line = bi.customName ? p.mainByCustomName.get(bi.customName) : undefined;
+  return {
+    bookingItemId: bi.id,
+    equipmentId: null,
+    equipmentName: bi.customName ?? "Произвольная позиция",
+    category: bi.customCategory?.trim() || CUSTOM_CATEGORY_FALLBACK,
+    quantity: bi.quantity,
+    checkedQty: 0,
+    trackingMode: "COUNT",
+    isExtra: false,
+    rentalRatePerShift: "0",
+    originalQuantity: line?.quantity ?? 0,
+    addCap: 0,
+    ackCap: 0,
+    capHolder: null,
+    customUnitPrice: bi.customUnitPrice?.toString() ?? null,
+    mainUnitPrice: line ? line.unitPrice.toString() : null,
+    mainNegotiated: line?.listUnitPrice != null,
+    addedOnSite: p.addedOnSite.get(bi.id) ?? 0,
+  };
+}
+
+// ── checkUnit / uncheckUnit ──────────────────────────────────────────────────────
 
 /**
  * Отмечает UNIT-позицию как выданную/принятую.
@@ -383,106 +442,69 @@ export async function checkUnit(
   sessionId: string,
   equipmentUnitId: string,
 ): Promise<{ alreadyChecked: boolean }> {
-  const session = await prisma.scanSession.findUnique({
-    where: { id: sessionId },
-  });
-  if (!session || session.status !== "ACTIVE") {
-    throw new HttpError(409, "Сессия не активна", "SESSION_NOT_FOUND");
-  }
+  const { session } = await assertSessionWritable(prisma, sessionId);
 
-  // Проверяем что юнит принадлежит броне
-  const unit = await prisma.equipmentUnit.findUnique({
-    where: { id: equipmentUnitId },
-    include: { equipment: true },
-  });
+  const unit = await prisma.equipmentUnit.findUnique({ where: { id: equipmentUnitId } });
   if (!unit) throw new HttpError(404, "Единица оборудования не найдена", "UNIT_NOT_FOUND");
 
-  // Проверяем, что есть BookingItem для этой брони и конкретный unit зарезервирован
   const bookingItem = await prisma.bookingItem.findFirst({
-    where: {
-      bookingId: session.bookingId,
-      equipmentId: unit.equipmentId,
-    },
+    where: { bookingId: session.bookingId, equipmentId: unit.equipmentId },
     include: { unitReservations: { select: { equipmentUnitId: true } } },
   });
   if (!bookingItem) throw new HttpError(409, "Оборудование не входит в эту бронь", "UNIT_NOT_IN_BOOKING");
 
-  // I3: Проверяем что конкретный unit зарезервирован в этой броне (для RETURN-операций)
-  // Для ISSUE достаточно проверки оборудования — юниты могут быть заменены
+  // Приёмка: только единица, выданная по этой брони. Выдача — достаточно
+  // позиции: единицу на полке можно заменить другой.
   if (session.operation === "RETURN") {
-    const isReserved = bookingItem.unitReservations.some(
-      (r) => r.equipmentUnitId === equipmentUnitId,
-    );
+    const isReserved = bookingItem.unitReservations.some((r) => r.equipmentUnitId === equipmentUnitId);
     if (!isReserved) {
-      throw new HttpError(409, "Этот юнит не зарезервирован в этой броне", "UNIT_NOT_RESERVED");
+      throw new HttpError(409, "Эта единица не числится в брони", "UNIT_NOT_RESERVED");
     }
   }
 
   // Идемпотентность: если уже отмечено — no-op
   try {
-    await prisma.scanRecord.create({
-      data: {
-        sessionId,
-        equipmentUnitId,
-        hmacVerified: false,
-      },
-    });
+    await prisma.scanRecord.create({ data: { sessionId, equipmentUnitId, hmacVerified: false } });
     return { alreadyChecked: false };
-  } catch (err: any) {
-    if (err?.code === "P2002") {
-      return { alreadyChecked: true };
-    }
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code === "P2002") return { alreadyChecked: true };
     throw err;
   }
 }
 
-// ── uncheckUnit ──────────────────────────────────────────────────────────────────
-
-/**
- * Снимает отметку с UNIT-позиции.
- */
+/** Снимает отметку с UNIT-позиции. */
 export async function uncheckUnit(
   sessionId: string,
   equipmentUnitId: string,
 ): Promise<{ wasChecked: boolean }> {
-  const session = await prisma.scanSession.findUnique({
-    where: { id: sessionId },
-  });
-  if (!session || session.status !== "ACTIVE") {
-    throw new HttpError(409, "Сессия не активна", "SESSION_NOT_ACTIVE");
-  }
-
-  const existing = await prisma.scanRecord.findUnique({
-    where: {
-      sessionId_equipmentUnitId: { sessionId, equipmentUnitId },
-    },
-  });
-
-  if (!existing) {
-    return { wasChecked: false };
-  }
-
-  await prisma.scanRecord.delete({
-    where: {
-      sessionId_equipmentUnitId: { sessionId, equipmentUnitId },
-    },
-  });
-
-  return { wasChecked: true };
+  await assertSessionWritable(prisma, sessionId);
+  const res = await prisma.scanRecord.deleteMany({ where: { sessionId, equipmentUnitId } });
+  return { wasChecked: res.count > 0 };
 }
 
 // ── addExtraItem ─────────────────────────────────────────────────────────────────
 
 /**
- * Добавляет позицию из каталога в бронь во время выдачи (quick-add).
- * Создаёт BookingItem, пересчитывает финансы, пишет аудит.
- * Возвращает новый bookingItemId.
+ * Добор позиции из каталога прямо на выдаче (quick-add в киоске).
  *
- * Soft-warn семантика: если артикул занят другой бронью на даты текущей брони
- * и `acknowledgedConflict` не выставлен — бросаем 409 ADDON_CONFLICT со
- * структурными деталями (UI показывает предупреждение). При
- * `acknowledgedConflict === true` позиция добавляется, а в аудит пишется
- * `BOOKING_ITEM_ADDED_WITH_CONFLICT` (вместо `BOOKING_ITEM_ADDED_ON_SITE`).
+ * Только живая ISSUE-сессия (бронь подтверждена): на приёмке — 409
+ * ADDON_ONLY_ON_ISSUE, довезти в выданную бронь можно «+ Добор» на карточке.
+ * Окно проверки — «выдаю сейчас»: с текущего момента до конца брони.
+ *
+ *  - свободно меньше, чем «уже в брони + запрошено», и есть чужая бронь-
+ *    держатель → 409 ADDON_CONFLICT с карточкой держателя (soft-warn);
+ *  - с `acknowledgedConflict` при таком конфликте потолок — ackCap (чужую
+ *    бронь подвинуть можно, мастерскую и потерянное — нет), аудит
+ *    `BOOKING_ITEM_ADDED_WITH_CONFLICT`;
+ *  - иначе потолок addCap; сверх — 409 ADDON_OVER_STOCK с названием позиции.
+ *
+ * Штучная позиция сразу резервирует свободные экземпляры (выдача переведёт их
+ * в ISSUED): без резерва в чек-листе были «заглушки», отметить их было нельзя,
+ * и выданные приборы оставались «на полке».
+ *
+ * Аудит пишется в той же транзакции: автор — `auditUserId` (киоск открыт
+ * главной сессией) или `_system_` с именем кладовщика в `after.workerName`
+ * (PIN-вход).
  */
 export async function addExtraItem(
   sessionId: string,
@@ -490,192 +512,156 @@ export async function addExtraItem(
   quantity: number,
   createdBy: string,
   acknowledgedConflict = false,
-  /**
-   * AdminUser.id для аудит-записи. `createdBy` — это имя кладовщика (PIN-namespace),
-   * оно не проходит FK на AdminUser, и writeAuditEntry молча падал в .catch() —
-   * обещание UI «Конфликт зафиксируется в аудите» не выполнялось. Роут передаёт
-   * сюда req.adminUser?.id, когда киоск открыт главной сессией SA/WAREHOUSE.
-   * Для чистого PIN-входа AdminUser отсутствует — поведение прежнее (аудит
-   * пропускается, физическая операция не откатывается).
-   */
   auditUserId?: string,
 ): Promise<{ bookingItemId: string }> {
-  const session = await prisma.scanSession.findUnique({
-    where: { id: sessionId },
-    select: { id: true, status: true, bookingId: true },
-  });
-  if (!session || session.status !== "ACTIVE") {
-    throw new HttpError(409, "Сессия не активна", "SESSION_NOT_FOUND");
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new HttpError(400, "Количество должно быть целым числом больше нуля", "INVALID_QUANTITY");
   }
-
+  const { session, booking } = await assertSessionWritable(prisma, sessionId);
+  if (session.operation !== "ISSUE") {
+    throw new HttpError(409, SCAN_MSG.ADDON_ONLY_ON_ISSUE, SCAN_ERR.ADDON_ONLY_ON_ISSUE);
+  }
   const equipment = await prisma.equipment.findUnique({
     where: { id: equipmentId },
+    select: { id: true, name: true, stockTrackingMode: true },
   });
   if (!equipment) throw new HttpError(404, "Оборудование не найдено", "EQUIPMENT_NOT_FOUND");
+  const bookingId = booking.id;
 
-  const bookingId = session.bookingId;
-
-  // Soft-warn: проверяем конфликт по датам брони до записи. Транзакция ниже
-  // повторно загружает бронь (только status) для атомарной проверки статуса —
-  // здесь нам нужны только даты, поэтому отдельный лёгкий запрос.
-  const booking = await prisma.booking.findUnique({
-    where: { id: bookingId },
-    select: { startDate: true, endDate: true },
-  });
-  if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
-
-  const conflict = await findAddonConflict(
-    equipmentId,
-    booking.startDate,
-    booking.endDate,
-    bookingId,
-  );
-  if (conflict && !acknowledgedConflict) {
-    // 4-арг форма HttpError: 3-й арг — строковый code (instance.code ===
-    // "ADDON_CONFLICT"), 4-й — структурные details для UI-предупреждения.
-    throw new HttpError(409, "Артикул занят на даты брони", "ADDON_CONFLICT", {
-      bookingNo: conflict.bookingNo,
-      projectName: conflict.projectName,
-      from: conflict.from,
-      to: conflict.to,
-      freeFrom: conflict.freeFrom,
-    });
+  let result: { bookingItemId: string };
+  try {
+    result = await prisma.$transaction(
+      (tx) => addExtraItemTx(tx, {
+        sessionId, bookingId, equipment, quantity, createdBy, acknowledgedConflict, auditUserId,
+      }),
+      { maxWait: 10_000, timeout: 15_000 },
+    );
+  } catch (err) {
+    // Бронь выдали или отменили между проверкой и записью: сессия устарела —
+    // закрываем её вне транзакции (assertSessionWritable бросит тот же 409).
+    if (err instanceof HttpError && err.code === SCAN_ERR.SESSION_STALE) {
+      await assertSessionWritable(prisma, sessionId);
+    }
+    throw err;
   }
 
-  // I1: атомарный upsert с проверкой статуса брони
-  const bookingItemId = await prisma.$transaction(async (tx: TxClient) => {
-    const txBooking = await tx.booking.findUnique({
-      where: { id: bookingId },
-      select: { status: true, startDate: true, endDate: true },
-    });
-    if (!txBooking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
-    if (!["DRAFT", "CONFIRMED", "ISSUED"].includes(txBooking.status)) {
-      throw new HttpError(
-        409,
-        `Нельзя добавлять позиции в бронь со статусом ${txBooking.status}`,
-        "BOOKING_LOCKED",
-      );
-    }
-
-    // Hard cap: запрещаем превысить физический склад.
-    // addCap = totalQuantity − occupied в других бронях (на пересекающиеся даты) −
-    //         уже взято в этой брони.
-    // Вычисляется внутри транзакции; SQLite serialize-mode гарантирует консистентность
-    // относительно параллельных добор-апдейтов на ту же бронь.
-    const txEquipment = await tx.equipment.findUnique({
-      where: { id: equipmentId },
-      select: { totalQuantity: true },
-    });
-    if (!txEquipment) {
-      throw new HttpError(404, "Оборудование не найдено", "EQUIPMENT_NOT_FOUND");
-    }
-
-    // Физический потолок — не сырой totalQuantity: потерянное и лежащее
-    // в мастерской выдать нельзя даже «под ответственность». Читаем внутри
-    // транзакции, чтобы параллельная поломка не проскочила мимо капа.
-    const txLost = await getLostCountByEquipmentMap([equipmentId], tx);
-    const txInRepair = await getRepairCountByEquipmentMap([equipmentId], tx);
-    const physicalStock = Math.max(
-      0,
-      txEquipment.totalQuantity
-        - (txLost.get(equipmentId) ?? 0)
-        - (txInRepair.get(equipmentId) ?? 0),
-    );
-
-    const overlappingItems = await tx.bookingItem.findMany({
-      where: {
-        equipmentId,
-        bookingId: { not: bookingId },
-        booking: {
-          status: { in: ["DRAFT", "CONFIRMED", "ISSUED"] },
-          startDate: { lte: txBooking.endDate },
-          endDate: { gte: txBooking.startDate },
-        },
-      },
-      select: { quantity: true },
-    });
-    const occupiedByOthers = overlappingItems.reduce((sum, it) => sum + it.quantity, 0);
-
-    const existingItem = await tx.bookingItem.findUnique({
-      where: { bookingId_equipmentId: { bookingId, equipmentId } },
-      select: { quantity: true },
-    });
-    const alreadyMine = existingItem?.quantity ?? 0;
-    // «Выдать под ответственность»: при подтверждённом конфликте оператор
-    // осознанно забирает единицы, числящиеся за пересекающейся бронью, поэтому
-    // occupiedByOthers из капа исключается — иначе ack-путь был недостижим
-    // (конфликт возможен только при availableQuantity ≤ 0 ⇒ addCap ≤ 0, и
-    // повторный POST всегда падал ADDON_OVER_STOCK; fix 2026-08-05). Потолок
-    // остаётся физический склад (physicalStock): чужую бронь подвинуть можно,
-    // сломанное и потерянное — нет, его физически нет на полке.
-    // Без конфликта ack игнорируется — клиент не может им обойти сток.
-    const addCap =
-      conflict && acknowledgedConflict
-        ? physicalStock - alreadyMine
-        : physicalStock - occupiedByOthers - alreadyMine;
-
-    if (quantity > addCap) {
-      throw new HttpError(409, "Не хватает на складе", "ADDON_OVER_STOCK", {
-        addCap: Math.max(0, addCap),
-        requested: quantity,
-        alreadyInBooking: alreadyMine,
-      });
-    }
-
-    // Atomic upsert через @@unique([bookingId, equipmentId]) — предотвращает race condition
-    const item = await tx.bookingItem.upsert({
-      where: { bookingId_equipmentId: { bookingId, equipmentId } },
-      update: { quantity: { increment: quantity } },
-      create: { bookingId, equipmentId, quantity },
-    });
-
-    // НОВОЕ: дельта-запись для построения ADDON Estimate.
-    // Source of truth для агрегации, потому что upsert выше потерял дельту
-    // (BookingItem.quantity содержит TOTAL, а не «сколько добавили сейчас»).
-    await tx.addonRecord.create({
-      data: {
-        bookingId,
-        sessionId,
-        bookingItemId: item.id,
-        equipmentId,
-        quantity,
-        acknowledgedConflict,
-        createdBy,
-      },
-    });
-
-    return item.id;
-  });
-
-  // Аудит вне транзакции (observability, не бизнес-инвариант)
-  await writeAuditEntry({
-    userId: auditUserId ?? createdBy,
-    action: conflict ? "BOOKING_ITEM_ADDED_WITH_CONFLICT" : "BOOKING_ITEM_ADDED_ON_SITE",
-    entityType: "Booking",
-    entityId: bookingId,
-    before: null,
-    after: {
-      equipmentId,
-      equipmentName: equipment.name,
-      quantity,
-      bookingItemId,
-      ...(conflict ? { conflict } : {}),
-    },
-  }).catch((err: unknown) => {
-    console.warn("[addExtraItem] audit failed:", err);
-  });
-
-  // НОВОЕ: пересоздать ADDON Estimate. Best-effort: если падает, финансовый
-  // recompute всё равно пройдёт со старым ADDON, следующий успешный вызов
-  // восстановит инвариант.
+  // ADDON-смета и финансы — после транзакции, best-effort: следующий успешный
+  // пересчёт восстановит инвариант, а физический добор уже записан.
   await recomputeAddonEstimate(bookingId).catch((err: unknown) => {
     console.error("[addExtraItem] recomputeAddonEstimate failed:", err);
   });
-
-  // Пересчитываем финансы вне транзакции (легитимно — read-modify-write)
   await recomputeBookingFinance(bookingId).catch((err: unknown) => {
     console.error("[addExtraItem] recomputeBookingFinance failed:", err);
   });
 
-  return { bookingItemId };
+  return result;
+}
+
+async function addExtraItemTx(
+  tx: Prisma.TransactionClient,
+  a: {
+    sessionId: string;
+    bookingId: string;
+    equipment: { id: string; name: string; stockTrackingMode: string };
+    quantity: number;
+    createdBy: string;
+    acknowledgedConflict: boolean;
+    auditUserId?: string;
+  },
+): Promise<{ bookingItemId: string }> {
+  const { booking } = await assertSessionWritable(tx, a.sessionId, { inTx: true });
+  const equipmentId = a.equipment.id;
+  const window = addonWindow(booking, { issuingNow: true });
+
+  const existing = await tx.bookingItem.findUnique({
+    where: { bookingId_equipmentId: { bookingId: a.bookingId, equipmentId } },
+    select: { quantity: true },
+  });
+  const alreadyInBooking = existing?.quantity ?? 0;
+
+  const conflict = await findAddonConflict(equipmentId, window.start, window.end, a.bookingId, {
+    requested: a.quantity,
+    alreadyInBooking,
+    tx,
+  });
+  if (conflict && !a.acknowledgedConflict) {
+    throw new HttpError(409, `«${a.equipment.name}» занят на даты брони`, SCAN_ERR.ADDON_CONFLICT, {
+      ...conflict,
+      equipmentId,
+      name: a.equipment.name,
+      quantity: a.quantity,
+    });
+  }
+
+  const cap = (await computeAddCaps(tx, {
+    bookingId: a.bookingId,
+    equipmentIds: [equipmentId],
+    window,
+  })).get(equipmentId);
+  // Без конфликта подтверждение ничего не расширяет: клиент не может выдать
+  // сверх склада, просто прислав acknowledgedConflict.
+  const limit = conflict && a.acknowledgedConflict ? cap?.ackCap ?? 0 : cap?.addCap ?? 0;
+  if (a.quantity > limit) {
+    throw overStockError({
+      equipmentId,
+      name: a.equipment.name,
+      addCap: limit,
+      requested: a.quantity,
+      alreadyInBooking,
+    });
+  }
+
+  const item = await tx.bookingItem.upsert({
+    where: { bookingId_equipmentId: { bookingId: a.bookingId, equipmentId } },
+    update: { quantity: { increment: a.quantity } },
+    create: { bookingId: a.bookingId, equipmentId, quantity: a.quantity },
+  });
+
+  const reservedUnitIds = a.equipment.stockTrackingMode === "UNIT"
+    ? await reserveUnits(tx, {
+        bookingId: a.bookingId,
+        bookingItemId: item.id,
+        equipmentId,
+        equipmentName: a.equipment.name,
+        quantity: a.quantity,
+        start: window.start,
+        end: window.end,
+        issueNow: false,
+      })
+    : [];
+
+  // Дельта для ADDON-сметы: BookingItem.quantity хранит итог, а не «сколько добавили сейчас».
+  await tx.addonRecord.create({
+    data: {
+      bookingId: a.bookingId,
+      sessionId: a.sessionId,
+      bookingItemId: item.id,
+      equipmentId,
+      quantity: a.quantity,
+      acknowledgedConflict: Boolean(conflict && a.acknowledgedConflict),
+      createdBy: a.createdBy,
+    },
+  });
+
+  await writeAuditEntry({
+    tx,
+    userId: a.auditUserId ?? (await ensureSystemAuditUser(tx)),
+    action: conflict ? "BOOKING_ITEM_ADDED_WITH_CONFLICT" : "BOOKING_ITEM_ADDED_ON_SITE",
+    entityType: "Booking",
+    entityId: a.bookingId,
+    before: null,
+    after: {
+      via: "kiosk",
+      sessionId: a.sessionId,
+      workerName: a.createdBy,
+      equipmentId,
+      equipmentName: a.equipment.name,
+      quantity: a.quantity,
+      bookingItemId: item.id,
+      ...(reservedUnitIds.length > 0 ? { unitsReserved: reservedUnitIds.length } : {}),
+      ...(conflict ? { conflict } : {}),
+    },
+  });
+
+  return { bookingItemId: item.id };
 }
