@@ -11,6 +11,7 @@ import {
 } from "../../../lib/bookingConstants";
 import { StatusPill } from "../../StatusPill";
 import { registerDate } from "./model";
+import { PAYMENT_CARD_TONE } from "./paymentTone";
 import { button, primaryButton } from "./RegisterFilters";
 export function RentalState({ row: r, onIssues }: { row: Row; onIssues?: () => void }) {
   return (
@@ -58,6 +59,24 @@ export function RentalDates({ row: r }: { row: Row }) {
         </p>
       )}
     </div>
+  );
+}
+/** Легенда тона строк по оплате — рядом со счётчиком списка (см. paymentTone.ts). */
+export function PaymentToneLegend() {
+  return (
+    <span
+      className="inline-flex flex-wrap items-center gap-x-3 gap-y-1"
+      title="Цвет — по оплате. Без цвета: черновики, отменённые и брони без суммы."
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden="true" className={`h-3 w-3 rounded border ${PAYMENT_CARD_TONE.paid}`} />
+        Оплачено
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden="true" className={`h-3 w-3 rounded border ${PAYMENT_CARD_TONE.unpaid}`} />
+        Есть остаток
+      </span>
+    </span>
   );
 }
 /** Срок оплаты хранится московской полночью — время «00:00» ничего не говорит,
