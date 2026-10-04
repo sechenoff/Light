@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Реестр броней · заливка по оплате · Light Rental</title>
+<!--
+  ============================================================================
+  МОКАП · РЕЕСТР БРОНЕЙ (/bookings) · ЗАЛИВКА СТРОК ПО ОПЛАТЕ
+
+  Просьба владельца (04.10.2026): оплаченные брони — бледно-зелёной заливкой,
+  неоплаченные — бледно-красной, чтобы оплату было видно с первого взгляда.
+
+  Страница — копия текущего реестра (BookingRegister.tsx, RegisterCells.tsx,
+  RegisterPayment.tsx) на тех же классах Tailwind и тех же токенах темы:
+  стили собраны из apps/web/tailwind.config.js + app/globals.css. Новое —
+  только тон строки/карточки и легенда «Оплачено · Есть остаток» над таблицей.
+  Брони, клиенты и суммы вымышлены. Сегодня — воскресенье, 4 октября 2026.
+
+  ПРАВИЛО ЦВЕТА (только у состоявшихся броней: подтверждена, выдана, возвращена)
+   · зелёный  — долга нет: «Оплачено», «Расчёт со списанием», «Аванс / переплата»;
+   · красный  — есть остаток: «Не оплачено», «Частично оплачено» (и просрочка);
+   · без тона — черновик, на согласовании, отменённая; сумма 0, не рассчитано,
+                нет начислений. Здесь «не оплачено» ничего не значит: денег
+                никто не ждёт, а красный приучил бы его не замечать.
+
+  КЛАССЫ (зеркалить в коде)
+   строка   оплачено   bg-emerald-soft/60 hover:bg-emerald-soft
+                       dark:bg-emerald-soft dark:hover:bg-emerald-border/60
+            остаток    bg-rose-soft/70 hover:bg-rose-soft
+                       dark:bg-rose-soft dark:hover:bg-rose-border/60
+            без тона   hover:bg-surface-subtle/50 (как сейчас)
+   карточка оплачено   border-emerald-border bg-emerald-soft/60 dark:bg-emerald-soft
+            остаток    border-rose-border bg-rose-soft/70 dark:bg-rose-soft
+   Розовый слабее зелёного по яркости, поэтому его доля выше (70 против 60) —
+   иначе на ярком офисном мониторе красные строки сливаются с белыми.
+   Ночью мягкие тона и так тёмные подложки — берём их целиком.
+
+  СОСТОЯНИЯ
+   · выбранная строка сохраняет свой тон, выбор показывает синяя полоса слева
+     (раньше выбор красил строку в бледно-синий и стёр бы цвет оплаты);
+   · с «Начислено и получено» колонка «Действия» закреплена справа и
+     непрозрачна — её фон повторяет тон строки (surface + градиент тона);
+   · карточки — те же правила: телефон, планшет и экран до 1280 px, «Доска» и
+     правая колонка «Пульта дня» (они рисуют ту же карточку).
+
+  Переключатели внизу страницы: тема, «с заливкой / как сейчас».
+  ?clean — без переключателей (для скриншотов), ?theme=dark, ?tint=off.
+  ============================================================================
+-->
+<style>@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");*,:after,:before{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }
+
+/*! tailwindcss v3.4.19 | MIT License | https://tailwindcss.com*/*,:after,:before{box-sizing:border-box;border:0 solid #e5e7eb}:after,:before{--tw-content:""}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:IBM Plex Sans,system-ui,sans-serif;font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:IBM Plex Mono,IBM Plex Sans,ui-monospace,monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0}fieldset,legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::-moz-placeholder,textarea::-moz-placeholder{opacity:1;color:#9ca3af}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}body{font-family:IBM Plex Sans,system-ui,sans-serif;font-size:13.5px;line-height:1.6;--tw-bg-opacity:1;background-color:rgb(var(--c-surface-muted)/var(--tw-bg-opacity,1));--tw-text-opacity:1;color:rgb(var(--c-ink)/var(--tw-text-opacity,1));-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}@supports (-webkit-touch-callout:none){input[type=date],input[type=datetime-local],input[type=month],input[type=time]{-webkit-appearance:none;-moz-appearance:none;appearance:none;min-width:0;max-width:100%}input::-webkit-date-and-time-value{text-align:left;min-height:1.25em}}.eyebrow{font-family:IBM Plex Sans Condensed,system-ui,sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;--tw-text-opacity:1;color:rgb(var(--c-ink-3)/var(--tw-text-opacity,1))}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0}.fixed{position:fixed}.absolute{position:absolute}.relative{position:relative}.sticky{position:sticky}.inset-y-0{top:0;bottom:0}.-left-3{left:-.75rem}.-top-2{top:-.5rem}.bottom-4{bottom:1rem}.left-0{left:0}.left-1\/2{left:50%}.top-0{top:0}.z-20{z-index:20}.z-30{z-index:30}.z-50{z-index:50}.col-span-2{grid-column:span 2/span 2}.mx-1{margin-left:.25rem;margin-right:.25rem}.mx-auto{margin-left:auto;margin-right:auto}.my-3{margin-top:.75rem;margin-bottom:.75rem}.-ml-2{margin-left:-.5rem}.mb-1{margin-bottom:.25rem}.mb-2{margin-bottom:.5rem}.ml-1{margin-left:.25rem}.mt-0\.5{margin-top:.125rem}.mt-1{margin-top:.25rem}.mt-2{margin-top:.5rem}.mt-3{margin-top:.75rem}.mt-auto{margin-top:auto}.block{display:block}.flex{display:flex}.inline-flex{display:inline-flex}.table{display:table}.grid{display:grid}.inline-grid{display:inline-grid}.hidden{display:none}.h-10{height:2.5rem}.h-12{height:3rem}.h-3{height:.75rem}.h-4{height:1rem}.h-5{height:1.25rem}.h-7{height:1.75rem}.h-\[18px\]{height:18px}.h-full{height:100%}.min-h-10{min-height:2.5rem}.min-h-8{min-height:2rem}.min-h-9{min-height:2.25rem}.min-h-screen{min-height:100vh}.\!w-auto{width:auto!important}.w-10{width:2.5rem}.w-3{width:.75rem}.w-4{width:1rem}.w-5{width:1.25rem}.w-56{width:14rem}.w-7{width:1.75rem}.w-\[18px\]{width:18px}.w-fit{width:-moz-fit-content;width:fit-content}.w-full{width:100%}.w-px{width:1px}.min-w-0{min-width:0}.min-w-\[130px\]{min-width:130px}.min-w-\[170px\]{min-width:170px}.min-w-\[280px\]{min-width:280px}.min-w-\[980px\]{min-width:980px}.max-w-\[270px\]{max-width:270px}.max-w-full{max-width:100%}.max-w-sm{max-width:24rem}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}.basis-64{flex-basis:16rem}.-translate-x-1\/2{--tw-translate-x:-50%;transform:translate(var(--tw-translate-x),var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.cursor-pointer{cursor:pointer}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-cols-\[auto_auto\]{grid-template-columns:auto auto}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-center{align-items:center}.items-baseline{align-items:baseline}.justify-start{justify-content:flex-start}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.justify-items-center{justify-items:center}.gap-1{gap:.25rem}.gap-1\.5{gap:.375rem}.gap-2{gap:.5rem}.gap-2\.5{gap:.625rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}.gap-x-1\.5{-moz-column-gap:.375rem;column-gap:.375rem}.gap-x-2{-moz-column-gap:.5rem;column-gap:.5rem}.gap-x-3{-moz-column-gap:.75rem;column-gap:.75rem}.gap-x-4{-moz-column-gap:1rem;column-gap:1rem}.gap-y-1{row-gap:.25rem}.gap-y-2{row-gap:.5rem}.space-y-0\.5>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.125rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.125rem*var(--tw-space-y-reverse))}.space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}.space-y-3>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.75rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.75rem*var(--tw-space-y-reverse))}.space-y-4>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem*var(--tw-space-y-reverse))}.divide-y>:not([hidden])~:not([hidden]){--tw-divide-y-reverse:0;border-top-width:calc(1px*(1 - var(--tw-divide-y-reverse)));border-bottom-width:calc(1px*var(--tw-divide-y-reverse))}.divide-border>:not([hidden])~:not([hidden]){--tw-divide-opacity:1;border-color:rgb(var(--c-border)/var(--tw-divide-opacity,1))}.overflow-x-auto{overflow-x:auto}.overflow-y-auto{overflow-y:auto}.overscroll-contain{overscroll-behavior:contain}.truncate{overflow:hidden;text-overflow:ellipsis}.truncate,.whitespace-nowrap{white-space:nowrap}.break-words{overflow-wrap:break-word}.rounded{border-radius:4px}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:6px}.rounded-md{border-radius:.375rem}.rounded-t{border-top-left-radius:4px;border-top-right-radius:4px}.border{border-width:1px}.border-y{border-top-width:1px}.border-b,.border-y{border-bottom-width:1px}.border-b-2{border-bottom-width:2px}.\!border-accent{--tw-border-opacity:1!important;border-color:rgb(var(--c-accent)/var(--tw-border-opacity,1))!important}.border-accent{--tw-border-opacity:1;border-color:rgb(var(--c-accent)/var(--tw-border-opacity,1))}.border-accent-border{--tw-border-opacity:1;border-color:rgb(var(--c-accent-border)/var(--tw-border-opacity,1))}.border-amber-border{--tw-border-opacity:1;border-color:rgb(var(--c-amber-border)/var(--tw-border-opacity,1))}.border-border{--tw-border-opacity:1;border-color:rgb(var(--c-border)/var(--tw-border-opacity,1))}.border-emerald-border{--tw-border-opacity:1;border-color:rgb(var(--c-emerald-border)/var(--tw-border-opacity,1))}.border-rose-border{--tw-border-opacity:1;border-color:rgb(var(--c-rose-border)/var(--tw-border-opacity,1))}.border-slate-700{--tw-border-opacity:1;border-color:rgb(51 65 85/var(--tw-border-opacity,1))}.border-slate-border{--tw-border-opacity:1;border-color:rgb(var(--c-slate-border)/var(--tw-border-opacity,1))}.border-teal-border{--tw-border-opacity:1;border-color:rgb(var(--c-teal-border)/var(--tw-border-opacity,1))}.border-transparent{border-color:transparent}.\!bg-accent{--tw-bg-opacity:1!important;background-color:rgb(var(--c-accent)/var(--tw-bg-opacity,1))!important}.bg-accent-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-accent-soft)/var(--tw-bg-opacity,1))}.bg-amber-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-amber-soft)/var(--tw-bg-opacity,1))}.bg-emerald-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-emerald-soft)/var(--tw-bg-opacity,1))}.bg-emerald-soft\/60{background-color:rgb(var(--c-emerald-soft)/.6)}.bg-indigo-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-indigo-soft)/var(--tw-bg-opacity,1))}.bg-inverse{--tw-bg-opacity:1;background-color:rgb(var(--c-inverse)/var(--tw-bg-opacity,1))}.bg-ok-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-ok-soft)/var(--tw-bg-opacity,1))}.bg-on-inverse\/15{background-color:rgb(var(--c-on-inverse)/.15)}.bg-on-inverse\/30{background-color:rgb(var(--c-on-inverse)/.3)}.bg-rose-soft\/70{background-color:rgb(var(--c-rose-soft)/.7)}.bg-slate-900{--tw-bg-opacity:1;background-color:rgb(15 23 42/var(--tw-bg-opacity,1))}.bg-slate-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-slate-soft)/var(--tw-bg-opacity,1))}.bg-surface{--tw-bg-opacity:1;background-color:rgb(var(--c-surface)/var(--tw-bg-opacity,1))}.bg-surface-subtle{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-subtle)/var(--tw-bg-opacity,1))}.bg-teal-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-teal-soft)/var(--tw-bg-opacity,1))}.bg-warn-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-warn-soft)/var(--tw-bg-opacity,1))}.bg-white\/10{background-color:hsla(0,0%,100%,.1)}.p-1{padding:.25rem}.p-3{padding:.75rem}.p-4{padding:1rem}.\!py-1{padding-top:.25rem!important;padding-bottom:.25rem!important}.px-1\.5{padding-left:.375rem;padding-right:.375rem}.px-2{padding-left:.5rem;padding-right:.5rem}.px-3{padding-left:.75rem;padding-right:.75rem}.px-4{padding-left:1rem;padding-right:1rem}.px-6{padding-left:1.5rem;padding-right:1.5rem}.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.py-1\.5{padding-top:.375rem;padding-bottom:.375rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}.py-3{padding-top:.75rem;padding-bottom:.75rem}.py-4{padding-top:1rem;padding-bottom:1rem}.py-5{padding-top:1.25rem;padding-bottom:1.25rem}.pb-12{padding-bottom:3rem}.pb-16{padding-bottom:4rem}.pb-20{padding-bottom:5rem}.pr-6{padding-right:1.5rem}.pt-4{padding-top:1rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.align-middle{vertical-align:middle}.font-mono{font-family:IBM Plex Mono,IBM Plex Sans,ui-monospace,monospace}.\!text-xs{font-size:.75rem!important;line-height:1rem!important}.text-2xl{font-size:1.5rem;line-height:2rem}.text-\[10px\]{font-size:10px}.text-\[11px\]{font-size:11px}.text-base{font-size:1rem;line-height:1.5rem}.text-lg{font-size:1.125rem;line-height:1.75rem}.text-sm{font-size:.875rem;line-height:1.25rem}.text-xs{font-size:.75rem;line-height:1rem}.font-bold{font-weight:700}.font-medium{font-weight:500}.font-semibold{font-weight:600}.uppercase{text-transform:uppercase}.tabular-nums{--tw-numeric-spacing:tabular-nums;font-variant-numeric:var(--tw-ordinal) var(--tw-slashed-zero) var(--tw-numeric-figure) var(--tw-numeric-spacing) var(--tw-numeric-fraction)}.tracking-tight{letter-spacing:-.025em}.tracking-wide{letter-spacing:.025em}.tracking-wider{letter-spacing:.05em}.\!text-surface{--tw-text-opacity:1!important;color:rgb(var(--c-surface)/var(--tw-text-opacity,1))!important}.text-accent{--tw-text-opacity:1;color:rgb(var(--c-accent)/var(--tw-text-opacity,1))}.text-amber{--tw-text-opacity:1;color:rgb(var(--c-amber)/var(--tw-text-opacity,1))}.text-emerald{--tw-text-opacity:1;color:rgb(var(--c-emerald)/var(--tw-text-opacity,1))}.text-indigo{--tw-text-opacity:1;color:rgb(var(--c-indigo)/var(--tw-text-opacity,1))}.text-ink{--tw-text-opacity:1;color:rgb(var(--c-ink)/var(--tw-text-opacity,1))}.text-ink-2{--tw-text-opacity:1;color:rgb(var(--c-ink-2)/var(--tw-text-opacity,1))}.text-ink-3{--tw-text-opacity:1;color:rgb(var(--c-ink-3)/var(--tw-text-opacity,1))}.text-ok{--tw-text-opacity:1;color:rgb(var(--c-ok)/var(--tw-text-opacity,1))}.text-on-inverse{--tw-text-opacity:1;color:rgb(var(--c-on-inverse)/var(--tw-text-opacity,1))}.text-rose{--tw-text-opacity:1;color:rgb(var(--c-rose)/var(--tw-text-opacity,1))}.text-slate{--tw-text-opacity:1;color:rgb(var(--c-slate)/var(--tw-text-opacity,1))}.text-slate-300{--tw-text-opacity:1;color:rgb(203 213 225/var(--tw-text-opacity,1))}.text-slate-400{--tw-text-opacity:1;color:rgb(148 163 184/var(--tw-text-opacity,1))}.text-slate-500{--tw-text-opacity:1;color:rgb(100 116 139/var(--tw-text-opacity,1))}.text-teal{--tw-text-opacity:1;color:rgb(var(--c-teal)/var(--tw-text-opacity,1))}.text-warn{--tw-text-opacity:1;color:rgb(var(--c-warn)/var(--tw-text-opacity,1))}.text-white{--tw-text-opacity:1;color:rgb(255 255 255/var(--tw-text-opacity,1))}.accent-accent{accent-color:rgb(var(--c-accent)/1)}.opacity-70{opacity:.7}.shadow-\[inset_3px_0_0\]{--tw-shadow:inset 3px 0 0;--tw-shadow-colored:inset 3px 0 0 var(--tw-shadow-color)}.shadow-\[inset_3px_0_0\],.shadow-sm{box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}.shadow-sm{--tw-shadow:0 1px 2px rgba(9,9,11,.05),0 0 0 1px rgba(9,9,11,.02);--tw-shadow-colored:0 1px 2px var(--tw-shadow-color),0 0 0 1px var(--tw-shadow-color)}.shadow-xs{--tw-shadow:0 1px 0 rgba(9,9,11,.03);--tw-shadow-colored:0 1px 0 var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}.shadow-accent{--tw-shadow-color:rgb(var(--c-accent)/1);--tw-shadow:var(--tw-shadow-colored)}.filter{filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.transition{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.transition-colors{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.\[mask-image\:linear-gradient\(to_bottom\2c black_calc\(100\%_-_4rem\)\2c transparent\)\]{-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 4rem),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 4rem),transparent)}.\[mask-image\:linear-gradient\(to_right\2c black_calc\(100\%_-_24px\)\2c transparent\)\]{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent)}.\[scrollbar-width\:none\]{scrollbar-width:none}:root{color-scheme:light;--c-ink:9 9 11;--c-ink-2:82 82 91;--c-ink-3:161 161 170;--c-surface:255 255 255;--c-surface-muted:250 250 250;--c-surface-subtle:244 244 245;--c-border:228 228 231;--c-border-strong:212 212 216;--c-accent:30 58 138;--c-accent-bright:29 78 216;--c-accent-soft:239 246 255;--c-accent-border:191 219 254;--c-teal:15 118 110;--c-teal-soft:204 251 241;--c-teal-border:153 246 228;--c-amber:161 98 7;--c-amber-soft:254 243 199;--c-amber-border:253 230 138;--c-rose:159 18 57;--c-rose-soft:255 228 230;--c-rose-border:254 205 211;--c-indigo:67 56 202;--c-indigo-soft:224 231 255;--c-indigo-border:199 210 254;--c-slate:51 65 85;--c-slate-soft:241 245 249;--c-slate-border:203 213 225;--c-emerald:4 120 87;--c-emerald-soft:209 250 229;--c-emerald-border:167 243 208;--c-ok:21 128 61;--c-ok-soft:220 252 231;--c-ok-border:187 247 208;--c-warn:161 98 7;--c-warn-soft:254 249 195;--c-inverse:9 9 11;--c-on-inverse:255 255 255;--c-accent-chrome:30 58 138;--c-scrim:9 9 11}:root[data-theme=dark]{color-scheme:dark;--c-ink:230 232 236;--c-ink-2:155 161 172;--c-ink-3:122 128 138;--c-surface:24 29 39;--c-surface-muted:15 19 27;--c-surface-subtle:32 39 51;--c-border:44 52 64;--c-border-strong:62 71 85;--c-accent:96 148 255;--c-accent-bright:111 160 255;--c-accent-soft:23 36 62;--c-accent-border:47 75 125;--c-teal:45 212 191;--c-teal-soft:12 42 38;--c-teal-border:23 70 64;--c-amber:245 191 66;--c-amber-soft:44 34 10;--c-amber-border:74 58 18;--c-rose:251 138 155;--c-rose-soft:46 18 26;--c-rose-border:77 32 44;--c-indigo:165 180 252;--c-indigo-soft:30 33 60;--c-indigo-border:53 58 98;--c-slate:148 163 184;--c-slate-soft:30 37 49;--c-slate-border:60 72 92;--c-emerald:52 211 153;--c-emerald-soft:13 43 31;--c-emerald-border:30 74 56;--c-ok:74 222 128;--c-ok-soft:15 41 26;--c-ok-border:32 72 46;--c-warn:245 191 66;--c-warn-soft:44 38 10;--c-inverse:51 60 76;--c-on-inverse:237 239 243;--c-accent-chrome:26 42 84;--c-scrim:3 5 9}@media (min-width:640px){.sm\:mono-num{font-family:IBM Plex Mono,IBM Plex Sans,ui-monospace,monospace;font-variant-numeric:tabular-nums}}.hover\:\!border-accent-bright:hover{--tw-border-opacity:1!important;border-color:rgb(var(--c-accent-bright)/var(--tw-border-opacity,1))!important}.hover\:border-accent:hover{--tw-border-opacity:1;border-color:rgb(var(--c-accent)/var(--tw-border-opacity,1))}.hover\:\!bg-accent-bright:hover{--tw-bg-opacity:1!important;background-color:rgb(var(--c-accent-bright)/var(--tw-bg-opacity,1))!important}.hover\:bg-accent-soft\/50:hover{background-color:rgb(var(--c-accent-soft)/.5)}.hover\:bg-emerald-soft:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-emerald-soft)/var(--tw-bg-opacity,1))}.hover\:bg-rose-soft:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-rose-soft)/var(--tw-bg-opacity,1))}.hover\:bg-surface-muted:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-muted)/var(--tw-bg-opacity,1))}.hover\:bg-surface-subtle:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-subtle)/var(--tw-bg-opacity,1))}.hover\:bg-surface-subtle\/50:hover{background-color:rgb(var(--c-surface-subtle)/.5)}.hover\:bg-white\/5:hover{background-color:hsla(0,0%,100%,.05)}.hover\:text-accent:hover{--tw-text-opacity:1;color:rgb(var(--c-accent)/var(--tw-text-opacity,1))}.hover\:text-ink:hover{--tw-text-opacity:1;color:rgb(var(--c-ink)/var(--tw-text-opacity,1))}.hover\:text-white:hover{--tw-text-opacity:1;color:rgb(255 255 255/var(--tw-text-opacity,1))}.hover\:opacity-100:hover{opacity:1}.focus\:border-accent:focus{--tw-border-opacity:1;border-color:rgb(var(--c-accent)/var(--tw-border-opacity,1))}.focus\:outline-none:focus{outline:2px solid transparent;outline-offset:2px}.focus\:ring-1:focus{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow,0 0 #0000)}.focus\:ring-accent:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(var(--c-accent)/var(--tw-ring-opacity,1))}.focus-visible\:outline:focus-visible{outline-style:solid}.focus-visible\:outline-2:focus-visible{outline-width:2px}.focus-visible\:outline-accent:focus-visible{outline-color:rgb(var(--c-accent)/1)}.disabled\:opacity-50:disabled{opacity:.5}.dark\:bg-emerald-soft:is([data-theme=dark] *){--tw-bg-opacity:1;background-color:rgb(var(--c-emerald-soft)/var(--tw-bg-opacity,1))}.dark\:bg-rose-soft:is([data-theme=dark] *){--tw-bg-opacity:1;background-color:rgb(var(--c-rose-soft)/var(--tw-bg-opacity,1))}.dark\:hover\:bg-emerald-border\/60:hover:is([data-theme=dark] *){background-color:rgb(var(--c-emerald-border)/.6)}.dark\:hover\:bg-rose-border\/60:hover:is([data-theme=dark] *){background-color:rgb(var(--c-rose-border)/.6)}@media (min-width:640px){.sm\:block{display:block}.sm\:flex{display:flex}.sm\:min-h-8{min-height:2rem}.sm\:w-auto{width:auto}.sm\:flex-wrap{flex-wrap:wrap}.sm\:gap-x-5{-moz-column-gap:1.25rem;column-gap:1.25rem}.sm\:gap-y-2{row-gap:.5rem}.sm\:p-4{padding:1rem}.sm\:text-sm{font-size:.875rem;line-height:1.25rem}.sm\:text-xl{font-size:1.25rem;line-height:1.75rem}.sm\:text-xs{font-size:.75rem;line-height:1rem}}@media (min-width:768px){.md\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (min-width:1024px){.lg\:flex{display:flex}.lg\:hidden{display:none}.lg\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.lg\:p-6{padding:1.5rem}.lg\:pb-24{padding-bottom:6rem}.lg\:pb-8{padding-bottom:2rem}.lg\:pl-56{padding-left:14rem}}@media (min-width:1280px){.xl\:block{display:block}.xl\:flex{display:flex}.xl\:hidden{display:none}.xl\:h-8{height:2rem}.xl\:w-8{width:2rem}.xl\:p-4{padding:1rem}.xl\:pr-0{padding-right:0}.xl\:\[mask-image\:none\]{-webkit-mask-image:none;mask-image:none}}@media (min-width:1536px){.\32xl\:grid-cols-6{grid-template-columns:repeat(6,minmax(0,1fr))}}.\[\&\:\:-webkit-scrollbar\]\:hidden::-webkit-scrollbar{display:none}</style>
+</head>
+<body>
+<div class="flex min-h-screen">
+  <aside class="hidden lg:flex flex-col w-56 shrink-0 bg-slate-900 fixed inset-y-0 left-0 z-30">
+    <div class="flex flex-col h-full">
+      <div class="flex items-center justify-between px-4 py-5 border-b border-slate-700">
+        <a href="#" class="flex items-center gap-2.5 text-white">
+          <div class="w-7 h-7 rounded-md bg-white/10 flex items-center justify-center text-xs font-bold tracking-tight shrink-0">LR</div>
+          <span class="font-semibold text-sm tracking-wide">Light Rental</span>
+        </a>
+      </div>
+      <nav id="sidebar" class="relative flex-1 overflow-y-auto overscroll-contain pt-4 pb-16 px-3 space-y-4 [mask-image:linear-gradient(to_bottom,black_calc(100%_-_4rem),transparent)]"></nav>
+    </div>
+  </aside>
+  <div class="flex-1 flex flex-col min-w-0 lg:pl-56">
+    <div class="lg:hidden flex h-12 items-center gap-1 px-4 bg-slate-900 sticky top-0 z-20">
+      <button class="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-300 hover:text-white hover:bg-white/5 transition-colors" aria-label="Открыть меню">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <a href="#" class="text-sm font-semibold text-white">Light Rental</a>
+    </div>
+    <main class="flex-1 pb-20 lg:pb-24">
+      <div id="app" class="min-w-0 space-y-4 p-4 pb-12 lg:p-6 lg:pb-8" data-booking-register></div>
+    </main>
+  </div>
+</div>
+
+<div id="mockbar" class="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg bg-inverse p-1 text-xs text-on-inverse shadow-sm">
+  <span class="px-2 opacity-70">Мокап</span>
+  <button data-set="theme:light" class="min-h-8 rounded px-3">Светлая</button>
+  <button data-set="theme:dark" class="min-h-8 rounded px-3">Ночная</button>
+  <span class="mx-1 h-5 w-px bg-on-inverse/30"></span>
+  <button data-set="tint:on" class="min-h-8 rounded px-3">С заливкой</button>
+  <button data-set="tint:off" class="min-h-8 rounded px-3">Как сейчас</button>
+</div>
+
+<script>
+/* ── Классы — дословно из компонентов реестра ─────────────────────────── */
+const BUTTON = "inline-flex min-h-10 items-center justify-center gap-2 rounded border border-border bg-surface px-3 py-2 text-sm font-medium text-ink-2 hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
+const PRIMARY = BUTTON + " !border-accent !bg-accent !text-surface hover:!border-accent-bright hover:!bg-accent-bright";
+const CONTROL = "min-h-10 w-full min-w-0 rounded border border-border bg-surface px-3 py-2 text-base sm:text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
+const PILL = {
+  view: "bg-slate-soft text-slate border-slate-border",
+  warn: "bg-warn-soft text-warn border-amber-border",
+  info: "bg-accent-soft text-accent border-accent-border",
+  edit: "bg-teal-soft text-teal border-teal-border",
+  ok: "bg-ok-soft text-ok border-emerald-border",
+  none: "bg-surface text-ink-3 border-border",
+};
+const STATUS = {
+  DRAFT: ["Черновик", "view"],
+  PENDING_APPROVAL: ["На согласовании", "warn"],
+  CONFIRMED: ["Подтверждена", "info"],
+  ISSUED: ["Выдана", "edit"],
+  RETURNED: ["Возвращена", "ok"],
+  CANCELLED: ["Отменена", "none"],
+};
+const FINANCE = {
+  UNPAID: "Не оплачено", PARTIAL: "Частично оплачено", PAID: "Оплачено",
+  SETTLED: "Расчёт со списанием", CREDIT: "Аванс / переплата",
+  ZERO: "К оплате 0 ₽", UNPRICED: "Не рассчитано", NO_CHARGES: "Нет начислений",
+};
+
+/* ── НОВОЕ: тон по оплате ─────────────────────────────────────────────── */
+const DEAL = ["CONFIRMED", "ISSUED", "RETURNED"];
+function tone(r) {
+  if (!state.tint || !DEAL.includes(r.status)) return null;
+  if (["PAID", "SETTLED", "CREDIT"].includes(r.finance)) return "paid";
+  if (["UNPAID", "PARTIAL"].includes(r.finance)) return "unpaid";
+  return null;
+}
+const ROW_TONE = {
+  paid: "bg-emerald-soft/60 hover:bg-emerald-soft dark:bg-emerald-soft dark:hover:bg-emerald-border/60",
+  unpaid: "bg-rose-soft/70 hover:bg-rose-soft dark:bg-rose-soft dark:hover:bg-rose-border/60",
+};
+const CARD_TONE = {
+  paid: "border-emerald-border bg-emerald-soft/60 dark:bg-emerald-soft",
+  unpaid: "border-rose-border bg-rose-soft/70 dark:bg-rose-soft",
+};
+const CARD_RULE = { paid: "border-emerald-border", unpaid: "border-rose-border" };
+/* Выбор не перекрашивает строку: синяя полоса на первой ячейке. */
+const SELECTED_CELL = "shadow-[inset_3px_0_0] shadow-accent";
+
+/* ── Данные (вымышленные) ─────────────────────────────────────────────── */
+const ROWS = [
+  { id: "r1", doc: "СМ-2026-0214", project: "Короткий метр «Сквозняк»", client: "Анна Белова", status: "DRAFT",
+    start: "2026-10-12T10:00:00+03:00", end: "2026-10-14T10:00:00+03:00", total: 76400, paid: 0, out: 76400, finance: "UNPAID", due: null },
+  { id: "r2", doc: "СМ-2026-0211", project: "Реклама кофейни «Зерно»", client: "Продакшн «Сфера»", status: "CONFIRMED",
+    start: "2026-10-08T09:00:00+03:00", end: "2026-10-09T09:00:00+03:00", total: 48000, paid: 0, out: 48000, finance: "UNPAID", due: "2026-10-16" },
+  { id: "r3", doc: "СМ-2026-0209", project: "Клип «Ночной трамвай»", client: "Илья Морозов", status: "CONFIRMED",
+    start: "2026-10-06T12:00:00+03:00", end: "2026-10-07T12:00:00+03:00", total: 32500, paid: 32500, out: 0, finance: "PAID" },
+  { id: "r4", doc: "СМ-2026-0206", project: "Каталог одежды «Лён»", client: "Мария Лебедева", status: "ISSUED", onHand: 8,
+    start: "2026-10-03T10:00:00+03:00", end: "2026-10-05T10:00:00+03:00", total: 27000, paid: 0, out: 27000, finance: "UNPAID", due: "2026-10-07" },
+  { id: "r5", doc: "СМ-2026-0198", project: "Сериал «Северный ветер», 2-й блок", client: "Кинокомпания «Полдень»", status: "ISSUED", onHand: 46,
+    start: "2026-10-01T08:00:00+03:00", end: "2026-10-11T20:00:00+03:00", total: 412000, paid: 200000, out: 212000, finance: "PARTIAL", due: "2026-10-15" },
+  { id: "r6", doc: "СМ-2026-0190", project: "Ролик «Тёплый дом»", client: "ООО «Кадр»", status: "RETURNED",
+    start: "2026-09-26T08:00:00+03:00", end: "2026-09-28T08:00:00+03:00", total: 186000, paid: 186000, out: 0, finance: "PAID" },
+  { id: "r7", doc: "СМ-2026-0184", project: "Документальный фильм «Ладога»", client: "Пётр Захаров", status: "RETURNED",
+    start: "2026-09-22T10:00:00+03:00", end: "2026-09-24T10:00:00+03:00", total: 54000, paid: 0, out: 54000, finance: "UNPAID", due: "2026-09-29", overdueDays: 5 },
+  { id: "r8", doc: "СМ-2026-0177", project: "Музыкальное шоу «Вечер у реки»", client: "Студия «Восток»", status: "RETURNED",
+    start: "2026-09-18T14:00:00+03:00", end: "2026-09-19T14:00:00+03:00", total: 97600, paid: 97000, out: 0, writeOff: 600, finance: "SETTLED" },
+  { id: "r9", doc: "СМ-2026-0172", project: "Клип «Сирень»", client: "Олег Карпов", status: "CANCELLED",
+    start: "2026-09-15T10:00:00+03:00", end: "2026-09-16T10:00:00+03:00", total: 21000, paid: 0, out: 21000, finance: "UNPAID", due: null },
+  { id: "r10", doc: "СМ-2026-0151", project: "Сериал «Северный ветер», 1-й блок", client: "Кинокомпания «Полдень»", status: "ISSUED", mode: "PROJECT",
+    onHand: 112, planned: 14, periods: 3, start: "2026-09-01", end: "2026-10-31", total: 690000, paid: 460000, out: 230000, finance: "PARTIAL",
+    due: "2026-10-10", nextClose: "2026-10-11" },
+  { id: "r11", doc: "СМ-2026-0143", project: "Полный метр «Граница»", client: "Кинокомпания «Полдень»", status: "RETURNED",
+    start: "2026-09-01T07:00:00+03:00", end: "2026-09-14T21:00:00+03:00", total: 1240000, paid: 1240000, out: 0, finance: "PAID" },
+  { id: "r12", doc: "СМ-2026-0139", project: "Реклама веломастерской «Спица»", client: "Денис Орлов", status: "RETURNED",
+    start: "2026-08-29T10:00:00+03:00", end: "2026-08-30T10:00:00+03:00", total: 18500, paid: 20000, out: 0, credit: 1500, finance: "CREDIT" },
+];
+
+/* ── Состояние мокапа ─────────────────────────────────────────────────── */
+const q = new URLSearchParams(location.search);
+const state = {
+  theme: q.get("theme") === "dark" ? "dark" : "light",
+  tint: q.get("tint") !== "off",
+  selected: new Set((q.get("selected") || "").split(",").filter(Boolean)),
+};
+if (q.has("clean")) document.getElementById("mockbar").remove();
+
+/* ── Форматирование, как в lib/format.ts и register/model.ts ──────────── */
+const rub = (n) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB",
+  minimumFractionDigits: Math.round(n * 100) === Math.round(n) * 100 ? 0 : 2, maximumFractionDigits: 2 }).format(n);
+function regDate(v, time) {
+  if (!v) return "Не задан";
+  const d = new Date(v.length === 10 ? v + "T12:00:00+03:00" : v);
+  return d.toLocaleString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "short", year: "numeric",
+    ...(time ? { hour: "2-digit", minute: "2-digit" } : {}) });
+}
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const isProject = (r) => r.mode === "PROJECT";
+const primaryLabel = (r) => isProject(r) ? "Закрыть период"
+  : r.status === "CONFIRMED" ? "Выдать" : r.status === "ISSUED" ? "Принять возврат" : "Открыть";
+
+/* ── Ячейки ───────────────────────────────────────────────────────────── */
+function identity(r, centered) {
+  const al = centered ? "text-center" : "text-left";
+  return `<div class="min-w-0 ${al}">
+    <button class="max-w-full break-words text-sm font-semibold text-ink hover:text-accent ${al}">${esc(r.project)}</button>
+    <button class="mt-1 block max-w-full truncate text-xs text-ink-2 hover:text-accent ${centered ? "mx-auto text-center" : "text-left"}">${esc(r.client)}</button>
+    <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-3 ${centered ? "justify-center" : "justify-start"}">
+      <span>${r.doc}</span>
+      ${isProject(r) ? `<span class="rounded bg-indigo-soft px-1.5 py-0.5 text-indigo">Длинный проект</span>` : ""}
+    </div>
+  </div>`;
+}
+function rentalDates(r) {
+  const t = !isProject(r);
+  return `<div class="inline-grid grid-cols-[auto_auto] items-baseline gap-x-1.5 gap-y-1 whitespace-nowrap text-left text-xs text-ink-2">
+    <span class="text-right text-ink-3">с</span><span>${regDate(r.start, t)}</span>
+    <span class="text-right text-ink-3">по</span><span>${regDate(r.end, t)}</span>
+    ${isProject(r) ? `<p class="col-span-2 text-indigo">Периодов закрыто: ${r.periods}</p>` : ""}
+  </div>`;
+}
+function rentalState(r) {
+  const [label, variant] = STATUS[r.status];
+  return `<div class="space-y-1">
+    <span class="inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-semibold ${PILL[variant]}">${label}</span>
+    ${r.onHand ? `<p class="text-xs text-ink-2">На руках: ${r.onHand} ед.</p>` : ""}
+    ${r.planned ? `<p class="text-xs text-ink-3">Доборы: ${r.planned} ед.</p>` : ""}
+  </div>`;
+}
+function badge(r) {
+  const paid = r.finance === "PAID";
+  const cls = paid ? "bg-emerald-soft text-emerald" : r.finance === "PARTIAL" ? "bg-amber-soft text-amber" : "bg-surface-subtle text-ink-2";
+  const label = isProject(r) && paid ? "Начисленное оплачено" : FINANCE[r.finance];
+  return `<span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}">${paid ? `<span aria-hidden="true">✓</span>` : ""}${label}</span>`;
+}
+function money(r) {
+  const totalLabel = isProject(r) ? "Начислено по периодам" : "Сумма проекта";
+  return `<button type="button" aria-label="Сумма и оплата: ${esc(r.project)}" class="w-full max-w-sm rounded-lg px-2 py-2 transition hover:bg-accent-soft/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent mx-auto text-center">
+    <span class="flex items-center gap-1 text-[11px] text-ink-3 justify-center">
+      <span>${totalLabel}</span>
+      <span aria-hidden="true" class="flex h-5 w-5 items-center justify-center rounded-full border border-border text-[11px]">i</span>
+    </span>
+    <span class="mt-0.5 block font-mono text-base font-semibold tabular-nums ${r.finance === "PAID" ? "text-emerald" : "text-ink"}">${rub(r.total)}</span>
+    <span class="mt-1 block">${badge(r)}</span>
+    <span class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-2 justify-center">
+      <span>Получено <span class="whitespace-nowrap font-mono">${rub(r.paid)}</span></span>
+      ${r.out > 0 ? `<span>Осталось <span class="whitespace-nowrap font-mono">${rub(r.out)}</span></span>` : ""}
+    </span>
+  </button>`;
+}
+function dueDate(r, label) {
+  return `<div class="space-y-1 text-xs">
+    <p class="whitespace-nowrap text-ink-2">${r.out > 0 ? `${label ? `<span class="text-ink-3">Срок оплаты · </span>` : ""}${regDate(r.due)}` : "Долга нет"}</p>
+    ${r.overdueDays ? `<p class="whitespace-nowrap font-medium text-rose">Просрочено ${r.overdueDays} дн.</p>` : ""}
+    ${r.nextClose ? `<p class="text-ink-3">Период до ${regDate(r.nextClose)}</p>` : ""}
+  </div>`;
+}
+function rowActions(r) {
+  return `<div class="flex items-center justify-center gap-1">
+    <button class="${BUTTON} whitespace-nowrap !text-xs">${primaryLabel(r)}</button>
+    <button type="button" aria-label="Действия: ${esc(r.project)}" class="flex h-10 w-10 xl:h-8 xl:w-8 items-center justify-center rounded text-ink-3 hover:bg-surface-muted hover:text-ink transition-colors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+    </button>
+  </div>`;
+}
+function checkbox(r, cls) {
+  return `<input class="${cls}" type="checkbox" data-select="${r.id}" aria-label="Выбрать ${esc(r.project)}" ${state.selected.has(r.id) ? "checked" : ""} ${isProject(r) ? "disabled" : ""}>`;
+}
+
+/* ── Строка таблицы и карточка ────────────────────────────────────────── */
+function tableRow(r) {
+  const t = tone(r), sel = state.selected.has(r.id);
+  return `<tr data-booking-row="${r.id}" class="group ${t ? ROW_TONE[t] : "hover:bg-surface-subtle/50"}">
+    <td class="px-3 py-4 align-middle ${sel ? SELECTED_CELL : ""}">${checkbox(r, "mx-auto block h-4 w-4 accent-accent")}</td>
+    <td class="min-w-[170px] max-w-[270px] px-3 py-4 text-left align-middle">${identity(r, false)}</td>
+    <td class="px-3 py-4 align-middle">${rentalDates(r)}</td>
+    <td class="px-3 py-4 align-middle">${rentalState(r)}</td>
+    <td class="min-w-[280px] px-3 py-4 align-middle">${money(r)}</td>
+    <td class="min-w-[130px] px-3 py-4 align-middle">${dueDate(r, false)}</td>
+    <td class="px-3 py-4 align-middle">${rowActions(r)}</td>
+  </tr>`;
+}
+function card(r) {
+  const t = tone(r);
+  return `<article data-booking-card="${r.id}" class="flex min-w-0 flex-col rounded-lg border p-4 text-center shadow-xs ${t ? CARD_TONE[t] : "border-border bg-surface"}">
+    <div class="relative px-6">
+      ${isProject(r) ? "" : `<label class="absolute -left-3 -top-2 flex h-10 w-10 cursor-pointer items-center justify-center">${checkbox(r, "h-4 w-4 accent-accent")}</label>`}
+      ${identity(r, true)}
+    </div>
+    <div class="mt-3 grid justify-items-center gap-3">${rentalDates(r)}${rentalState(r)}</div>
+    <div class="my-3 grid justify-items-center gap-2 border-y py-3 ${t ? CARD_RULE[t] : "border-border"}">${money(r)}${dueDate(r, true)}</div>
+    <div class="mt-auto flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+      ${rowActions(r)}
+      <a class="inline-flex min-h-10 items-center text-xs text-accent" href="#">Карточка →</a>
+    </div>
+  </article>`;
+}
+
+/* ── Страница ─────────────────────────────────────────────────────────── */
+const SUMMARY = [
+  ["Сумма проектов", rub(9860400), "длинные проекты — по закрытым периодам", "text-ink"],
+  ["Получено", rub(8214900), "поступившие деньги по всем броням", "text-emerald"],
+  ["В работе", "23", "есть задачи или обязательства", "text-ink"],
+  ["На руках", "6", "оборудование у клиентов", "text-ink"],
+  ["К оплате", rub(1645500), "31 бронирование с остатком", "text-ink"],
+  ["Просрочено", rub(386000), "7 бронирований · срок оплаты истёк", "text-rose"],
+];
+const SCOPES = [["Все", 312], ["В работе", 23], ["К оплате", 31], ["Просрочено", 7], ["Оплаченные", 247], ["На руках", 6], ["На согласовании", 0], ["Завершённые", 289]];
+
+function legend() {
+  if (!state.tint) return "";
+  return `<span class="inline-flex items-center gap-x-3 gap-y-1">
+    <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-3 w-3 rounded border border-emerald-border bg-emerald-soft/60 dark:bg-emerald-soft"></span>Оплачено</span>
+    <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-3 w-3 rounded border border-rose-border bg-rose-soft/70 dark:bg-rose-soft"></span>Есть остаток</span>
+  </span>`;
+}
+
+function render() {
+  document.documentElement.dataset.theme = state.theme;
+  document.querySelectorAll("#mockbar [data-set]").forEach((b) => {
+    const [k, v] = b.dataset.set.split(":");
+    const on = k === "theme" ? state.theme === v : (state.tint ? "on" : "off") === v;
+    b.className = `min-h-8 rounded px-3 ${on ? "bg-on-inverse/15 font-semibold" : "opacity-70 hover:opacity-100"}`;
+  });
+  document.getElementById("app").innerHTML = `
+    <header class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p class="eyebrow text-ink-3">Светобаза / Управление ренталом</p>
+        <h1 class="mt-1 text-2xl font-semibold tracking-tight text-ink">Бронирования</h1>
+        <p class="mt-1 text-sm text-ink-3">Аренда, оборудование и расчёты в одном месте</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button class="${BUTTON}">Быстрая бронь</button>
+        <a class="${PRIMARY}" href="#">+ Создать бронь</a>
+      </div>
+    </header>
+    <section aria-label="Сводка по всем бронированиям">
+      <p class="mb-2 text-[11px] text-ink-3">По всем неархивным бронированиям · независимо от фильтров</p>
+      <div class="grid grid-cols-2 gap-2 lg:grid-cols-3 2xl:grid-cols-6">
+        ${SUMMARY.map(([l, v, h, c]) => `<button class="flex min-w-0 flex-col justify-start rounded-lg border bg-surface p-3 text-center transition hover:border-accent xl:p-4 ${l === "Просрочено" ? "border-rose-border" : "border-border"}">
+          <span class="text-xs text-ink-2">${l}</span>
+          <strong class="mt-1 block break-words text-lg font-semibold tabular-nums sm:mono-num sm:text-xl ${c}">${v}</strong>
+          <span class="mt-1 block text-[11px] text-ink-3 sm:text-xs">${h}</span>
+        </button>`).join("")}
+      </div>
+    </section>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="inline-flex max-w-full flex-wrap gap-1 rounded-lg border border-border bg-surface-subtle p-1" aria-label="Представление">
+        <button aria-pressed="true" class="min-h-9 rounded px-3 py-1.5 text-sm bg-surface font-semibold text-accent shadow-sm">Реестр</button>
+        <button class="min-h-9 rounded px-3 py-1.5 text-sm text-ink-2 hover:text-ink">Пульт дня</button>
+        <button class="min-h-9 rounded px-3 py-1.5 text-sm text-ink-2 hover:text-ink">Доска</button>
+      </div>
+      <div class="flex flex-wrap gap-3 text-xs">
+        <a class="py-2 text-ink-2 hover:text-accent" href="#">Календарь ↗</a>
+        <a class="py-2 text-ink-2 hover:text-accent" href="#">Склад ↗</a>
+        <a class="py-2 text-ink-2 hover:text-accent" href="#">Платежи ↗</a>
+        <a class="py-2 text-ink-2 hover:text-accent" href="#">Архив ↗</a>
+      </div>
+    </div>
+    <section class="space-y-3 rounded-lg border border-border bg-surface p-3 sm:p-4" aria-label="Поиск и фильтры">
+      <div class="flex flex-wrap gap-2">
+        <label class="min-w-0 flex-1 basis-64"><span class="sr-only">Поиск бронирований</span>
+          <input type="search" class="${CONTROL}" placeholder="Клиент, проект или номер брони…"></label>
+        <button class="${BUTTON}">Фильтры </button>
+        <button class="${BUTTON}">Сохранить вид</button>
+        <button class="${BUTTON}" aria-label="Обновить список">↻</button>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="text-ink-3">Аренда:</span>
+        ${["Сегодня", "7 дней", "Этот месяц"].map((l) => `<button class="min-h-10 rounded border px-2 sm:min-h-8 border-border text-ink-2">${l}</button>`).join("")}
+      </div>
+    </section>
+    <nav aria-label="Состояние бронирований" class="relative flex gap-1 overflow-x-auto border-b border-border pr-6 [mask-image:linear-gradient(to_right,black_calc(100%_-_24px),transparent)] [scrollbar-width:none] xl:pr-0 xl:[mask-image:none] [&::-webkit-scrollbar]:hidden">
+      ${SCOPES.map(([l, n], i) => `<button aria-pressed="${i === 0}" class="min-h-10 shrink-0 rounded-t border-b-2 px-3 text-sm ${i === 0 ? "border-accent bg-accent-soft font-semibold text-accent" : "border-transparent text-ink-2 hover:bg-surface-subtle"}">${l} <span class="ml-1 text-xs opacity-70">${n}</span></button>`).join("")}
+    </nav>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-3">
+        <span>Показано ${ROWS.length} из 312 · Период аренды · МСК</span>
+        ${legend()}
+      </div>
+      <div class="flex max-w-full flex-wrap items-center gap-2">
+        <label class="flex items-center gap-2 text-xs text-ink-3">Порядок
+          <select aria-label="Сортировка" class="${CONTROL} !w-auto !py-1"><option>Начало аренды</option></select></label>
+        <button class="${BUTTON}">↓ По убыванию</button>
+        <label class="hidden min-h-10 items-center gap-2 text-xs text-ink-2 xl:flex">
+          <input type="checkbox" class="h-4 w-4 accent-accent"> Начислено и получено</label>
+      </div>
+    </div>
+    <div>
+      <div class="hidden overflow-x-auto rounded-lg border border-border bg-surface xl:block">
+        <table class="w-full min-w-[980px] text-center">
+          <thead class="border-b border-border bg-surface-subtle text-[11px] uppercase tracking-wide text-ink-3">
+            <tr>
+              <th class="w-10 px-3 py-3"><input type="checkbox" aria-label="Выбрать все загруженные брони" class="mx-auto block h-4 w-4 accent-accent"></th>
+              <th class="px-3 py-3 text-left">Проект / клиент</th>
+              <th class="px-3 py-3">Аренда · МСК</th>
+              <th class="px-3 py-3">Оборудование</th>
+              <th class="min-w-[280px] px-3 py-3">Сумма / оплата</th>
+              <th class="px-3 py-3">Срок оплаты</th>
+              <th class="px-3 py-3">Действия</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">${ROWS.map(tableRow).join("")}</tbody>
+        </table>
+      </div>
+      <label class="mb-2 flex min-h-10 w-fit cursor-pointer items-center gap-2 text-sm text-ink-2 xl:hidden">
+        <input type="checkbox" class="h-4 w-4 accent-accent"> Выбрать все загруженные</label>
+      <div class="grid gap-3 md:grid-cols-2 xl:hidden">${ROWS.map(card).join("")}</div>
+    </div>
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-subtle p-4 text-sm">
+      <span class="text-ink-2">Итого по выборке · 312 бронирований</span>
+      <div class="grid w-full gap-1 sm:flex sm:w-auto sm:flex-wrap sm:gap-x-5 sm:gap-y-2">
+        <span class="flex items-baseline justify-between gap-3 text-ink-2 sm:block">Сумма проектов <strong class="font-mono text-ink">${rub(9860400)}</strong></span>
+        <span class="flex items-baseline justify-between gap-3 text-ink-2 sm:block">Получено <strong class="font-mono text-emerald">${rub(8214900)}</strong></span>
+        <span class="flex items-baseline justify-between gap-3 text-ink-2 sm:block">Осталось получить <strong class="font-mono text-ink">${rub(1645500)}</strong></span>
+        <span class="flex items-baseline justify-between gap-3 text-ink-2 sm:block">Просрочено <strong class="font-mono text-rose">${rub(386000)}</strong></span>
+      </div>
+    </div>
+    <div class="text-center"><button class="${BUTTON}">Показать ещё · осталось 300</button></div>
+    <footer class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-ink-3">
+      <p>Нажмите на сумму или наведите курсор, чтобы увидеть подробности оплаты.</p>
+      <p>Обновлено 23:40 МСК</p>
+    </footer>`;
+}
+
+/* ── Боковое меню (как у руководителя) ─────────────────────────────────── */
+const MENU = [
+  ["Главное", ["Мой день", "Мои задачи", "Архив задач"]],
+  ["Склад", ["Выдачи и возвраты", "Потеряшки", "Инвентаризация"]],
+  ["Бронирование", ["Список броней", "Новая бронь", "Календарь", "Клиенты", "Оборудование", "Архив"]],
+  ["Мастерская", ["Ремонты", "Автопарк"]],
+  ["Финансы", ["Обзор", "Счета по броням", "Счета на оплату", "Платежи", "Долги", "Расходы"]],
+];
+document.getElementById("sidebar").innerHTML = MENU.map(([title, items]) => `<div>
+  <p class="px-3 mb-1 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">${title}</p>
+  <ul class="space-y-0.5">${items.map((it) => {
+    const active = it === "Список броней";
+    return `<li><a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${active ? "bg-white/10 text-white font-medium" : "text-slate-400 hover:text-white hover:bg-white/5"}">
+      <span class="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center ${active ? "text-white" : "text-slate-500"}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/></svg></span>${it}</a></li>`;
+  }).join("")}</ul></div>`).join("");
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("#mockbar [data-set]");
+  if (!b) return;
+  const [k, v] = b.dataset.set.split(":");
+  if (k === "theme") state.theme = v; else state.tint = v === "on";
+  render();
+});
+document.addEventListener("change", (e) => {
+  const id = e.target.dataset && e.target.dataset.select;
+  if (!id) return;
+  state.selected.has(id) ? state.selected.delete(id) : state.selected.add(id);
+  render();
+});
+render();
+</script>
+</body>
+</html>

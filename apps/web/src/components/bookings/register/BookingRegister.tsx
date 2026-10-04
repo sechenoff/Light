@@ -27,10 +27,19 @@ import { RegisterFilters, control, button, primaryButton } from "./RegisterFilte
 import {
   DueDate,
   PaymentState,
+  PaymentToneLegend,
   RentalDates,
   RentalState,
   RegisterDetail,
 } from "./RegisterCells";
+import {
+  paymentTone,
+  PAYMENT_CARD_RULE,
+  PAYMENT_CARD_TONE,
+  PAYMENT_ROW_TONE,
+  PAYMENT_STICKY_TONE,
+  SELECTED_ROW_MARK,
+} from "./paymentTone";
 import {
   FILTER_KEYS,
   registerParams,
@@ -281,11 +290,13 @@ export function BookingRegister() {
     </div>
   );
   function card(r: Row, selectable = true) {
+    const tone = paymentTone(r);
     return (
       <article
         key={r.id}
-        className="flex min-w-0 flex-col rounded-lg border border-border bg-surface p-4 text-center shadow-xs"
+        className={`flex min-w-0 flex-col rounded-lg border p-4 text-center shadow-xs ${tone ? PAYMENT_CARD_TONE[tone] : "border-border bg-surface"}`}
         data-booking-card={r.id}
+        data-payment-tone={tone ?? undefined}
       >
         <div className="relative px-6">
           {selectable && r.mode !== "PROJECT" && (
@@ -307,7 +318,7 @@ export function BookingRegister() {
           <RentalDates row={r} />
           <RentalState row={r} onIssues={() => openIssues(r)} />
         </div>
-        <div className="my-3 grid justify-items-center gap-2 border-y border-border py-3">
+        <div className={`my-3 grid justify-items-center gap-2 border-y py-3 ${tone ? PAYMENT_CARD_RULE[tone] : "border-border"}`}>
           {money(r)}
           <DueDate row={r} label />
         </div>
@@ -715,12 +726,15 @@ export function BookingRegister() {
             ))}
           </nav>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-xs text-ink-3">
-              {loading
-                ? "Обновляем…"
-                : `Показано ${rows.length} из ${data?.totalCount ?? 0}`}{" "}
-              · {dateLabels[p.get("dateField") as keyof typeof dateLabels]} ·
-              МСК
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-3">
+              <span>
+                {loading
+                  ? "Обновляем…"
+                  : `Показано ${rows.length} из ${data?.totalCount ?? 0}`}{" "}
+                · {dateLabels[p.get("dateField") as keyof typeof dateLabels]} ·
+                МСК
+              </span>
+              <PaymentToneLegend />
             </div>
             <div className="flex max-w-full flex-wrap items-center gap-2">
               <label className="flex items-center gap-2 text-xs text-ink-3">
@@ -843,68 +857,69 @@ export function BookingRegister() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {rows.map((r) => (
-                      <tr
-                        key={r.id}
-                        data-booking-row={r.id}
-                        className={`group ${
-                          actions.selection.selected.has(r.id)
-                            ? "bg-accent-soft/40"
-                            : "hover:bg-surface-subtle/50"
-                        }`}
-                      >
-                        <td className="px-3 py-4 align-middle">
-                          <input
-                            className="mx-auto block h-4 w-4 accent-accent"
-                            type="checkbox"
-                            aria-label={`Выбрать ${r.projectName}`}
-                            checked={actions.selection.selected.has(r.id)}
-                            onChange={() => actions.selection.toggle(r.id)}
-                            disabled={actions.busy || r.mode === "PROJECT"}
-                          />
-                        </td>
-                        <td className="min-w-[170px] max-w-[270px] px-3 py-4 text-left align-middle">
-                          {identity(r, false)}
-                        </td>
-                        <td className="px-3 py-4 align-middle">
-                          <RentalDates row={r} />
-                        </td>
-                        <td className="px-3 py-4 align-middle">
-                          <RentalState row={r} onIssues={() => openIssues(r)} />
-                        </td>
-                        {expanded && (
-                          <>
-                            <td className="whitespace-nowrap px-3 py-4 align-middle font-mono text-xs">
-                              {formatRub(r.finalAmount)}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-4 align-middle font-mono text-xs">
-                              {formatRub(r.amountPaid)}
-                            </td>
-                          </>
-                        )}
-                        <td className={`${expanded ? "min-w-[170px]" : "min-w-[280px]"} px-3 py-4 align-middle`}>{money(r)}</td>
-                        <td className="min-w-[130px] px-3 py-4 align-middle">
-                          <DueDate row={r} />
-                        </td>
-                        {/* С «Начислено и получено» таблица шире экрана: «Действия» закреплены
-                            справа. Фон непрозрачный (surface + тон строки градиентом), чтобы
-                            под ячейкой не просвечивал прокручиваемый контент. Разделитель —
-                            inset-тенью: схлопнутую границу таблицы фон sticky-ячейки перекрывает. */}
-                        <td
-                          className={`px-3 py-4 align-middle ${
-                            expanded
-                              ? `sticky right-0 bg-surface bg-gradient-to-r shadow-[inset_1px_0_0] shadow-border ${
-                                  actions.selection.selected.has(r.id)
-                                    ? "from-accent-soft/40 to-accent-soft/40"
-                                    : "group-hover:from-surface-subtle/50 group-hover:to-surface-subtle/50"
-                                }`
-                              : ""
-                          }`}
+                    {rows.map((r) => {
+                      const tone = paymentTone(r),
+                        selected = actions.selection.selected.has(r.id);
+                      return (
+                        <tr
+                          key={r.id}
+                          data-booking-row={r.id}
+                          data-payment-tone={tone ?? undefined}
+                          className={`group ${tone ? PAYMENT_ROW_TONE[tone] : "hover:bg-surface-subtle/50"}`}
                         >
-                          {rowActions(r)}
-                        </td>
-                      </tr>
-                    ))}
+                          <td className={`px-3 py-4 align-middle ${selected ? SELECTED_ROW_MARK : ""}`}>
+                            <input
+                              className="mx-auto block h-4 w-4 accent-accent"
+                              type="checkbox"
+                              aria-label={`Выбрать ${r.projectName}`}
+                              checked={selected}
+                              onChange={() => actions.selection.toggle(r.id)}
+                              disabled={actions.busy || r.mode === "PROJECT"}
+                            />
+                          </td>
+                          <td className="min-w-[170px] max-w-[270px] px-3 py-4 text-left align-middle">
+                            {identity(r, false)}
+                          </td>
+                          <td className="px-3 py-4 align-middle">
+                            <RentalDates row={r} />
+                          </td>
+                          <td className="px-3 py-4 align-middle">
+                            <RentalState row={r} onIssues={() => openIssues(r)} />
+                          </td>
+                          {expanded && (
+                            <>
+                              <td className="whitespace-nowrap px-3 py-4 align-middle font-mono text-xs">
+                                {formatRub(r.finalAmount)}
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-4 align-middle font-mono text-xs">
+                                {formatRub(r.amountPaid)}
+                              </td>
+                            </>
+                          )}
+                          <td className={`${expanded ? "min-w-[170px]" : "min-w-[280px]"} px-3 py-4 align-middle`}>{money(r)}</td>
+                          <td className="min-w-[130px] px-3 py-4 align-middle">
+                            <DueDate row={r} />
+                          </td>
+                          {/* С «Начислено и получено» таблица шире экрана: «Действия» закреплены
+                              справа. Фон непрозрачный (surface + тон строки градиентом), чтобы
+                              под ячейкой не просвечивал прокручиваемый контент. Разделитель —
+                              inset-тенью: схлопнутую границу таблицы фон sticky-ячейки перекрывает. */}
+                          <td
+                            className={`px-3 py-4 align-middle ${
+                              expanded
+                                ? `sticky right-0 bg-surface bg-gradient-to-r shadow-[inset_1px_0_0] shadow-border ${
+                                    tone
+                                      ? PAYMENT_STICKY_TONE[tone]
+                                      : "group-hover:from-surface-subtle/50 group-hover:to-surface-subtle/50"
+                                  }`
+                                : ""
+                            }`}
+                          >
+                            {rowActions(r)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
