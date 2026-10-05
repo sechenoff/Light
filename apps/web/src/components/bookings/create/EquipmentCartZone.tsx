@@ -323,16 +323,18 @@ export function EquipmentCartZone({
     row.quantity <= 1 ? setPendingRemoval(row) : row.onDec();
 
   const header = (
-    <div className="flex items-center justify-between px-5 pb-2.5 pt-2.5">
+    // flex-wrap: длинная подпись кнопки не помещается рядом с заголовком на
+    // телефоне и в узкой колонке 1024–1279 — там кнопка уходит на свою строку.
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 pb-2.5 pt-2.5">
       <span className="font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-3">
         Состав заявки{rowCount > 0 && <span className="ml-1 font-mono text-emerald">· {rowCount}</span>}
       </span>
       <button
         type="button"
         onClick={onOpenCustomModal}
-        className="rounded border border-border bg-surface px-2.5 py-2 text-[12px] text-ink-2 hover:bg-surface-muted hover:text-ink md:py-1"
+        className="inline-flex min-h-10 w-full items-center justify-center rounded-md border border-accent-border bg-accent-soft px-3.5 text-[13px] font-semibold text-accent hover:border-accent hover:bg-accent hover:text-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:w-auto md:min-h-9"
       >
-        + Своя позиция
+        + Добавить собственную позицию
       </button>
     </div>
   );

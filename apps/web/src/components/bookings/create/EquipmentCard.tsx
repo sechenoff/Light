@@ -235,18 +235,21 @@ export function EquipmentCard({
               onChange={(e) => onSearchQueryChange(e.target.value)}
               onPaste={handleSearchPaste}
               placeholder="Найти: название, бренд, модель…"
-              className="h-[38px] w-full rounded-md border border-border bg-surface pl-8 pr-3 text-[13px] text-ink outline-none focus:border-accent-bright focus:shadow-[0_0_0_3px_theme(colors.accent.soft)]"
+              className="h-[42px] w-full rounded-md border border-border bg-surface pl-8 pr-3 text-[13px] text-ink outline-none focus:border-accent-bright focus:shadow-[0_0_0_3px_theme(colors.accent.soft)]"
             />
           </div>
+          {/* Главный способ набрать бронь — заявка гафера, поэтому кнопка залита
+              акцентом и выше прежней (поле поиска подогнано под неё по высоте).
+              text-surface, а не text-white: ночью заливка светлеет. */}
           <button
             type="button"
             onClick={() => setAiOpen(true)}
-            className="flex h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright"
+            className="flex h-[42px] shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-accent bg-accent px-4 text-[13.5px] font-semibold text-surface shadow-xs hover:border-accent-bright hover:bg-accent-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {/* Короткая подпись и на 1024–1279: колонка формы там узкая. */}
             <span className="hidden sm:inline lg:hidden xl:inline">Заявка от гафера</span>
             <span className="sm:hidden lg:inline xl:hidden">Заявка</span>
-            <span className="rounded bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-ink-3">AI</span>
+            <span className="rounded bg-surface/20 px-1.5 py-0.5 font-mono text-[10.5px] font-semibold text-surface">AI</span>
           </button>
         </div>
       </div>

@@ -80,7 +80,7 @@ function mixedSelection(): Map<string, CatalogSelectedItem> {
 }
 
 describe("EquipmentCartZone", () => {
-  it("пустое состояние с подсказкой и кнопкой «+ Своя позиция»", () => {
+  it("пустое состояние с подсказкой и кнопкой «+ Добавить собственную позицию»", () => {
     const onOpenCustomModal = vi.fn();
     const { container } = render(
       <EquipmentCartZone
@@ -93,7 +93,7 @@ describe("EquipmentCartZone", () => {
     expect(screen.getByText(/пока пусто/i)).toBeInTheDocument();
     // Пустого состава таблица не рисует вовсе — шапка колонок над ничем.
     expect(container.querySelector("table")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /\+ своя позиция/i }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Добавить собственную позицию" }));
     expect(onOpenCustomModal).toHaveBeenCalled();
   });
 
