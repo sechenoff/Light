@@ -94,9 +94,9 @@ export function AddCustomItemModal({ isOpen, onClose, onAdd, initialName, initia
         className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-lg bg-surface p-5 shadow-lg sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="eyebrow mb-2">Произвольная позиция</div>
+        <div className="eyebrow mb-2">Собственная позиция</div>
         <h2 id="add-custom-item-title" className="mb-1 text-lg font-semibold text-ink">
-          Добавить произвольную позицию
+          Добавить собственную позицию
         </h2>
 
         <div className="mb-4 flex flex-col gap-3">
