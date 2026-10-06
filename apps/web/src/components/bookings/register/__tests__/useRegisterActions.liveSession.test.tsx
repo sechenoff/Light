@@ -117,20 +117,24 @@ describe("реестр: главная кнопка и киоск", () => {
     expect(screen.getByRole("button", { name: "Продолжить приёмку" })).toBeInTheDocument();
   });
 
-  it("выдача кнопкой: предупреждение сервера и закрытые сессии видны сотруднику", async () => {
-    apiFetchMock.mockResolvedValue({
-      booking: { id: "b1", status: "RETURNED" },
-      warning: "Пробег машин не записан — внесите его в карточке машины",
-      closedScanSessions: 1,
-    });
+  it("возврат кнопкой: окно приёмки, предупреждение сервера и закрытые сессии видны сотруднику", async () => {
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-plan")
+        ? { bookingId: "b1", splitRevision: 0, lines: [], hasPlannedStays: false, kioskSession: null }
+        : {
+            booking: { id: "b1", status: "RETURNED" },
+            warning: "Пробег машин не записан — внесите его в карточке машины",
+            closedScanSessions: 1,
+          },
+    );
     const refresh = vi.fn();
     render(<Harness rows={[row({ status: "ISSUED" })]} refresh={refresh} />);
     fireEvent.click(screen.getByRole("button", { name: "Принять возврат" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Принять возврат" }));
+    fireEvent.click(await within(screen.getByRole("dialog")).findByRole("button", { name: "Вернули всё" }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(apiFetchMock).toHaveBeenCalledWith(
       "/api/bookings/b1/status",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ action: "return" }) }),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ action: "return", allReturned: true }) }),
     );
     expect(toastMock.info).toHaveBeenCalledWith(
       "Пробег машин не записан — внесите его в карточке машины",

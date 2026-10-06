@@ -50,6 +50,8 @@ import { RelatedExpenses } from "../../../src/components/finance/RelatedExpenses
 import { RefundModal } from "../../../src/components/finance/RefundModal";
 import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoiceModal";
 import { CancelWithDepositModal } from "../../../src/components/finance/CancelWithDepositModal";
+import { ReturnDialog } from "../../../src/components/bookings/ReturnDialog";
+import { BookingFamilyBanner, type BookingFamily } from "../../../src/components/bookings/BookingFamilyBanner";
 import { CreditNoteApplyModal } from "../../../src/components/finance/CreditNoteApplyModal";
 import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
 import { AddonEstimateSection } from "../../../src/components/bookings/AddonEstimateSection";
@@ -69,6 +71,10 @@ type ScanSession = {
 
 type BookingDetail = {
   id: string;
+  /** Номер сметы «СМ-…»; у продолжения брони — «СМ-…-1». */
+  docNumber?: string | null;
+  /** Семья броней (продолжения при частичной приёмке); у обычной — null. */
+  family?: BookingFamily | null;
   displayName?: string;
   legacyFinance?: boolean;
   status: "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
@@ -218,6 +224,8 @@ export default function BookingDetailPage() {
   const [err, setErr] = useState<string | null>(null);
   const { user } = useCurrentUser();
   const [changeClientOpen, setChangeClientOpen] = useState(false);
+  // Окно «Принять возврат»: эта бронь или её продолжение («Принять остаток»).
+  const [returnTarget, setReturnTarget] = useState<{ id: string; docNumber: string | null; projectName: string } | null>(null);
   const [actionBusy, setActionBusy] = useState<null | "submit" | "instant">(null);
   // Фаза 4.5: шесть финансовых модалок — один reducer вместо шести useState.
   const [financeModals, dispatchFinanceModal] = useReducer(
@@ -295,6 +303,8 @@ export default function BookingDetailPage() {
     booking,
     reloadBooking,
     onCancelWithDeposit: () => dispatchFinanceModal({ type: "openCancelDeposit" }),
+    onReturn: () =>
+      booking && setReturnTarget({ id: booking.id, docNumber: booking.docNumber ?? null, projectName: booking.projectName }),
   });
 
   async function archiveBooking() {
@@ -604,6 +614,26 @@ export default function BookingDetailPage() {
               </>
             ) : null
           }
+        />
+      )}
+      {/* Семья броней: продолжение после частичной приёмки (мокап M5). */}
+      {!showApprovalView && booking?.family && (
+        <BookingFamilyBanner
+          family={booking.family}
+          onAcceptRest={(c) => setReturnTarget({ id: c.id, docNumber: c.docNumber, projectName: booking.projectName })}
+        />
+      )}
+      {/* «Принять возврат» — окно приёмки (мокап M4): своя бронь или продолжение. */}
+      {booking && returnTarget && (
+        <ReturnDialog
+          open
+          bookingId={returnTarget.id}
+          docNumber={returnTarget.docNumber}
+          projectName={returnTarget.projectName}
+          onClose={() => setReturnTarget(null)}
+          onDone={() => {
+            void reloadBooking();
+          }}
         />
       )}
 

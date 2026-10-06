@@ -16,6 +16,8 @@ import {
 
 /** Минимальная форма брони для hero (структурно совместима с BookingDetail). */
 export type HeroBooking = {
+  /** Семья броней: возвращена, но часть оборудования ещё у клиента по продолжению. */
+  family?: { partiallyReturned: boolean } | null;
   id: string;
   status: BookingStatus;
   startDate: string;
@@ -35,6 +37,14 @@ export type HeroBooking = {
   paymentForm?: "CASH" | "CASHLESS" | null;
   cashlessSurchargePercent?: string | null;
 };
+
+/** «Возвращена частично» — часть оборудования ещё у клиента по продолжению (мокап M5). */
+function heroStatus(booking: HeroBooking): { label: string; variant: ReturnType<typeof statusVariant> } {
+  if (booking.status === "RETURNED" && booking.family?.partiallyReturned) {
+    return { label: "Возвращена частично", variant: "warn" };
+  }
+  return { label: statusText(booking.status), variant: statusVariant(booking.status) };
+}
 
 export function BookingHero({ booking, showHero }: { booking: HeroBooking; showHero: boolean }) {
   return (
@@ -99,7 +109,7 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
                   разделители-флекс-элементы при переносе повисали на краю строки. */}
               <div className="mt-3 flex flex-col gap-1.5 text-sm text-ink-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusPill variant={statusVariant(booking.status)} label={statusText(booking.status)} />
+                  <StatusPill variant={heroStatus(booking).variant} label={heroStatus(booking).label} />
                   <StatusPill variant={payVariant} label={payLabel} />
                   {booking.paymentForm === "CASHLESS" && (
                     <StatusPill
@@ -217,7 +227,7 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
             </div>
             <h1 className="print-title">{booking.projectName}</h1>
             <div className="print-meta">
-              <span>{statusText(booking.status)}</span>
+              <span>{heroStatus(booking).label}</span>
               {booking.paymentStatus && <span> · {(() => {
                 switch (booking.paymentStatus) {
                   case "PAID": return "Оплачено";
