@@ -163,6 +163,45 @@ describe("платёж «Разнести по продолжениям»", () =
     expect(await owed(child.id)).toBe(50);
   });
 
+  it("тот же ключ: сначала одиночный платёж, потом разнесённый — отказ, а не вторая оплата", async () => {
+    const { root, child } = await mkFamily(1000, 1000);
+    const base = { requestKey: randomUUID(), bookingId: child.id, amount: 1000, method: "CASH", receivedAt: new Date().toISOString() };
+    expect((await request(app).post("/api/payments").set(AUTH()).send(base)).status).toBe(201);
+    const spread = await request(app).post("/api/payments").set(AUTH()).send({ ...base, spreadAcrossFamily: true });
+    expect(spread.status).toBe(409);
+    expect(spread.body.code).toBe("PAYMENT_REQUEST_CONFLICT");
+    expect(await prisma.payment.count({ where: { bookingId: { in: [root.id, child.id] } } })).toBe(1);
+  });
+
+  it("тот же ключ: сначала разнесённый, потом одиночный — отказ", async () => {
+    const { root, child } = await mkFamily(1000, 1000);
+    const base = { requestKey: randomUUID(), bookingId: child.id, amount: 2000, method: "CASH", receivedAt: new Date().toISOString() };
+    expect((await request(app).post("/api/payments").set(AUTH()).send({ ...base, spreadAcrossFamily: true })).status).toBe(201);
+    const single = await request(app).post("/api/payments").set(AUTH()).send(base);
+    expect(single.status).toBe(409);
+    expect(single.body.code).toBe("PAYMENT_REQUEST_CONFLICT");
+    expect(await prisma.payment.count({ where: { bookingId: { in: [root.id, child.id] } } })).toBe(2);
+  });
+
+  it("повтор с другой суммой — не повтор: отказ", async () => {
+    const { child } = await mkFamily(1000, 1000);
+    const body = { requestKey: randomUUID(), bookingId: child.id, amount: 1500, method: "CASH", receivedAt: new Date().toISOString(), spreadAcrossFamily: true };
+    expect((await request(app).post("/api/payments").set(AUTH()).send(body)).status).toBe(201);
+    const changed = await request(app).post("/api/payments").set(AUTH()).send({ ...body, amount: 1800 });
+    expect(changed.status).toBe(409);
+    expect(changed.body.code).toBe("PAYMENT_REQUEST_CONFLICT");
+  });
+
+  it("превью: переплата сверх долга семьи — на эту бронь, у брони без долга часть 0", async () => {
+    const { root, child } = await mkFamily(1000, 0);
+    const preview = await request(app).get("/api/payments/family-preview").query({ bookingId: child.id, amount: 1500 }).set(AUTH());
+    expect(preview.status).toBe(200);
+    expect(preview.body.rows).toEqual([
+      expect.objectContaining({ bookingId: root.id, debt: "1000.00", payment: "1000.00", remaining: "0.00" }),
+      expect.objectContaining({ bookingId: child.id, debt: "0.00", payment: "500.00", remaining: "0.00" }),
+    ]);
+  });
+
   it("сумма частей — ровно введённая; копейки дробнее — отказ", async () => {
     const { root, child } = await mkFamily(1000, 300);
     const ok = await request(app)

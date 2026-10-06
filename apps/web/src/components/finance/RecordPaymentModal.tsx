@@ -5,7 +5,7 @@ import { apiFetch } from "../../lib/api";
 import { formatRub } from "../../lib/format";
 import { toast } from "../ToastProvider";
 import { toMoscowDateString } from "../../lib/moscowDate";
-import { FamilySpreadPanel } from "./FamilySpreadPanel";
+import { FamilySpreadPanel, defaultSpreadOn, type FamilyPreviewInfo } from "./FamilySpreadPanel";
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: "Наличные",
@@ -106,10 +106,13 @@ export function RecordPaymentModal({
   const [invoiceId, setInvoiceId] = useState<string>("");
   const [invoicesLoading, setInvoicesLoading] = useState(false);
 
-  // «Разнести по продолжениям»: панель сама узнаёт, есть ли у брони семья,
-  // и ставит переключатель по умолчанию (см. FamilySpreadPanel).
+  // «Разнести по продолжениям»: панель узнаёт по превью, есть ли у брони
+  // семья; включать ли по умолчанию — решает окно (defaultSpreadOn), пока
+  // человек сам не трогал переключатель.
   const [spread, setSpread] = useState(false);
-  const [hasFamily, setHasFamily] = useState(false);
+  const [familyInfo, setFamilyInfo] = useState<FamilyPreviewInfo | null>(null);
+  const [spreadTouched, setSpreadTouched] = useState(false);
+  const hasFamily = familyInfo?.hasFamily ?? false;
   const spreading = spread && hasFamily;
 
   const amountRef = useRef<HTMLInputElement>(null);
@@ -159,6 +162,13 @@ export function RecordPaymentModal({
 
   // D2: Load open invoices for the booking when post-cutoff mode
   const effectiveBookingId = defaultBookingId ?? bookingId;
+
+  // Другая бронь — другая семья: выбор разнесения не переносится.
+  useEffect(() => {
+    setSpread(false);
+    setFamilyInfo(null);
+    setSpreadTouched(false);
+  }, [effectiveBookingId]);
   useEffect(() => {
     // Only fetch invoices for post-cutoff bookings (legacyFinance===false)
     if (!open || legacyFinance !== false || !effectiveBookingId) {
@@ -208,7 +218,8 @@ export function RecordPaymentModal({
       setReceivedAt(`${datePart}T${hh}:${mm}`);
       setNote("");
       setSpread(false);
-      setHasFamily(false);
+      setFamilyInfo(null);
+      setSpreadTouched(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -269,6 +280,17 @@ export function RecordPaymentModal({
     }
   };
 
+  // Разнесение по умолчанию — по превью и выбранному счёту, пока человек сам
+  // не нажимал переключатель. Счёт выбран — выключено: платёж по счёту не
+  // разносится, и привязка к нему не должна пропадать молча.
+  const invoiceChosen = legacyFinance === false && Boolean(invoiceId);
+  useEffect(() => {
+    if (spreadTouched) return;
+    setSpread(defaultSpreadOn(familyInfo, Number(amount), invoiceChosen));
+    // Сумму берём на момент ответа превью: оно и приходит на каждую новую сумму.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyInfo, invoiceChosen, spreadTouched]);
+
   if (!open) return null;
 
   // D2: determine if we should show invoice selector
@@ -278,6 +300,8 @@ export function RecordPaymentModal({
   // активна, и пустой/нулевой сабмит только тостил). Переплата (сумма больше
   // остатка) не блокирует — это легитимный кейс, но мягко предупреждаем.
   const amtNum = Number(amount);
+  const invoiceAvailable =
+    legacyFinance === false && invoices.some((inv) => inv.status !== "PAID" && inv.status !== "DRAFT");
   const amountValid = amount.trim() !== "" && Number.isFinite(amtNum) && amtNum > 0;
   const outstandingNum =
     bookingContext?.amountOutstanding != null ? Number(bookingContext.amountOutstanding) : null;
@@ -415,8 +439,12 @@ export function RecordPaymentModal({
               bookingId={effectiveBookingId}
               amount={amtNum}
               enabled={spread}
-              onEnabledChange={setSpread}
-              onFamilyKnown={setHasFamily}
+              onToggle={(next) => {
+                setSpreadTouched(true);
+                setSpread(next);
+              }}
+              onPreview={setFamilyInfo}
+              invoiceAvailable={invoiceAvailable}
             />
           )}
 
