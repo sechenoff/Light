@@ -26,6 +26,7 @@ import {
 } from "../../services/documentExport/invoice/renderInvoicePdf";
 import { getSettings } from "../../services/organizationService";
 import { buildAttachmentContentDisposition } from "../../utils/contentDisposition";
+import { actWaitsForContinuationError, continuationOrigin, hasIssuedDescendant } from "../../services/bookingFamily";
 
 const router = Router();
 
@@ -105,11 +106,18 @@ router.get("/", lkAuth, async (req, res, next) => {
           status: true,
           finalAmount: true,
           amountOutstanding: true,
+          parentBookingId: true,
           _count: { select: { items: true } },
         },
       }),
       prisma.booking.count({ where: countWhere }),
     ]);
+    // Номера броней, из которых перешли продолжения (своего клиента).
+    const parentIds = Array.from(new Set(items.map((b) => b.parentBookingId).filter((v): v is string => v != null)));
+    const parents = parentIds.length
+      ? await prisma.booking.findMany({ where: { id: { in: parentIds }, clientId }, select: { id: true, docNumber: true } })
+      : [];
+    const parentDoc = new Map(parents.map((p) => [p.id, p.docNumber]));
 
     const hasMore = items.length > q.limit;
     const slice = hasMore ? items.slice(0, q.limit) : items;
@@ -129,6 +137,9 @@ router.get("/", lkAuth, async (req, res, next) => {
         finalAmount: b.finalAmount.toString(),
         amountOutstanding: b.amountOutstanding.toString(),
         itemCount: b.project?._count.lots ?? b._count.items,
+        // Продолжение брони: часть оборудования осталась после приёмки основной —
+        // кабинет показывает его под основной бронью.
+        continuationOf: b.parentBookingId ? { id: b.parentBookingId, docNumber: parentDoc.get(b.parentBookingId) ?? null } : null,
       })),
       nextCursor,
       totalCount,
@@ -161,6 +172,8 @@ router.get("/:id", lkAuth, async (req, res, next) => {
         comment: true,
         estimateOptionalNote: true,
         projectName: true,
+        parentBookingId: true,
+        rootBookingId: true,
         // Последний невоидный счёт — для кнопки «Счёт PDF» в ЛК.
         invoices: {
           where: { status: { not: "VOID" } },
@@ -253,7 +266,8 @@ router.get("/:id", lkAuth, async (req, res, next) => {
       comment: booking.comment ?? null,
       optionalNote: booking.estimateOptionalNote ?? null,
       hasConfirmedEstimate,
-      hasAct: booking.status === "RETURNED",
+      // Акт — когда всё вернули: и основную, и продолжения ниже по цепочке.
+      hasAct: booking.status === "RETURNED" && !(await hasIssuedDescendant(prisma, booking)),
       hasInvoice: booking.invoices.length > 0,
       invoiceNumber: booking.invoices[0]?.number ?? null,
     });
@@ -292,7 +306,7 @@ router.get("/:id/estimate.pdf", lkAuth, async (req, res, next) => {
       // Без него портал показывал расчётную сумму, а счёт на ту же бронь —
       // согласованную: заказчик видел два разных числа за один заказ.
       const full = buildFullSmeta({
-        booking,
+        booking: { ...booking, continuationOf: await continuationOrigin(prisma, booking) },
         main,
         addon,
         org,
@@ -328,11 +342,13 @@ router.get("/:id/act.pdf", lkAuth, async (req, res, next) => {
     const clientId = lkClientId(req);
     const booking = await prisma.booking.findUnique({
       where: { id: req.params.id },
-      select: { clientId: true, status: true, deletedAt: true },
+      select: { id: true, clientId: true, status: true, deletedAt: true, rootBookingId: true },
     });
     // LKG-4: архивную бронь клиент не открывает и её PDF не качает.
     if (!booking || booking.clientId !== clientId || booking.deletedAt) throw new HttpError(404, "Не найдено", "NOT_FOUND");
     if (booking.status !== "RETURNED") throw new HttpError(404, "Не найдено", "NOT_FOUND");
+    // Часть оборудования ещё у клиента по продолжению — акт после приёмки остатка.
+    if (await hasIssuedDescendant(prisma, booking)) throw actWaitsForContinuationError();
 
     const pdfBuf = await buildBookingActPdf(req.params.id);
     res.setHeader("Content-Type", "application/pdf");

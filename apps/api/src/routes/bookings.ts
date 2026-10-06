@@ -1,5 +1,5 @@
 import { setBookingIssuedOrReturnedManually } from "../services/bookingManualStatus";
-import { assertFamilyAllowsEdit } from "../services/bookingFamily";
+import { actWaitsForContinuationError, assertFamilyAllowsEdit, bookingFamilySummary, continuationOrigin, hasIssuedDescendant } from "../services/bookingFamily";
 import { listBookingRegister } from "../services/bookingRegister";
 import { getBookingIssues } from "../services/bookingIssues";
 import express from "express";
@@ -772,10 +772,13 @@ router.get("/:id", async (req, res, next) => {
       clientName: booking.client.name,
       totalAfterDiscount: booking.estimates?.find((e) => e.kind === "MAIN")?.totalAfterDiscount?.toString() ?? "0",
     });
+    // Семья броней (продолжения при частичной приёмке); у обычной — null.
+    const family = await bookingFamilySummary(prisma, booking);
     res.json({
       booking: {
         ...serialized,
         displayName,
+        family,
         payments: (payments ?? []).map((p: any) => ({
           id: p.id,
           amount: p.amount.toString(),
@@ -3104,7 +3107,7 @@ router.get(
     try {
       const booking = await prisma.booking.findUnique({
         where: { id: req.params.id },
-        select: { id: true, status: true, amountOutstanding: true },
+        select: { id: true, status: true, amountOutstanding: true, rootBookingId: true },
       });
       if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
 
@@ -3123,6 +3126,10 @@ router.get(
           amountOutstanding: booking.amountOutstanding.toString(),
         });
       }
+
+      // …и когда ниже по цепочке нет продолжения, которое ещё у клиента:
+      // акт закрывает аренду, а часть оборудования не возвращена.
+      if (await hasIssuedDescendant(prisma, booking)) throw actWaitsForContinuationError();
 
       const pdfBuf = await buildBookingActPdf(booking.id);
 
@@ -3169,7 +3176,7 @@ router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
     // Договорной итог обязан дойти до документа: счёт его уже чтит, и без него
     // смета спорила бы со счётом на одной и той же брони.
     const doc = buildFullSmeta({
-      booking,
+      booking: { ...booking, continuationOf: await continuationOrigin(prisma, booking) },
       main,
       addon,
       org,
@@ -3223,7 +3230,7 @@ router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
     // Договорной итог обязан дойти до документа: счёт его уже чтит, и без него
     // смета спорила бы со счётом на одной и той же брони.
     const doc = buildFullSmeta({
-      booking,
+      booking: { ...booking, continuationOf: await continuationOrigin(prisma, booking) },
       main,
       addon,
       org,

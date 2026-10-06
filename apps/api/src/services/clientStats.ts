@@ -16,6 +16,11 @@ export type ClientStatsResult = {
 /**
  * Агрегирует статистику по клиенту для экрана согласования.
  * Исключает CANCELLED-брони из всех расчётов.
+ *
+ * Продолжение брони (часть оборудования осталась у клиента после приёмки
+ * основной) — та же аренда, а не новая: в число броней и дату последней оно
+ * не входит, а его сумма прибавляется к своей основной брони (средний чек —
+ * по семьям, выручка — вся).
  */
 export async function getClientStats(clientId: string): Promise<ClientStatsResult> {
   const client = await prisma.client.findUnique({ where: { id: clientId } });
@@ -26,11 +31,20 @@ export async function getClientStats(clientId: string): Promise<ClientStatsResul
   const bookings = await prisma.booking.findMany({
     where: { clientId, status: { not: "CANCELLED" } },
     select: {
+      id: true,
       finalAmount: true,
       amountOutstanding: true,
       startDate: true,
+      parentBookingId: true,
+      rootBookingId: true,
     },
   });
+  const rentals = bookings.filter((b) => b.parentBookingId == null);
+  const familyTotal = new Map<string, Decimal>();
+  for (const b of bookings) {
+    const key = b.rootBookingId ?? b.id;
+    familyTotal.set(key, (familyTotal.get(key) ?? new Decimal(0)).add(b.finalAmount));
+  }
 
   let totalRevenue = new Decimal(0);
   let outstandingDebt = new Decimal(0);
@@ -41,10 +55,12 @@ export async function getClientStats(clientId: string): Promise<ClientStatsResul
   for (const b of bookings) {
     totalRevenue = totalRevenue.add(b.finalAmount);
     outstandingDebt = outstandingDebt.add(b.amountOutstanding);
-
-    if (b.finalAmount.greaterThan(0)) {
+  }
+  for (const b of rentals) {
+    const family = familyTotal.get(b.id) ?? b.finalAmount;
+    if (family.greaterThan(0)) {
       amountPositiveCount += 1;
-      amountPositiveSum = amountPositiveSum.add(b.finalAmount);
+      amountPositiveSum = amountPositiveSum.add(family);
     }
 
     if (!lastBookingDate || b.startDate > lastBookingDate) {
@@ -60,7 +76,7 @@ export async function getClientStats(clientId: string): Promise<ClientStatsResul
   return {
     clientId: client.id,
     clientName: client.name,
-    bookingCount: bookings.length,
+    bookingCount: rentals.length,
     averageCheck: averageCheck.toNumber(),
     totalRevenue: totalRevenue.toNumber(),
     outstandingDebt: outstandingDebt.toNumber(),

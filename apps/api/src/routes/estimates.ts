@@ -13,6 +13,7 @@ import {
 import { bookingItemKey, estimateLineKey, loadLineOrdering, sortLinesByCatalog } from "../services/lineOrder";
 import { getSettings } from "../services/organizationService";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
+import { continuationOrigin } from "../services/bookingFamily";
 
 const router = express.Router();
 
@@ -64,7 +65,7 @@ router.get("/:estimateId/export/xlsx", async (req, res, next) => {
     if (!estimate) throw new HttpError(404, "Estimate not found.");
 
     const doc = buildSmetaFromPersistedEstimate({
-      booking: estimate.booking,
+      booking: { ...estimate.booking, continuationOf: await continuationOrigin(prisma, estimate.booking) },
       estimate,
       org: smetaOrgFromSettings(await getSettings()),
       ordering: await loadSmetaLineOrdering(estimate),
@@ -92,7 +93,7 @@ router.get("/:estimateId/export/pdf", async (req, res, next) => {
     if (!estimate) throw new HttpError(404, "Estimate not found.");
 
     const doc = buildSmetaFromPersistedEstimate({
-      booking: estimate.booking,
+      booking: { ...estimate.booking, continuationOf: await continuationOrigin(prisma, estimate.booking) },
       estimate,
       org: smetaOrgFromSettings(await getSettings()),
       ordering: await loadSmetaLineOrdering(estimate),

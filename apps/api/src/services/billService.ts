@@ -19,6 +19,7 @@ import { toMoscowDateString } from "../utils/moscowDate";
 import { writeAuditEntry, diffFields } from "./audit";
 import { getSettings } from "./organizationService";
 import { formatPercent, resolveSurchargePercent } from "./paymentForm";
+import { continuationOrigin } from "./bookingFamily";
 
 type TxClient = Prisma.TransactionClient;
 
@@ -547,7 +548,18 @@ export async function prefillBillFromBooking(bookingId: string): Promise<BillPre
   const basis = booking.docNumber
     ? `Смета № ${booking.docNumber} от ${fmtDate(booking.createdAt)}`
     : `Бронь #${booking.id.slice(-6).toUpperCase()} от ${fmtDate(booking.createdAt)}`;
-  const rentalName = `Аренда светового оборудования${booking.docNumber ? ` по смете № ${booking.docNumber}` : ""} (${period}, ${shiftsLabel})`;
+  // Продолжение брони платят отдельно — по своей дополнительной смете к основной.
+  const origin = await continuationOrigin(prisma, booking);
+  const smetaRef = origin
+    ? booking.docNumber
+      ? ` по дополнительной смете № ${booking.docNumber}${origin.docNumber ? ` к смете № ${origin.docNumber}` : ""}`
+      : origin.docNumber
+        ? ` (продолжение аренды по смете № ${origin.docNumber})`
+        : ""
+    : booking.docNumber
+      ? ` по смете № ${booking.docNumber}`
+      : "";
+  const rentalName = `Аренда светового оборудования${smetaRef} (${period}, ${shiftsLabel})`;
 
   const lines: BillPrefill["lines"] = [];
   const finalAmount = new Decimal(booking.finalAmount.toString());

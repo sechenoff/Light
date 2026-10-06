@@ -15,6 +15,7 @@
  *    оборудование — новая бронь), архивировать пока оно у клиента. Продление
  *    продолжения появится вместе с дополнительной сметой сверх оплаченного.
  */
+import Decimal from "decimal.js";
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "../prisma";
@@ -143,4 +144,184 @@ export async function assertFamilyAllowsPurge(client: Db, bookingId: string): Pr
       { bookingId },
     );
   }
+}
+
+// ── Чтение семьи ─────────────────────────────────────────────────────────────
+
+/** Бронь семьи — то, что нужно экранам и гардам. */
+export type FamilyMember = {
+  id: string;
+  parentBookingId: string | null;
+  rootBookingId: string | null;
+  status: string;
+  docNumber: string | null;
+  startDate: Date;
+  endDate: Date;
+  deletedAt: Date | null;
+};
+
+const FAMILY_SELECT = {
+  id: true,
+  parentBookingId: true,
+  rootBookingId: true,
+  status: true,
+  docNumber: true,
+  startDate: true,
+  endDate: true,
+  deletedAt: true,
+} as const;
+
+/**
+ * Вся семья брони: основная и все продолжения (одна выборка по rootBookingId).
+ * У обычной брони без продолжений — только она сама, и это один дешёвый запрос.
+ */
+export async function loadFamily(
+  client: Db,
+  booking: { id: string; rootBookingId: string | null },
+): Promise<FamilyMember[]> {
+  const rootId = booking.rootBookingId ?? booking.id;
+  return client.booking.findMany({
+    where: { OR: [{ id: rootId }, { rootBookingId: rootId }] },
+    select: FAMILY_SELECT,
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+}
+
+/** Продолжения ниже брони по цепочке (дети, их дети…). */
+export function descendantsOf(members: FamilyMember[], bookingId: string): FamilyMember[] {
+  const out: FamilyMember[] = [];
+  const queue = [bookingId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    for (const m of members) {
+      if (m.parentBookingId === id) {
+        out.push(m);
+        queue.push(m.id);
+      }
+    }
+  }
+  return out;
+}
+
+/** Живое (не отменённое, не в архиве) продолжение ниже брони, которое ещё у клиента. */
+export function issuedDescendants(members: FamilyMember[], bookingId: string): FamilyMember[] {
+  return descendantsOf(members, bookingId).filter((m) => m.status === "ISSUED" && m.deletedAt == null);
+}
+
+/**
+ * Часть оборудования брони ещё у клиента по продолжению. Тогда основная
+ * бронь показывается «Возвращена частично», а акт по ней ждёт приёмки
+ * остатка. У обычной брони — ни одного лишнего запроса сверх одного.
+ */
+export async function hasIssuedDescendant(
+  client: Db,
+  booking: { id: string; rootBookingId: string | null },
+): Promise<boolean> {
+  const child = await client.booking.findFirst({ where: { parentBookingId: booking.id }, select: { id: true } });
+  if (!child) return false;
+  return issuedDescendants(await loadFamily(client, booking), booking.id).length > 0;
+}
+
+/** 409: акт по брони ждёт, пока продолжение не примут. */
+export function actWaitsForContinuationError(): HttpError {
+  return new HttpError(
+    409,
+    "Акт недоступен: часть оборудования ещё у клиента по продолжению брони — акт будет после приёмки остатка",
+    "ACT_NOT_AVAILABLE",
+    { reason: "CONTINUATION_STILL_OUT" },
+  );
+}
+
+/**
+ * Номер и дата сметы основной брони — для документа продолжения («продолжение
+ * к смете № … от …»). У обычной брони — null.
+ */
+export async function continuationOrigin(
+  client: Db,
+  booking: { parentBookingId: string | null; rootBookingId: string | null },
+): Promise<{ docNumber: string | null; createdAt: Date } | null> {
+  if (!booking.parentBookingId) return null;
+  return client.booking.findUnique({
+    where: { id: booking.rootBookingId ?? booking.parentBookingId },
+    select: { docNumber: true, createdAt: true },
+  });
+}
+
+/** Что карточка брони показывает о семье. null — обычная бронь без продолжений. */
+export type BookingFamilySummary = {
+  /** Бронь, из которой перешло оставленное (у продолжения). */
+  parent: { id: string; docNumber: string | null } | null;
+  /** Основная бронь цепочки (у продолжения). */
+  root: { id: string; docNumber: string | null } | null;
+  /** Продолжения ниже этой брони — в порядке создания. */
+  continuations: Array<{
+    id: string;
+    docNumber: string | null;
+    status: string;
+    startDate: string;
+    endDate: string;
+    /** Сколько единиц в продолжении (у клиента, пока оно выдано). */
+    quantity: number;
+    finalAmount: string;
+    amountOutstanding: string;
+  }>;
+  /** Бронь возвращена, а часть оборудования ещё у клиента по продолжению. */
+  partiallyReturned: boolean;
+  /** Итог вместе с продолжениями ниже — только когда они есть. Показ, не расчёт. */
+  totals: { finalAmount: string; amountPaid: string; amountOutstanding: string } | null;
+};
+
+/** Семья для карточки брони: родитель, продолжения ниже, итоги вместе с ними. */
+export async function bookingFamilySummary(
+  client: Db,
+  booking: { id: string; status: string; parentBookingId: string | null; rootBookingId: string | null },
+): Promise<BookingFamilySummary | null> {
+  if (!booking.parentBookingId && !(await client.booking.findFirst({ where: { parentBookingId: booking.id }, select: { id: true } }))) {
+    return null;
+  }
+  const members = await loadFamily(client, booking);
+  const byId = new Map(members.map((m) => [m.id, m]));
+  const order = new Map(members.map((m, i) => [m.id, i]));
+  const below = descendantsOf(members, booking.id)
+    .filter((m) => m.status !== "CANCELLED" && m.deletedAt == null)
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  // Только отменённые продолжения — семьи для карточки нет.
+  if (!booking.parentBookingId && below.length === 0) return null;
+  const money = below.length
+    ? await client.booking.findMany({
+        where: { id: { in: [booking.id, ...below.map((m) => m.id)] } },
+        select: {
+          id: true,
+          finalAmount: true,
+          amountPaid: true,
+          amountOutstanding: true,
+          items: { select: { quantity: true } },
+        },
+      })
+    : [];
+  const moneyById = new Map(money.map((m) => [m.id, m]));
+  const sum = (field: "finalAmount" | "amountPaid" | "amountOutstanding") =>
+    money.reduce((s, m) => s.add(m[field].toString()), new Decimal(0)).toFixed(2);
+  const parent = booking.parentBookingId ? byId.get(booking.parentBookingId) : undefined;
+  const rootId = booking.rootBookingId ?? null;
+  const root = rootId ? byId.get(rootId) : undefined;
+  return {
+    parent: booking.parentBookingId ? { id: booking.parentBookingId, docNumber: parent?.docNumber ?? null } : null,
+    root: rootId ? { id: rootId, docNumber: root?.docNumber ?? null } : null,
+    continuations: below.map((m) => {
+      const mm = moneyById.get(m.id);
+      return {
+        id: m.id,
+        docNumber: m.docNumber,
+        status: m.status,
+        startDate: m.startDate.toISOString(),
+        endDate: m.endDate.toISOString(),
+        quantity: mm ? mm.items.reduce((s, i) => s + i.quantity, 0) : 0,
+        finalAmount: mm ? new Decimal(mm.finalAmount.toString()).toFixed(2) : "0.00",
+        amountOutstanding: mm ? new Decimal(mm.amountOutstanding.toString()).toFixed(2) : "0.00",
+      };
+    }),
+    partiallyReturned: booking.status === "RETURNED" && below.some((m) => m.status === "ISSUED"),
+    totals: below.length ? { finalAmount: sum("finalAmount"), amountPaid: sum("amountPaid"), amountOutstanding: sum("amountOutstanding") } : null,
+  };
 }
