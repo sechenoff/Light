@@ -196,11 +196,10 @@ async function assertNotCountedInOpenStockCount(
  * Держит ли бронь позицию вне склада в момент `at` — ровно слагаемые «issued» и
  * «calendar» формулы «на полке должно быть» (stockCount/expected.ts,
  * computeExpectedOnShelf): бронь не в архиве, позиция в составе, и бронь либо
- * ISSUED (независимо от дат), либо CONFIRMED с `at` внутри [startDate; endDate].
- * Правишь условие там — поправь и здесь, иначе сторож и полка разойдутся.
- *
- * Локальная копия, а не импорт: expected.ts отдаёт суммы по позициям, а здесь
- * нужен ответ про одну конкретную бронь.
+ * ISSUED (независимо от дат), либо CONFIRMED с `at` внутри [startDate; плановый
+ * конец позиции]. Условие для CONFIRMED — общее с expected.ts
+ * (`confirmedLineHeldAt`), поэтому сторож и полка не расходятся; здесь только
+ * ответ про одну конкретную бронь вместо сумм по позициям.
  */
 function bookingHoldsPosition(
   booking: {

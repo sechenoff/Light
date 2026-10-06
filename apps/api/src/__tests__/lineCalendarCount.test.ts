@@ -37,6 +37,7 @@ let saId: string;
 let computeExpectedOnShelf: typeof import("../services/stockCount/expected").computeExpectedOnShelf;
 let createManualProblemItem: typeof import("../services/problemItemService").createManualProblemItem;
 let loadTrailCores: typeof import("../services/stockCount/equipmentTrail").loadTrailCores;
+let classifyTrailBookings: typeof import("../services/stockCount/equipmentTrail").classifyTrailBookings;
 let clientId: string;
 let seq = 0;
 
@@ -52,7 +53,7 @@ beforeAll(async () => {
   prisma = (await import("../prisma")).prisma;
   ({ computeExpectedOnShelf } = await import("../services/stockCount/expected"));
   ({ createManualProblemItem } = await import("../services/problemItemService"));
-  ({ loadTrailCores } = await import("../services/stockCount/equipmentTrail"));
+  ({ loadTrailCores, classifyTrailBookings } = await import("../services/stockCount/equipmentTrail"));
   const { signSession } = await import("../services/auth");
   const sa = await prisma.adminUser.create({ data: { username: "sa-lcc", passwordHash: "x", role: "SUPER_ADMIN" } });
   saId = sa.id;
@@ -154,6 +155,13 @@ describe("инвентаризация: «на полке должно быть�
     expect(map.get(shortEq)!.expected).toBe(5);
   });
 
+  it("бронь на 2 смены, позиция на 3: держится до срока включительно", async () => {
+    const eq = await mkEq("Генератор 2 кВт", 1);
+    await mkBooking("CONFIRMED", at(0), at(2 * DAY), [{ equipmentId: eq, quantity: 1, shifts: 3 }]);
+    expect((await computeExpectedOnShelf([eq], at(3 * DAY))).get(eq)!.calendar).toBe(1);
+    expect((await computeExpectedOnShelf([eq], new Date(T0 + 3 * DAY + 1))).get(eq)!.calendar).toBe(0);
+  });
+
   it("после срока длинной позиции её уже ждут на полке", async () => {
     const eq = await mkEq("Хейзер", 2);
     await mkBooking("CONFIRMED", at(0), at(DAY), [{ equipmentId: eq, quantity: 1, shifts: 2 }]);
@@ -198,6 +206,26 @@ describe("«как пропало»: брони окна", () => {
     // Окно с прошлого пересчёта — 8 суток назад: конец брони раньше, срок позиции — внутри.
     const { cores } = await loadTrailCores([{ equipmentId: eq, windowFrom: new Date(N - 8 * DAY), at: new Date(N) }]);
     expect(cores.get(eq)!.items.map((i) => i.booking.id)).toEqual([booking]);
+  });
+
+  it("не отмеченная бронь с длинной позицией — «ещё у клиента», а не «принять было некому»", async () => {
+    const eq = await mkEq("Объектив Leica", 2);
+    // Бронь кончилась вчера, позиция на 3 смены — по плану у клиента до завтра.
+    const booking = await mkBooking("CONFIRMED", new Date(N - 2 * DAY), new Date(N - DAY), [
+      { equipmentId: eq, quantity: 1, shifts: 3 },
+    ]);
+    const at = new Date(N);
+    const { cores, returns } = await loadTrailCores([{ equipmentId: eq, windowFrom: new Date(N - 5 * DAY), at }]);
+    const { bookings, suggestedBookingId } = classifyTrailBookings(cores.get(eq)!.items, returns, at);
+    expect(bookings.find((b) => b.bookingId === booking)?.returnMode).toBe("OUT");
+    expect(suggestedBookingId).toBeNull();
+  });
+
+  it("принятая бронь в окно по плану длинной позиции не попадает — только по факту возврата", async () => {
+    const eq = await mkEq("Объектив Angenieux", 2);
+    await mkBooking("RETURNED", new Date(N - 10 * DAY), new Date(N - 9 * DAY), [{ equipmentId: eq, quantity: 1, shifts: 3 }]);
+    const { cores } = await loadTrailCores([{ equipmentId: eq, windowFrom: new Date(N - 8 * DAY), at: new Date(N) }]);
+    expect(cores.get(eq)!.items).toHaveLength(0);
   });
 
   it("без своих смен такая бронь в окно не попадает", async () => {
