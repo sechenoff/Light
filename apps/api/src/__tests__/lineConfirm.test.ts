@@ -207,6 +207,37 @@ describe("подтверждение: подбор штучных единиц",
     expect((await confirmBooking(mine)).status).toBe("CONFIRMED");
     expect(await liveUnits(mine)).toEqual(first);
   });
+
+  it("свой резерв, который заняла другая бронь, пока наша была черновиком, — снимается", async () => {
+    const eq = await mkEq("Объектив Arri", 2, "UNIT");
+    const mine = await mkBooking("DRAFT", at(0), at(DAY), [{ equipmentId: eq.id, quantity: 1 }]);
+    await confirmBooking(mine);
+    expect(await liveUnits(mine)).toEqual([eq.units[0]]);
+    // Отклонили: черновик, резерв остался. Черновик склад не держит — единицу берёт другая бронь.
+    await prisma.booking.update({ where: { id: mine }, data: { status: "DRAFT" } });
+    const other = await mkBooking("CONFIRMED", at(0), at(DAY), [{ equipmentId: eq.id, quantity: 1 }]);
+    await holdUnit(other, eq.units[0]);
+    await prisma.booking.update({ where: { id: mine }, data: { status: "PENDING_APPROVAL" } });
+    await confirmBooking(mine);
+    expect(await liveUnits(mine)).toEqual([eq.units[1]]);
+  });
+
+  it("резерв брони на согласовании держит единицу для других", async () => {
+    const eq = await mkEq("Объектив Schneider", 2, "UNIT");
+    const pending = await mkBooking("PENDING_APPROVAL", at(0), at(DAY), [{ equipmentId: eq.id, quantity: 1 }]);
+    await holdUnit(pending, eq.units[0]);
+    const mine = await mkBooking("DRAFT", at(0), at(DAY), [{ equipmentId: eq.id, quantity: 1 }]);
+    await confirmBooking(mine);
+    expect(await liveUnits(mine)).toEqual([eq.units[1]]);
+  });
+
+  it("часть единиц уже за бронью — добирается только недостающее", async () => {
+    const eq = await mkEq("Объектив Samyang", 3, "UNIT");
+    const mine = await mkBooking("PENDING_APPROVAL", at(0), at(DAY), [{ equipmentId: eq.id, quantity: 2 }]);
+    await holdUnit(mine, eq.units[2]);
+    await confirmBooking(mine);
+    expect((await liveUnits(mine)).sort()).toEqual([eq.units[0], eq.units[2]].sort());
+  });
 });
 
 describe("правка подтверждённой брони: перерезерв единиц на новых датах", () => {
@@ -245,5 +276,6 @@ describe("правка подтверждённой брони: перерезе
         items: [{ equipmentId: eq.id, quantity: 1 }],
       });
     expect(res.status).toBe(409);
+    expect(res.body.code).toBe("NOT_ENOUGH_UNITS");
   });
 });

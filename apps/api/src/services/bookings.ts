@@ -1098,36 +1098,45 @@ export async function confirmBooking(bookingId: string) {
     // архива, полуоткрытые окна (стык-в-стык не пересекается) — так же, как
     // доступность. Окно позиции — до её срока: длинная позиция уедет вместе с
     // единицей на все свои смены.
-    // Бронь, которую вернули с подтверждения на согласование, свои резервы
-    // сохранила: добираем только недостающее, иначе единица резервировалась бы
-    // второй раз (а та же единица — падение на уникальном ключе).
+    // Бронь, которую вернули с подтверждения на согласование (или отклонили),
+    // свои резервы сохранила. Годные — единица на полке и никем другим на
+    // окне не занята — оставляем и добираем только недостающее: иначе та же
+    // единица резервировалась бы второй раз (падение на уникальном ключе).
+    // Негодные снимаем: пока бронь была черновиком, единицу могла занять
+    // другая бронь — оставить её значило бы выдать один прибор дважды.
     const unitItems = booking.items.filter((it) => it.equipmentId && it.equipment?.stockTrackingMode === "UNIT");
-    const ownLive = unitItems.length > 0
-      ? await tx.bookingItemUnit.groupBy({
-          by: ["bookingItemId"],
+    const ownLiveRows = unitItems.length > 0
+      ? await tx.bookingItemUnit.findMany({
           where: { bookingItemId: { in: unitItems.map((it) => it.id) }, returnedAt: null },
-          _count: { _all: true },
+          select: { id: true, bookingItemId: true, equipmentUnitId: true },
         })
       : [];
-    const ownLiveByItem = new Map(ownLive.map((r) => [r.bookingItemId, r._count._all]));
     for (const it of unitItems) {
-      const already = ownLiveByItem.get(it.id) ?? 0;
-      const need = it.quantity - already;
-      if (need <= 0) continue;
-      const free = await listFreeUnitIdsOnWindow(tx, {
+      // Пул без исключения своих резервов: свои годные в нём есть, негодных нет.
+      const pool = await listFreeUnitIdsOnWindow(tx, {
         bookingId,
-        bookingItemId: it.id,
+        bookingItemId: null,
         equipmentId: it.equipmentId!,
         start: booking.startDate,
         end: lineEndByEquipment.get(it.equipmentId!) ?? booking.endDate,
       });
+      const poolSet = new Set(pool);
+      const own = ownLiveRows.filter((r) => r.bookingItemId === it.id);
+      const stale = own.filter((r) => !poolSet.has(r.equipmentUnitId));
+      if (stale.length > 0) {
+        await tx.bookingItemUnit.deleteMany({ where: { id: { in: stale.map((r) => r.id) } } });
+      }
+      const kept = new Set(own.filter((r) => poolSet.has(r.equipmentUnitId)).map((r) => r.equipmentUnitId));
+      const need = it.quantity - kept.size;
+      if (need <= 0) continue;
+      const free = pool.filter((id) => !kept.has(id));
       if (free.length < need) {
         // Агрегат по датам прошёл, а конкретных экземпляров нет: единица
         // застряла «Выдана» у брони с чужими датами или в ремонте.
         throw notEnoughUnitsError({
           equipmentId: it.equipmentId!,
           name: it.equipment!.name,
-          available: already + free.length,
+          available: kept.size + free.length,
           requested: it.quantity,
         });
       }
