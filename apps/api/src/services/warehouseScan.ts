@@ -68,7 +68,7 @@ import {
   reconcileIssueUnits,
   reconcileReturnUnits,
 } from "./warehouseScanReconcile";
-import { hasPlannedStays } from "./bookingContinuation";
+import { claimSplit, hasPlannedStays, loadIssued, splitOffContinuationsInTx, stayPaymentDates } from "./bookingContinuation";
 
 export * from "./warehouseScanShared";
 export { getReconciliationPreview, getSessionWithDetails } from "./warehouseScanDetails";
@@ -205,19 +205,32 @@ export async function completeSession(
   } else {
     await assertReturnSplit(session.bookingId, options);
     await assertVehicleMileages(session.bookingId, options.vehicleMileages ?? []);
-    // Позиции «по плану у клиента» киоск пока не оставляет (этап 11): «Готово»
-    // сдало бы их на склад или в «не найдено». Приёмка — на карточке брони.
-    const withItems = await prisma.booking.findUniqueOrThrow({ where: { id: session.bookingId }, include: { items: true } });
-    if (hasPlannedStays(withItems)) {
-      throw new HttpError(
-        409,
-        "Часть позиций по плану ещё у клиента — оформите приёмку на карточке брони («Принять возврат»)",
-        "PLANNED_STAY_ON_CARD",
-      );
+    // Позиции «по плану у клиента»: новый экран присылает `stays` (что остаётся,
+    // пустой массив — «вернули всё»). Старый экран на планшете их не шлёт —
+    // «Готово» сдало бы длинные позиции на склад или в «не найдено» молча.
+    if (options.stays === undefined) {
+      const withItems = await prisma.booking.findUniqueOrThrow({ where: { id: session.bookingId }, include: { items: true } });
+      if (hasPlannedStays(withItems)) {
+        throw new HttpError(
+          409,
+          "Часть позиций по плану ещё у клиента — обновите экран киоска или оформите приёмку на карточке брони",
+          "PLANNED_STAY_ON_CARD",
+        );
+      }
     }
   }
 
-  const ctx: CompletionCtx = { sessionId, bookingId: session.bookingId, operation, completedBy, options };
+  const ctx: CompletionCtx = {
+    sessionId,
+    bookingId: session.bookingId,
+    operation,
+    completedBy,
+    options,
+    stayPaymentDates:
+      operation === "RETURN" && options.stays && options.stays.length > 0
+        ? await stayPaymentDates(options.stays)
+        : undefined,
+  };
   let result: CompletionTxResult;
   try {
     result = await prisma.$transaction((tx) => runCompletion(tx, ctx), COMPLETE_TX_OPTIONS);
@@ -259,9 +272,10 @@ export async function completeSession(
  * Проверка до любых мутаций — конфликт ввода, 400 INVALID_SPLIT.
  */
 async function assertReturnSplit(bookingId: string, options: CompleteSessionOptions): Promise<void> {
-  const byItem = new Map<string, { repair: number; problem: number }>();
-  const bump = (id: string, field: "repair" | "problem", qty: number) => {
-    const cur = byItem.get(id) ?? { repair: 0, problem: 0 };
+  // Ремонт, проблема и «остаётся у клиента» делят одно количество строки.
+  const byItem = new Map<string, { repair: number; problem: number; stay: number }>();
+  const bump = (id: string, field: "repair" | "problem" | "stay", qty: number) => {
+    const cur = byItem.get(id) ?? { repair: 0, problem: 0, stay: 0 };
     byItem.set(id, { ...cur, [field]: cur[field] + qty });
   };
   for (const r of options.repairUnits ?? []) {
@@ -270,6 +284,7 @@ async function assertReturnSplit(bookingId: string, options: CompleteSessionOpti
   for (const p of options.problemUnits ?? []) {
     if ("bookingItemId" in p && p.bookingItemId) bump(p.bookingItemId, "problem", p.quantity);
   }
+  for (const st of options.stays ?? []) bump(st.bookingItemId, "stay", st.quantity);
   if (byItem.size === 0) return;
 
   const bis = await prisma.bookingItem.findMany({
@@ -279,12 +294,13 @@ async function assertReturnSplit(bookingId: string, options: CompleteSessionOpti
   const unknown = Array.from(byItem.keys()).filter((id) => !bis.some((b) => b.id === id));
   if (unknown.length > 0) throw checklistOutdated(unknown);
   for (const bi of bis) {
-    const { repair, problem } = byItem.get(bi.id)!;
-    if (repair + problem > bi.quantity) {
+    const { repair, problem, stay } = byItem.get(bi.id)!;
+    if (repair + problem + stay > bi.quantity) {
       throw new HttpError(400, "Неверное распределение", "INVALID_SPLIT", {
         bookingItemId: bi.id,
         repair,
         problem,
+        stay,
         totalQty: bi.quantity,
       });
     }
@@ -374,6 +390,21 @@ async function runCompletion(tx: Prisma.TransactionClient, ctx: CompletionCtx): 
     if (adjusted) await applyIssuanceToMainEstimate(tx, ctx.bookingId);
     summary.addonsAddedInSession = await countSessionAddons(tx, ctx, adj.increasedItemIds);
   } else {
+    // Позиции «по плану у клиента» — в продолжение до приёмки основной: резервы
+    // оставленных единиц переходят к продолжению, и сверка ниже их не видит
+    // (иначе неотсканированные стали бы «не найдено»).
+    const stays = ctx.options.stays ?? [];
+    if (stays.length > 0) {
+      const issued = await loadIssued(tx, ctx.bookingId);
+      await claimSplit(tx, ctx.bookingId, ctx.options.expectedSplitRevision ?? issued.splitRevision);
+      summary.continuationIds = await splitOffContinuationsInTx(tx, {
+        booking: issued,
+        stays,
+        now: new Date(),
+        actorUserId: auditUserId,
+        paymentDates: ctx.stayPaymentDates ?? new Map(),
+      });
+    }
     await reconcileReturnUnits(tx, ctx, scans, summary);
     await tx.booking.update({ where: { id: ctx.bookingId }, data: { status: "RETURNED" } });
     const mileages = ctx.options.vehicleMileages ?? [];
@@ -399,6 +430,8 @@ async function runCompletion(tx: Prisma.TransactionClient, ctx: CompletionCtx): 
       workerName: ctx.completedBy,
       startedBy: session.workerName,
       adjustments: adjustedCount,
+      // Журнал хранит плоские поля (массивы diffFields отбрасывает).
+      ...(summary.continuationIds.length > 0 ? { continuationIds: summary.continuationIds.join(", ") } : {}),
       ...(forcedEarlyIssue ? { forcedEarlyIssue: true } : {}),
     },
   });

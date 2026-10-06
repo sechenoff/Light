@@ -40,6 +40,7 @@ import {
   ensureSystemAuditUser,
 } from "./scanSessionPolicy";
 import { parseStoredDraft, type ChecklistDraftV1 } from "./checklistDraft";
+import { plannedStayDueAt } from "./bookingContinuation";
 
 export {
   CHECKLIST_DRAFT_LIMITS,
@@ -119,6 +120,14 @@ export interface ChecklistState {
   };
   /** Смены из MAIN (для живого расчёта денег); по умолчанию 1. */
   shifts: number;
+  /**
+   * Приёмка: позиции «по плану у клиента» — взяты дольше брони, их срок ещё
+   * впереди. Киоск показывает их отдельным блоком и по «Готово» отправляет в
+   * продолжение брони (`stays`), если их не «вернули сейчас». У выдачи — пусто.
+   */
+  plannedStays: Array<{ bookingItemId: string; until: string; quantity: number; unitIds: string[] }>;
+  /** Ревизия разделения брони — `expectedSplitRevision` для «Готово» с `stays`. */
+  splitRevision: number;
   /** Процент скидки MAIN ("0".."100"). */
   discountPercent: string;
   /** MAIN.totalAfterDiscount — «Согласовано (исходно)». */
@@ -188,6 +197,23 @@ interface PricingContext {
   addedOnSite: Map<string, number>;
 }
 
+/** Позиции приёмки «по плану у клиента»: срок строки впереди, единицы — живые резервы. */
+function plannedStaysOf(booking: LoadedSession["booking"], rows: LoadedItem[]): ChecklistState["plannedStays"] {
+  const now = new Date();
+  const out: ChecklistState["plannedStays"] = [];
+  for (const bi of rows) {
+    const due = plannedStayDueAt(booking, bi, now);
+    if (!due) continue;
+    out.push({
+      bookingItemId: bi.id,
+      until: due.toISOString(),
+      quantity: bi.quantity,
+      unitIds: bi.unitReservations.filter((r) => r.returnedAt == null).map((r) => r.equipmentUnitId),
+    });
+  }
+  return out;
+}
+
 // ── getChecklistState ────────────────────────────────────────────────────────────
 
 export async function getChecklistState(sessionId: string): Promise<ChecklistState> {
@@ -247,6 +273,8 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
     items,
     progress,
     shifts: bookingShifts,
+    plannedStays: isIssue ? [] : plannedStaysOf(booking, rows),
+    splitRevision: booking.splitRevision,
     discountPercent: main?.discountPercent?.toString() ?? "0",
     mainOriginalAfterDiscount: main?.totalAfterDiscount?.toString() ?? "0",
     session: {

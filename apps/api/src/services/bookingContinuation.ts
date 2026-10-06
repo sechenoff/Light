@@ -114,7 +114,8 @@ export type ReturnPlan = {
   kioskSession: { workerName: string; startedAt: string } | null;
 };
 
-async function loadIssued(client: Prisma.TransactionClient | typeof prisma, bookingId: string) {
+/** Выданная бронь с позициями и сметами — для плана приёмки и разделения. */
+export async function loadIssued(client: Prisma.TransactionClient | typeof prisma, bookingId: string) {
   const booking = await client.booking.findUnique({
     where: { id: bookingId },
     include: { items: true, estimates: { include: { lines: true } } },
@@ -221,6 +222,231 @@ async function nextContinuationDocNumber(tx: Prisma.TransactionClient, rootId: s
 /** Приёмка с продолжениями — много записей: таймаут как у завершения приёмки в киоске. */
 const PARTIAL_RETURN_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
 
+/** Срок оплаты продолжения — по его сроку «до». Читает настройки, поэтому вне транзакции. */
+export async function stayPaymentDates(stays: ReadonlyArray<StayInput>): Promise<Map<number, Date>> {
+  const paymentDates = new Map<number, Date>();
+  for (const s of stays) {
+    const until = new Date(s.until);
+    if (!paymentDates.has(until.getTime())) paymentDates.set(until.getTime(), await computeDefaultPaymentDate(until));
+  }
+  return paymentDates;
+}
+
+/**
+ * Захват брони под разделение: `splitRevision` из плана приёмки. Бронь успели
+ * принять или разделить — 409, и вся транзакция откатывается.
+ */
+export async function claimSplit(
+  tx: Prisma.TransactionClient,
+  bookingId: string,
+  expectedSplitRevision: number,
+): Promise<void> {
+  const claimed = await tx.booking.updateMany({
+    where: { id: bookingId, status: "ISSUED", splitRevision: expectedSplitRevision },
+    data: { splitRevision: { increment: 1 } },
+  });
+  if (claimed.count === 0) {
+    throw new HttpError(
+      409,
+      "Бронь уже приняли или разделили — обновите карточку",
+      PARTIAL_RETURN_ERROR_CODES.STALE,
+    );
+  }
+}
+
+/**
+ * Отделить оставленное у клиента в продолжения — проверки и запись, без
+ * приёмки основной брони: её закрывает вызывающий (ручное «Вернуть» на
+ * карточке или «Готово» в киоске). Живые резервы оставленных единиц
+ * переходят к позиции продолжения — приёмка основной их уже не видит.
+ */
+export async function splitOffContinuationsInTx(
+  tx: Prisma.TransactionClient,
+  args: {
+    booking: BookingWithItems;
+    stays: ReadonlyArray<StayInput>;
+    now: Date;
+    actorUserId: string | null;
+    paymentDates: ReadonlyMap<number, Date>;
+  },
+): Promise<string[]> {
+  const { booking, now } = args;
+  if (args.stays.length === 0) {
+    throw new HttpError(400, "Отметьте, что осталось у клиента", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
+  }
+
+  // ── проверки оставленного ────────────────────────────────────────────────
+  const itemById = new Map(booking.items.map((i) => [i.id, i]));
+  const keptByItem = new Map<string, number>();
+  const keptUnitIds = new Set<string>();
+  const live = await tx.bookingItemUnit.findMany({
+    where: { bookingItem: { bookingId: booking.id }, returnedAt: null },
+    select: { id: true, bookingItemId: true, equipmentUnitId: true },
+  });
+  const eqModes = new Map(
+    (
+      await tx.equipment.findMany({
+        where: { id: { in: booking.items.map((i) => i.equipmentId).filter((v): v is string => v != null) } },
+        select: { id: true, stockTrackingMode: true },
+      })
+    ).map((e) => [e.id, e.stockTrackingMode]),
+  );
+  for (const s of args.stays) {
+    const item = itemById.get(s.bookingItemId);
+    if (!item) throw new HttpError(400, "Позиция не из этой брони", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
+    const until = new Date(s.until);
+    if (!Number.isFinite(until.getTime()) || until.getTime() <= now.getTime()) {
+      throw new HttpError(400, "Срок «до» должен быть позже текущего момента", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
+    }
+    const total = (keptByItem.get(item.id) ?? 0) + s.quantity;
+    if (!Number.isInteger(s.quantity) || s.quantity <= 0 || total > item.quantity) {
+      throw new HttpError(400, "Оставить можно от 1 до количества позиции", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
+    }
+    keptByItem.set(item.id, total);
+    const paidThrough = paidThroughAt(itemCoverage(booking, item), booking.skipPartialDay);
+    if (until.getTime() > paidThrough.getTime()) {
+      throw new HttpError(
+        409,
+        `Оставить дольше оплаченного (до ${formatMoscowDayTime(paidThrough)}) пока нельзя — это появится вместе с дополнительной сметой`,
+        PARTIAL_RETURN_ERROR_CODES.BEYOND_PAID,
+        { bookingItemId: item.id, paidThrough: paidThrough.toISOString() },
+      );
+    }
+    if (item.equipmentId && eqModes.get(item.equipmentId) === "UNIT") {
+      const ids = s.equipmentUnitIds ?? [];
+      const own = new Set(live.filter((r) => r.bookingItemId === item.id).map((r) => r.equipmentUnitId));
+      if (own.size < s.quantity) {
+        throw new HttpError(
+          400,
+          `У клиента по этой позиции отмечено только ${own.size} ед. — оставить больше нельзя`,
+          PARTIAL_RETURN_ERROR_CODES.UNITS_REQUIRED,
+          { bookingItemId: item.id },
+        );
+      }
+      // Одна и та же единица дважды прошла бы проверку: позиция продолжения
+      // получила бы 2 шт, а перешёл бы один резерв — второй прибор ушёл бы на полку.
+      if (
+        ids.length !== s.quantity ||
+        new Set(ids).size !== ids.length ||
+        ids.some((id) => !own.has(id) || keptUnitIds.has(id))
+      ) {
+        throw new HttpError(
+          400,
+          "Отметьте, какие именно единицы остались у клиента",
+          PARTIAL_RETURN_ERROR_CODES.UNITS_REQUIRED,
+          { bookingItemId: item.id },
+        );
+      }
+      for (const id of ids) keptUnitIds.add(id);
+    }
+  }
+
+  // ── продолжения: по одному на каждый срок «до» ───────────────────────────
+  // Одна позиция с одним сроком — одна строка продолжения (у брони одна
+  // строка на позицию каталога).
+  const rootId = booking.rootBookingId ?? booking.id;
+  const merged = new Map<string, StayInput>();
+  for (const s of args.stays) {
+    const key = `${s.bookingItemId}|${new Date(s.until).getTime()}`;
+    const prev = merged.get(key);
+    merged.set(
+      key,
+      prev
+        ? {
+            ...prev,
+            quantity: prev.quantity + s.quantity,
+            equipmentUnitIds: [...(prev.equipmentUnitIds ?? []), ...(s.equipmentUnitIds ?? [])],
+          }
+        : { ...s },
+    );
+  }
+  const byUntil = new Map<number, StayInput[]>();
+  for (const s of merged.values()) {
+    const t = new Date(s.until).getTime();
+    byUntil.set(t, [...(byUntil.get(t) ?? []), s]);
+  }
+  const continuationIds: string[] = [];
+  for (const [untilMs, stays] of Array.from(byUntil.entries()).sort((a, b) => a[0] - b[0])) {
+    const docNumber = await nextContinuationDocNumber(tx, rootId);
+    const child = await tx.booking.create({
+      data: {
+        clientId: booking.clientId,
+        projectName: booking.projectName,
+        comment: `Продолжение брони${booking.docNumber ? ` № ${booking.docNumber}` : ""}`,
+        status: "ISSUED",
+        mode: "STANDARD",
+        startDate: new Date(Math.min(booking.endDate.getTime(), now.getTime())),
+        endDate: new Date(untilMs),
+        issuedAt: now,
+        confirmedAt: now,
+        discountPercent: booking.discountPercent,
+        paymentForm: booking.paymentForm,
+        cashlessSurchargePercent: booking.cashlessSurchargePercent,
+        skipPartialDay: booking.skipPartialDay,
+        legacyFinance: false,
+        expectedPaymentDate: args.paymentDates.get(untilMs) ?? null,
+        parentBookingId: booking.id,
+        rootBookingId: rootId,
+        docNumber,
+        items: {
+          create: stays.map((s) => {
+            const item = itemById.get(s.bookingItemId)!;
+            const coverage = itemCoverage(booking, item);
+            const rate = item.equipmentId ? listRateForStay(booking, item) : null;
+            return {
+              equipmentId: item.equipmentId,
+              quantity: s.quantity,
+              customName: item.customName,
+              customCategory: item.customCategory,
+              customUnitPrice: item.customUnitPrice,
+              negotiatedRatePerShift: item.negotiatedRatePerShift,
+              coveredShifts: coverage.coveredShifts,
+              shiftAnchorAt: coverage.anchorAt,
+              listRatePerShift: rate ? rate.toDecimalPlaces(2).toString() : null,
+            };
+          }),
+        },
+      },
+      include: { items: true },
+    });
+    // Живые резервы оставленных единиц — к позиции продолжения: единица
+    // остаётся «Выдана», приёмку покажет уже продолжение.
+    for (const s of stays) {
+      const ids = s.equipmentUnitIds ?? [];
+      if (ids.length === 0) continue;
+      const item = itemById.get(s.bookingItemId)!;
+      const childItem = child.items.find((ci) =>
+        item.equipmentId ? ci.equipmentId === item.equipmentId : ci.customName === item.customName,
+      )!;
+      await tx.bookingItemUnit.updateMany({
+        where: { bookingItemId: item.id, equipmentUnitId: { in: ids }, returnedAt: null },
+        data: { bookingItemId: childItem.id },
+      });
+    }
+    await writeMainEstimateInTx(tx, child.id);
+    await recomputeBookingFinance(child.id, tx);
+    if (args.actorUserId) {
+      await writeAuditEntry({
+        tx,
+        userId: args.actorUserId,
+        action: "BOOKING_CONTINUATION_CREATED",
+        entityType: "Booking",
+        entityId: child.id,
+        before: null,
+        after: {
+          parentBookingId: booking.id,
+          rootBookingId: rootId,
+          docNumber,
+          until: new Date(untilMs).toISOString(),
+          quantity: stays.reduce((sum, s) => sum + s.quantity, 0),
+        },
+      });
+    }
+    continuationIds.push(child.id);
+  }
+  return continuationIds;
+}
+
 /**
  * «Принять часть — остальное у клиента». Проверки и запись одной
  * транзакцией. `expectedSplitRevision` — из плана приёмки: если бронь
@@ -237,195 +463,18 @@ export async function returnPartial(args: {
   if (args.stays.length === 0) {
     throw new HttpError(400, "Отметьте, что осталось у клиента", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
   }
-  const paymentDates = new Map<number, Date>();
-  for (const s of args.stays) {
-    const until = new Date(s.until);
-    if (!paymentDates.has(until.getTime())) paymentDates.set(until.getTime(), await computeDefaultPaymentDate(until));
-  }
+  const paymentDates = await stayPaymentDates(args.stays);
 
   return prisma.$transaction(async (tx) => {
     const booking = await loadIssued(tx, args.bookingId);
-    const claimed = await tx.booking.updateMany({
-      where: { id: booking.id, status: "ISSUED", splitRevision: args.expectedSplitRevision },
-      data: { splitRevision: { increment: 1 } },
+    await claimSplit(tx, booking.id, args.expectedSplitRevision);
+    const continuationIds = await splitOffContinuationsInTx(tx, {
+      booking,
+      stays: args.stays,
+      now,
+      actorUserId: args.actorUserId,
+      paymentDates,
     });
-    if (claimed.count === 0) {
-      throw new HttpError(
-        409,
-        "Бронь уже приняли или разделили — обновите карточку",
-        PARTIAL_RETURN_ERROR_CODES.STALE,
-      );
-    }
-
-    // ── проверки оставленного ────────────────────────────────────────────────
-    const itemById = new Map(booking.items.map((i) => [i.id, i]));
-    const keptByItem = new Map<string, number>();
-    const keptUnitIds = new Set<string>();
-    const live = await tx.bookingItemUnit.findMany({
-      where: { bookingItem: { bookingId: booking.id }, returnedAt: null },
-      select: { id: true, bookingItemId: true, equipmentUnitId: true },
-    });
-    const eqModes = new Map(
-      (
-        await tx.equipment.findMany({
-          where: { id: { in: booking.items.map((i) => i.equipmentId).filter((v): v is string => v != null) } },
-          select: { id: true, stockTrackingMode: true },
-        })
-      ).map((e) => [e.id, e.stockTrackingMode]),
-    );
-    for (const s of args.stays) {
-      const item = itemById.get(s.bookingItemId);
-      if (!item) throw new HttpError(400, "Позиция не из этой брони", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
-      const until = new Date(s.until);
-      if (!Number.isFinite(until.getTime()) || until.getTime() <= now.getTime()) {
-        throw new HttpError(400, "Срок «до» должен быть позже текущего момента", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
-      }
-      const total = (keptByItem.get(item.id) ?? 0) + s.quantity;
-      if (!Number.isInteger(s.quantity) || s.quantity <= 0 || total > item.quantity) {
-        throw new HttpError(400, "Оставить можно от 1 до количества позиции", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
-      }
-      keptByItem.set(item.id, total);
-      const paidThrough = paidThroughAt(itemCoverage(booking, item), booking.skipPartialDay);
-      if (until.getTime() > paidThrough.getTime()) {
-        throw new HttpError(
-          409,
-          `Оставить дольше оплаченного (до ${formatMoscowDayTime(paidThrough)}) пока нельзя — это появится вместе с дополнительной сметой`,
-          PARTIAL_RETURN_ERROR_CODES.BEYOND_PAID,
-          { bookingItemId: item.id, paidThrough: paidThrough.toISOString() },
-        );
-      }
-      if (item.equipmentId && eqModes.get(item.equipmentId) === "UNIT") {
-        const ids = s.equipmentUnitIds ?? [];
-        const own = new Set(live.filter((r) => r.bookingItemId === item.id).map((r) => r.equipmentUnitId));
-        if (own.size < s.quantity) {
-          throw new HttpError(
-            400,
-            `У клиента по этой позиции отмечено только ${own.size} ед. — оставить больше нельзя`,
-            PARTIAL_RETURN_ERROR_CODES.UNITS_REQUIRED,
-            { bookingItemId: item.id },
-          );
-        }
-        // Одна и та же единица дважды прошла бы проверку: позиция продолжения
-        // получила бы 2 шт, а перешёл бы один резерв — второй прибор ушёл бы на полку.
-        if (
-          ids.length !== s.quantity ||
-          new Set(ids).size !== ids.length ||
-          ids.some((id) => !own.has(id) || keptUnitIds.has(id))
-        ) {
-          throw new HttpError(
-            400,
-            "Отметьте, какие именно единицы остались у клиента",
-            PARTIAL_RETURN_ERROR_CODES.UNITS_REQUIRED,
-            { bookingItemId: item.id },
-          );
-        }
-        for (const id of ids) keptUnitIds.add(id);
-      }
-    }
-
-    // ── продолжения: по одному на каждый срок «до» ───────────────────────────
-    // Одна позиция с одним сроком — одна строка продолжения (у брони одна
-    // строка на позицию каталога).
-    const rootId = booking.rootBookingId ?? booking.id;
-    const merged = new Map<string, StayInput>();
-    for (const s of args.stays) {
-      const key = `${s.bookingItemId}|${new Date(s.until).getTime()}`;
-      const prev = merged.get(key);
-      merged.set(
-        key,
-        prev
-          ? {
-              ...prev,
-              quantity: prev.quantity + s.quantity,
-              equipmentUnitIds: [...(prev.equipmentUnitIds ?? []), ...(s.equipmentUnitIds ?? [])],
-            }
-          : { ...s },
-      );
-    }
-    const byUntil = new Map<number, StayInput[]>();
-    for (const s of merged.values()) {
-      const t = new Date(s.until).getTime();
-      byUntil.set(t, [...(byUntil.get(t) ?? []), s]);
-    }
-    const continuationIds: string[] = [];
-    for (const [untilMs, stays] of Array.from(byUntil.entries()).sort((a, b) => a[0] - b[0])) {
-      const docNumber = await nextContinuationDocNumber(tx, rootId);
-      const child = await tx.booking.create({
-        data: {
-          clientId: booking.clientId,
-          projectName: booking.projectName,
-          comment: `Продолжение брони${booking.docNumber ? ` № ${booking.docNumber}` : ""}`,
-          status: "ISSUED",
-          mode: "STANDARD",
-          startDate: new Date(Math.min(booking.endDate.getTime(), now.getTime())),
-          endDate: new Date(untilMs),
-          issuedAt: now,
-          confirmedAt: now,
-          discountPercent: booking.discountPercent,
-          paymentForm: booking.paymentForm,
-          cashlessSurchargePercent: booking.cashlessSurchargePercent,
-          skipPartialDay: booking.skipPartialDay,
-          legacyFinance: false,
-          expectedPaymentDate: paymentDates.get(untilMs) ?? null,
-          parentBookingId: booking.id,
-          rootBookingId: rootId,
-          docNumber,
-          items: {
-            create: stays.map((s) => {
-              const item = itemById.get(s.bookingItemId)!;
-              const coverage = itemCoverage(booking, item);
-              const rate = item.equipmentId ? listRateForStay(booking, item) : null;
-              return {
-                equipmentId: item.equipmentId,
-                quantity: s.quantity,
-                customName: item.customName,
-                customCategory: item.customCategory,
-                customUnitPrice: item.customUnitPrice,
-                negotiatedRatePerShift: item.negotiatedRatePerShift,
-                coveredShifts: coverage.coveredShifts,
-                shiftAnchorAt: coverage.anchorAt,
-                listRatePerShift: rate ? rate.toDecimalPlaces(2).toString() : null,
-              };
-            }),
-          },
-        },
-        include: { items: true },
-      });
-      // Живые резервы оставленных единиц — к позиции продолжения: единица
-      // остаётся «Выдана», приёмку покажет уже продолжение.
-      for (const s of stays) {
-        const ids = s.equipmentUnitIds ?? [];
-        if (ids.length === 0) continue;
-        const item = itemById.get(s.bookingItemId)!;
-        const childItem = child.items.find((ci) =>
-          item.equipmentId ? ci.equipmentId === item.equipmentId : ci.customName === item.customName,
-        )!;
-        await tx.bookingItemUnit.updateMany({
-          where: { bookingItemId: item.id, equipmentUnitId: { in: ids }, returnedAt: null },
-          data: { bookingItemId: childItem.id },
-        });
-      }
-      await writeMainEstimateInTx(tx, child.id);
-      await recomputeBookingFinance(child.id, tx);
-      if (args.actorUserId) {
-        await writeAuditEntry({
-          tx,
-          userId: args.actorUserId,
-          action: "BOOKING_CONTINUATION_CREATED",
-          entityType: "Booking",
-          entityId: child.id,
-          before: null,
-          after: {
-            parentBookingId: booking.id,
-            rootBookingId: rootId,
-            docNumber,
-            until: new Date(untilMs).toISOString(),
-            quantity: stays.reduce((sum, s) => sum + s.quantity, 0),
-          },
-        });
-      }
-      continuationIds.push(child.id);
-    }
 
     // ── приёмка основной брони — ручным «Вернуть» без оставленного ──────────
     await setBookingIssuedOrReturnedInTx(tx, {

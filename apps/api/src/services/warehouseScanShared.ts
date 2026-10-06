@@ -91,6 +91,11 @@ export interface ReconciliationSummary {
   manualFinalAmount: string | null;
   /** Сколько строк получили добор в этой сессии («+» в поиске или степпер сверх сметы). */
   addonsAddedInSession: number;
+  /**
+   * Продолжения брони, созданные этой приёмкой: позиции «по плану у клиента»
+   * остались у клиента и перешли в продолжение (только RETURN).
+   */
+  continuationIds: string[];
 }
 
 export interface SessionBookingItem {
@@ -160,6 +165,15 @@ export interface CompleteSessionOptions {
   itemsVersion?: string;
   /** Ревизия черновика, на которой построен экран. */
   draftRevision?: number;
+  /**
+   * Приёмка: что остаётся у клиента по плану — уходит в продолжение брони
+   * (этап 11, в пределах оплаченного). Не передано — старый экран киоска: при
+   * позициях «по плану» приёмка отказывает (PLANNED_STAY_ON_CARD), а не сдаёт
+   * их молча. Пустой массив — «вернули всё», и длинные позиции принимаются.
+   */
+  stays?: Array<{ bookingItemId: string; quantity: number; until: string; equipmentUnitIds?: string[] }>;
+  /** `ChecklistState.splitRevision`, на котором построен экран (с `stays`). */
+  expectedSplitRevision?: number;
 }
 
 /** Контекст транзакции завершения. */
@@ -169,6 +183,8 @@ export interface CompletionCtx {
   operation: ScanOperation;
   completedBy: string;
   options: CompleteSessionOptions;
+  /** Сроки оплаты продолжений — посчитаны до транзакции (читают настройки). */
+  stayPaymentDates?: ReadonlyMap<number, Date>;
 }
 
 export function checklistOutdated(unknownBookingItemIds?: string[]): HttpError {
@@ -201,5 +217,6 @@ export function emptySummary(): ReconciliationSummary {
     completedBy: null,
     manualFinalAmount: null,
     addonsAddedInSession: 0,
+    continuationIds: [],
   };
 }
