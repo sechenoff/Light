@@ -40,7 +40,8 @@ import {
   ensureSystemAuditUser,
 } from "./scanSessionPolicy";
 import { parseStoredDraft, type ChecklistDraftV1 } from "./checklistDraft";
-import { plannedStayDueAt } from "./bookingContinuation";
+import { itemCoverage, plannedStayDueAt } from "./bookingContinuation";
+import { paidThroughAt } from "./continuationPricing";
 
 export {
   CHECKLIST_DRAFT_LIMITS,
@@ -128,6 +129,11 @@ export interface ChecklistState {
   plannedStays: Array<{ bookingItemId: string; until: string; quantity: number; unitIds: string[] }>;
   /** Ревизия разделения брони — `expectedSplitRevision` для «Готово» с `stays`. */
   splitRevision: number;
+  /**
+   * Приёмка: до когда оплачена каждая строка (ISO), bookingItemId → срок. От
+   * него киоск считает «+1 смена» у оставленного; прошёл — от сейчас. У выдачи — пусто.
+   */
+  linePaidThrough: Record<string, string>;
   /** Процент скидки MAIN ("0".."100"). */
   discountPercent: string;
   /** MAIN.totalAfterDiscount — «Согласовано (исходно)». */
@@ -195,6 +201,15 @@ interface PricingContext {
   caps: Map<string, AddCapInfo>;
   holders: Map<string, AddonConflict>;
   addedOnSite: Map<string, number>;
+}
+
+/** До когда оплачена каждая строка приёмки — тем же расчётом, что у продолжения. */
+function linePaidThroughOf(booking: LoadedSession["booking"], rows: LoadedItem[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const bi of rows) {
+    out[bi.id] = paidThroughAt(itemCoverage(booking, bi), booking.skipPartialDay).toISOString();
+  }
+  return out;
 }
 
 /** Позиции приёмки «по плану у клиента»: срок строки впереди, единицы — живые резервы. */
@@ -277,6 +292,7 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
     shifts: bookingShifts,
     plannedStays: isIssue ? [] : plannedStaysOf(booking, rows),
     splitRevision: booking.splitRevision,
+    linePaidThrough: isIssue ? {} : linePaidThroughOf(booking, rows),
     discountPercent: main?.discountPercent?.toString() ?? "0",
     mainOriginalAfterDiscount: main?.totalAfterDiscount?.toString() ?? "0",
     session: {

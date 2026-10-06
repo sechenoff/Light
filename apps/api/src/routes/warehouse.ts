@@ -9,6 +9,7 @@ import { prisma } from "../prisma";
 import { warehouseAuth } from "../middleware/warehouseAuth";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { HttpError } from "../utils/errors";
+import { previewReturnPartial } from "../services/bookingContinuation";
 import { writeAuditEntry, diffFields } from "../services/audit";
 import {
   createSession,
@@ -902,6 +903,38 @@ warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req,
     // брони, а не плановые даты (выданное заранее и просроченное уже у клиента).
     const results = await searchAddonCandidates({ bookingId: session.bookingId, q, issuingNow: true });
     res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/warehouse/sessions/:id/stays-preview — что будет, если оставить у
+ * клиента так: цена дополнительной сметы каждого продолжения и брони, которым
+ * оставленное нужно. Та же запись, что «Готово», в откатываемой транзакции.
+ */
+const staysPreviewBodySchema = z.object({
+  stays: z
+    .array(
+      z.object({
+        bookingItemId: z.string().min(1),
+        quantity: z.number().int().positive(),
+        until: z.string().datetime(),
+        equipmentUnitIds: z.array(z.string().min(1)).max(500).optional(),
+        acknowledgedConflict: z.boolean().optional(),
+      }),
+    )
+    .min(1)
+    .max(200),
+});
+warehouseScanRouter.post("/sessions/:id/stays-preview", warehouseAuth, async (req, res, next) => {
+  try {
+    const { stays } = staysPreviewBodySchema.parse(req.body);
+    const { session } = await assertSessionWritable(prisma, req.params.id);
+    if (session.operation !== "RETURN") {
+      throw new HttpError(409, "Оставить у клиента можно только на приёмке", "INVALID_SPLIT");
+    }
+    res.json(await previewReturnPartial(session.bookingId, stays));
   } catch (err) {
     next(err);
   }
