@@ -5,6 +5,8 @@ import { Decimal } from "decimal.js";
 import { prisma } from "../prisma";
 import { rolesGuard } from "../middleware/rolesGuard";
 import * as paymentService from "../services/paymentService";
+import { createFamilyPayment, previewFamilyPayment } from "../services/familyPayment";
+import { HttpError } from "../utils/errors";
 
 const router = Router();
 
@@ -21,6 +23,11 @@ const createSchema = z.object({
   note: z.string().optional(),
   /** Привязать платёж к конкретному счёту Invoice. Счёт не должен быть аннулирован. */
   invoiceId: z.string().optional(),
+  /**
+   * «Разнести по продолжениям»: один платёж на основную бронь и её
+   * продолжения — долги от старшей к младшей, остаток — на эту бронь.
+   */
+  spreadAcrossFamily: z.boolean().optional(),
 });
 
 const patchSchema = createSchema.partial().omit({ bookingId: true, requestKey: true });
@@ -68,6 +75,24 @@ router.post("/", async (req, res, next) => {
     const body = createSchema.parse(req.body);
     const userId = req.adminUser!.userId;
     const role = req.adminUser!.role;
+    if (body.spreadAcrossFamily) {
+      if (body.invoiceId) {
+        throw new HttpError(400, "Платёж по счёту не разносится по продолжениям", "PAYMENT_SPREAD_WITH_INVOICE");
+      }
+      const payments = await createFamilyPayment({
+        requestKey: body.requestKey,
+        bookingId: body.bookingId,
+        amount: new Decimal(body.amount),
+        method: body.method,
+        receivedAt: new Date(body.receivedAt),
+        note: body.note,
+        createdBy: userId,
+        creatorRole: role,
+      });
+      const serialize = (p: (typeof payments)[number]) => ({ ...p, amount: p.amount.toString() });
+      const own = payments.find((p) => p.bookingId === body.bookingId) ?? payments[0];
+      return res.status(201).json({ payment: own ? serialize(own) : null, payments: payments.map(serialize) });
+    }
     const payment = await paymentService.createPayment({
       requestKey: body.requestKey,
       bookingId: body.bookingId,
@@ -80,6 +105,21 @@ router.post("/", async (req, res, next) => {
       invoiceId: body.invoiceId,
     });
     res.status(201).json({ payment: { ...payment, amount: payment.amount.toString() } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/payments/family-preview?bookingId&amount — как один платёж
+ * разложится по основной брони и продолжениям (для окна оплаты).
+ */
+router.get("/family-preview", async (req, res, next) => {
+  try {
+    const q = z
+      .object({ bookingId: z.string().min(1), amount: z.coerce.number().positive() })
+      .parse(req.query);
+    res.json(await previewFamilyPayment(q.bookingId, new Decimal(q.amount)));
   } catch (err) {
     next(err);
   }
