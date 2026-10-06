@@ -164,6 +164,10 @@ describe("сохранение и восстановление", () => {
           },
         },
         mileages: { "vehicle-1": 120450, "vehicle-2": null },
+        // «Остаётся у клиента» (этап 15): иначе перезагрузка вернула бы строку целиком.
+        stays: {
+          [bookingItemId]: { quantity: 1, unitIds: [], until: new Date(NOW + DAY).toISOString(), choice: 1, acknowledged: true },
+        },
       },
     };
     expect((await putDraft(sessionId, { revision: 0, draft })).status).toBe(200);

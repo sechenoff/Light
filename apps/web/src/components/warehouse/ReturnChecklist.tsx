@@ -55,6 +55,7 @@ import { ResumedSessionBanner } from "./ResumedSessionBanner";
 import { useChecklistDraft } from "./useChecklistDraft";
 import { PlannedStaysBlock } from "./PlannedStaysBlock";
 import { KioskStayEditor, StayTerms } from "./KioskStayEditor";
+import { ContinuationPriceBlock } from "../bookings/ContinuationPriceBlock";
 import type { KioskStay } from "./kioskStays";
 import { useKioskStays } from "./useKioskStays";
 import {
@@ -132,15 +133,35 @@ function markedPlannedIds(state: { plannedStays?: { bookingItemId: string }[]; i
     .map((p) => p.bookingItemId);
 }
 
-/**
- * Сетка COUNT-строки под её текущее количество: часть штук «остаётся у
- * клиента» — лишние ячейки с конца уходят, вернули обратно — добавляются пустые.
- */
+/** Полная сетка COUNT-строки — по количеству в брони (хранится и уходит в черновик). */
 function fitSlots(slots: UnitSlot[] | undefined, qty: number): UnitSlot[] {
   if (!slots) return emptySlots(qty);
   if (slots.length === qty) return slots;
   if (slots.length > qty) return slots.slice(0, qty);
   return [...slots, ...emptySlots(qty).slice(slots.length)];
+}
+
+const FLAGGED = (s: UnitSlot) => s.status === "REPAIR" || s.status === "PROBLEM";
+
+/**
+ * Что из полной сетки видно в чек-листе, когда часть штук остаётся у клиента:
+ * скрываются ячейки с конца — сначала пустые, потом принятые. Ремонт и
+ * «Потеряшки» не скрываются никогда (потолок «остаётся» их не трогает).
+ * Номера ячеек остаются прежними: по ним правки попадают в полную сетку.
+ */
+function visibleSlots(full: UnitSlot[], qty: number): UnitSlot[] {
+  let drop = full.length - qty;
+  if (drop <= 0) return full;
+  const hidden = new Set<number>();
+  for (const status of ["PENDING", "ACCEPTED"] as const) {
+    for (let i = full.length - 1; i >= 0 && drop > 0; i -= 1) {
+      if (full[i].status === status && !hidden.has(i)) {
+        hidden.add(i);
+        drop -= 1;
+      }
+    }
+  }
+  return full.filter((_, i) => !hidden.has(i));
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -237,6 +258,10 @@ export function ReturnChecklist({
     setExtraStay,
     setPlannedTerm,
     refreshPreview: refreshStaysPreview,
+    applyServerConflicts,
+    preview: staysPreview,
+    draftStays,
+    restoreStays,
   } = useKioskStays({ sessionId, state, baseItems, planned, returnNow });
 
   const applyHydration = useCallback(
@@ -249,6 +274,7 @@ export function ReturnChecklist({
       }
       setOutcomes(h.outcomes);
       setUnitGrids(h.unitGrids);
+      restoreStays(h.stays);
       setResetRows(new Set(h.resetRowIds));
       setRestoredMileages(Object.keys(h.mileages).length > 0 ? { ...h.mileages } : null);
       setRowErrors({});
@@ -257,7 +283,7 @@ export function ReturnChecklist({
       for (const id of h.toCheck) void check(id).catch(() => undefined);
       for (const id of h.toUncheck) void uncheck(id).catch(() => undefined);
     },
-    [check, uncheck, state],
+    [check, uncheck, state, restoreStays],
   );
 
   // Другое устройство сохранило черновик позже: показываем его версию.
@@ -324,8 +350,8 @@ export function ReturnChecklist({
   // Правка оператора → черновик на сервер (хук сам копит 800 мс).
   useEffect(() => {
     if (!dirtyRef.current || result || closedError) return;
-    scheduleDraft(buildReturnDraft({ items, outcomes, unitGrids, mileages: draftMileages }));
-  }, [items, outcomes, unitGrids, draftMileages, result, closedError, scheduleDraft]);
+    scheduleDraft(buildReturnDraft({ items: baseItems, outcomes, unitGrids, mileages: draftMileages, stays: draftStays }));
+  }, [baseItems, outcomes, unitGrids, draftMileages, draftStays, result, closedError, scheduleDraft]);
 
   // Пробег — правка, только когда кладовщик сам меняет поле: подстановка из
   // черновика и загрузка списка машин черновик не переписывают.
@@ -340,15 +366,17 @@ export function ReturnChecklist({
   // Группы категорий в порядке первого появления: порядок строк задаёт сервер.
   const groups = useMemo(() => groupByCategory(baseItems, (item) => item.category), [baseItems]);
   // Сетки COUNT-строк под их текущее количество (часть штук могла остаться у клиента).
+  const baseQtyById = useMemo(() => new Map(baseItems.map((i) => [i.bookingItemId, i.quantity])), [baseItems]);
   const effectiveGrids = useMemo(() => {
     const m = new Map<string, UnitSlot[]>();
     for (const it of items) {
       const g = unitGrids.get(it.bookingItemId);
-      if (g && it.trackingMode !== "UNIT") m.set(it.bookingItemId, fitSlots(g, it.quantity));
-      else if (g) m.set(it.bookingItemId, g);
+      if (g && it.trackingMode !== "UNIT") {
+        m.set(it.bookingItemId, visibleSlots(fitSlots(g, baseQtyById.get(it.bookingItemId) ?? it.quantity), it.quantity));
+      } else if (g) m.set(it.bookingItemId, g);
     }
     return m;
-  }, [items, unitGrids]);
+  }, [items, unitGrids, baseQtyById]);
 
 
   const unitIds = useMemo(() => returnUnitIds(items), [items]);
@@ -428,10 +456,13 @@ export function ReturnChecklist({
 
   /** Grid of a COUNT row, lazily all-PENDING. */
   function slotsOf(bookingItemId: string, qty: number): UnitSlot[] {
-    return fitSlots(unitGrids.get(bookingItemId), qty);
+    return visibleSlots(fitSlots(unitGrids.get(bookingItemId), baseQtyById.get(bookingItemId) ?? qty), qty);
   }
 
-  function updateGrid(bookingItemId: string, qty: number, map: (slots: UnitSlot[]) => UnitSlot[]) {
+  // Правки — в полную сетку строки: скрытые ячейки (оставленное у клиента)
+  // сохраняют свои отметки на случай «Не остаётся».
+  function updateGrid(bookingItemId: string, visibleQty: number, map: (slots: UnitSlot[]) => UnitSlot[]) {
+    const qty = baseQtyById.get(bookingItemId) ?? visibleQty;
     touch(bookingItemId);
     setResetRows((prev) => {
       if (!prev.has(bookingItemId)) return prev;
@@ -454,8 +485,11 @@ export function ReturnChecklist({
       updateGrid(biId, qty, (slots) =>
         slots.map((s) => (s.index === index ? { ...s, status: cycleStatus(s.status) } : s)),
       ),
-    acceptRow: (biId, qty) =>
-      updateGrid(biId, qty, (slots) => slots.map((s) => ({ ...s, status: "ACCEPTED" as const }))),
+    // «Все» — только видимые ячейки: скрытое остаётся у клиента.
+    acceptRow: (biId, qty) => {
+      const visible = new Set(slotsOf(biId, qty).map((s) => s.index));
+      updateGrid(biId, qty, (slots) => slots.map((s) => (visible.has(s.index) ? { ...s, status: "ACCEPTED" as const } : s)));
+    },
     setSlotRepairComment: (biId, index, comment, qty) =>
       updateGrid(biId, qty, (slots) =>
         slots.map((s) => (s.index === index ? { ...s, repairComment: comment } : s)),
@@ -511,12 +545,20 @@ export function ReturnChecklist({
       if (u.checked || outcomes[u.unitId]?.outcome === "ACCEPTED") void uncheck(u.unitId).catch(() => undefined);
     }
     if (added.length > 0) {
+      // Ремонт и «Потеряшки» оставить нельзя (кнопка единицы закрыта) —
+      // снимается только «Принято».
       setOutcomes((o) => {
         const n = { ...o };
-        for (const u of added) delete n[u.unitId];
+        for (const u of added) if (n[u.unitId]?.outcome === "ACCEPTED") delete n[u.unitId];
         return n;
       });
     }
+    // Строка поменялась — старые подсказки «Помечьте все N шт» к ней больше не относятся.
+    setRowErrors((errs) => {
+      const ids = new Set([item.bookingItemId, ...(item.units ?? []).map((u) => u.unitId)]);
+      if (!Object.keys(errs).some((k) => ids.has(k))) return errs;
+      return Object.fromEntries(Object.entries(errs).filter(([k]) => !ids.has(k)));
+    });
     setExtraStay(item.bookingItemId, next);
   }
 
@@ -572,11 +614,6 @@ export function ReturnChecklist({
       );
     }
     if (!vehicleMileagesValid) messages.push("Введите пробег для каждой машины брони");
-    if (unacknowledgedConflicts.length > 0) {
-      messages.push(
-        `Нужно другой брони: ${unacknowledgedConflicts.map((c) => `«${c.name}»`).join(", ")} — оставьте под ответственность или сократите срок`,
-      );
-    }
     setValidationSummary(messages.length > 0 ? messages.join(". ") : null);
     return errs;
   }
@@ -620,7 +657,7 @@ export function ReturnChecklist({
       // Состав брони поменялся: перечитываем чек-лист и переносим свои
       // отметки на новый состав, как только придёт новый отпечаток состава.
       const rebase: PendingRebase = {
-        draft: buildReturnDraft({ items, outcomes, unitGrids, mileages: draftMileages }),
+        draft: buildReturnDraft({ items: baseItems, outcomes, unitGrids, mileages: draftMileages, stays: draftStays }),
         fromVersion: state.itemsVersion,
       };
       pendingRebase.current = rebase;
@@ -644,9 +681,11 @@ export function ReturnChecklist({
       return;
     }
     if (code === "CONTINUATION_CONFLICT") {
-      // Оставленное заняли, пока шла приёмка: пересчитать — у строки появится
-      // карточка держателя и «Оставить под ответственность».
-      refreshStaysPreview();
+      // Оставленное заняли, пока шла приёмка: карточки держателей — сразу из
+      // ответа (превью может и не ответить), заодно пересчитать.
+      const conflicts = (err as { details?: { conflicts?: unknown } }).details?.conflicts;
+      if (Array.isArray(conflicts)) applyServerConflicts(conflicts as Parameters<typeof applyServerConflicts>[0]);
+      else refreshStaysPreview();
     }
     setSubmitError(
       isScanApiError(err) ? err.message : "Не удалось завершить приёмку — попробуйте ещё раз",
@@ -710,7 +749,7 @@ export function ReturnChecklist({
       <ReturnResultView
         result={result}
         projectName={projectName}
-        acceptedCount={computeAcceptedCount(items, outcomes, unitGrids)}
+        acceptedCount={computeAcceptedCount(items, outcomes, effectiveGrids)}
         unitNames={unitNameById}
         onDone={() => (onDone ? onDone() : onBack())}
       />
@@ -754,7 +793,7 @@ export function ReturnChecklist({
     );
   }
 
-  if (state && items.length === 0 && planned.length === 0) {
+  if (state && baseItems.length === 0 && planned.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-16 text-center">
         <p className="text-sm text-ink-3">В этой брони нет позиций для приёмки</p>
@@ -772,6 +811,24 @@ export function ReturnChecklist({
 
   const interactionsDisabled = bulkBusy || submitting;
   const anyStaying = planned.some((p) => !returnNow.has(p.bookingItemId)) || anyExtraStaying;
+  // Ремонт и «Потеряшки» у клиента не остаются: потолок «Остаётся у клиента».
+  const lockedUnitsOf = (it: ChecklistItem) =>
+    (it.units ?? [])
+      .filter((u) => outcomes[u.unitId]?.outcome === "REPAIR" || outcomes[u.unitId]?.outcome === "PROBLEM")
+      .map((u) => u.unitId);
+  const keepCapOf = (it: ChecklistItem) =>
+    it.trackingMode === "UNIT" && it.units
+      ? it.units.length - lockedUnitsOf(it).length
+      : it.quantity - fitSlots(unitGrids.get(it.bookingItemId), it.quantity).filter(FLAGGED).length;
+  // Итог для футера (мокап M3, экран 2): сколько принимаем и что остаётся.
+  const acceptUnits = items.reduce((n, it) => n + (it.trackingMode === "UNIT" && it.units ? it.units.length : it.quantity), 0);
+  const keptUnits = allStays.reduce((n, st) => n + st.quantity, 0);
+  const keptLines = new Set(allStays.filter((st) => st.quantity > 0).map((st) => st.bookingItemId)).size;
+  const ackNames = allStays
+    .filter((st) => st.acknowledgedConflict)
+    .map((st) => baseItems.find((i) => i.bookingItemId === st.bookingItemId)?.equipmentName)
+    .filter((n): n is string => Boolean(n));
+  const continuationDoc = staysPreview?.continuations[0]?.docNumber ?? null;
   const draftOffline = draft.status === "offline" || draft.status === "failed";
   // Плашка «Продолжена приёмка»: страница передаёт ответ createSession только
   // для продолженной сессии; честно пишем, восстановлено ли что-то.
@@ -838,7 +895,7 @@ export function ReturnChecklist({
                   return (
                     <StayTerms
                       label={state.items.find((i) => i.bookingItemId === p.bookingItemId)?.equipmentName ?? "Позиция"}
-                      paidThrough={p.until}
+                      paidThrough={state.linePaidThrough?.[p.bookingItemId] ?? p.until}
                       stay={terms}
                       previewLine={previewLineFor(p.bookingItemId)}
                       conflict={conflictFor(p.bookingItemId)}
@@ -911,6 +968,8 @@ export function ReturnChecklist({
                         previewLoading={staysPreviewLoading}
                         disabled={interactionsDisabled}
                         onChange={(next) => changeExtraStay(base, next)}
+                        maxKeep={keepCapOf(base)}
+                        lockedUnitIds={lockedUnitsOf(base)}
                       />
                     )}
                   </div>
@@ -920,6 +979,13 @@ export function ReturnChecklist({
           </section>
         ))}
       </div>
+
+      {/* Дополнительная смета оставленного сверх оплаченного (мокап M3, экран 2). */}
+      {staysPreview && (
+        <div className="px-3 pb-3 lg:px-4">
+          <ContinuationPriceBlock preview={staysPreview} loading={staysPreviewLoading} />
+        </div>
+      )}
 
       {/* Блок «Пробег машин» — вне липкого футера; без машин не рендерится. */}
       <div className="px-3 lg:px-4">
@@ -948,6 +1014,35 @@ export function ReturnChecklist({
             {validationSummary}
           </p>
         )}
+        {/* Живое, а не из последней проверки: пропадает, как только решили по держателю. */}
+        {attemptedSubmit && unacknowledgedConflicts.length > 0 && (
+          <p role="alert" className="mb-2 rounded-md border border-amber-border bg-amber-soft px-3 py-2 text-[12px] text-amber">
+            Нужно другой брони: {unacknowledgedConflicts.map((c) => `«${c.name}»`).join(", ")} — оставьте под ответственность или
+            сократите срок
+          </p>
+        )}
+        {anyStaying && (
+          <div className="mb-2 text-[12.5px]" data-testid="return-footer-summary">
+            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5">
+              <dt className="text-ink-2">Принимаем на склад</dt>
+              <dd className="mono-num text-right font-semibold text-ink">{acceptUnits} ед.</dd>
+              <dt className="text-ink-2">Остаются у клиента</dt>
+              <dd className="mono-num text-right font-semibold text-teal">
+                {keptUnits} ед. · {keptLines} {pluralize(keptLines, "позиция", "позиции", "позиций")}
+              </dd>
+              {ackNames.length > 0 && (
+                <>
+                  <dt className="text-ink-2">Оставлено под ответственность</dt>
+                  <dd className="text-right text-amber">{ackNames.join(", ")}</dd>
+                </>
+              )}
+            </dl>
+            <p className="mt-1 text-[11.5px] leading-snug text-ink-3">
+              Основная бронь закроется как «Возвращена частично». Оставленное перейдёт в продолжение{" "}
+              {continuationDoc ? <span className="font-medium text-ink-2">{continuationDoc}</span> : "брони"}.
+            </p>
+          </div>
+        )}
         {submitError && (
           <p role="alert" className="mb-2 rounded-md border border-rose-border bg-rose-soft px-3 py-2 text-[12px] text-rose">
             {submitError}
@@ -957,10 +1052,14 @@ export function ReturnChecklist({
           type="button"
           onClick={handleComplete}
           disabled={interactionsDisabled}
-          aria-label={`Завершить приёмку — ${projectName || "бронь"}`}
+          aria-label={
+            anyStaying
+              ? `Принять ${acceptUnits} ед. — Завершить приёмку «${projectName || "бронь"}»`
+              : `Завершить приёмку — ${projectName || "бронь"}`
+          }
           className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60"
         >
-          {submitting ? "Завершаем…" : "Завершить приёмку →"}
+          {submitting ? "Завершаем…" : anyStaying ? `Принять ${acceptUnits} ед.` : "Завершить приёмку →"}
         </button>
       </div>
     </div>

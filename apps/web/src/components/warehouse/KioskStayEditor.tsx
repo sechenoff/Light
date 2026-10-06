@@ -13,6 +13,7 @@ import { quoteName } from "../inventory/format";
 import { formatStayWhen } from "./PlannedStaysBlock";
 import {
   beyondPaid,
+  fromWhen,
   newStay,
   shiftsWord,
   stayChoices,
@@ -98,6 +99,8 @@ export function StayTerms({
           " · без доплаты"
         ) : previewLoading ? (
           <span className="text-ink-3"> · считаем доплату…</span>
+        ) : previewLine && previewLine.billedShifts === 0 ? (
+          " · без доплаты"
         ) : previewLine && previewLine.billedShifts > 0 ? (
           <span className="text-amber">
             {" "}
@@ -111,7 +114,8 @@ export function StayTerms({
       {conflict && beyond && (
         <div className="rounded-md border border-amber-border bg-amber-soft px-3 py-2.5" role="group" aria-label={`Нужен другой брони: ${label}`}>
           <p className="text-[13px] font-semibold text-amber">
-            Нужен {conflict.holder ? `брони ${quoteName(conflict.holder.projectName)}` : "другой брони"} с {formatStayWhen(conflict.neededFrom ?? conflict.from)}
+            Нужен {conflict.holder ? `брони ${quoteName(conflict.holder.projectName)}` : "другой брони"}{" "}
+            {fromWhen(formatStayWhen(conflict.neededFrom ?? conflict.from))}
           </p>
           <p className="mt-0.5 text-[12px] leading-snug text-ink-2">
             Свободно {Math.max(0, conflict.available)} из {conflict.needed}. Клиент сам договорился — склад не запрещает.
@@ -154,9 +158,15 @@ export function KioskStayEditor({
   previewLoading,
   disabled,
   onChange,
+  maxKeep,
+  lockedUnitIds = [],
 }: {
   item: ChecklistItem;
   stay: KioskStay | undefined;
+  /** Сколько можно оставить: ремонт и «Потеряшки» строки остаться не могут. */
+  maxKeep?: number;
+  /** Единицы с отметкой ремонта или проблемы — их не оставить. */
+  lockedUnitIds?: string[];
   paidThrough: string | undefined;
   previewLine: PreviewLine | null;
   conflict: Conflict | null;
@@ -166,11 +176,14 @@ export function KioskStayEditor({
   onChange: (next: KioskStay | null) => void;
 }) {
   const unitTracked = item.trackingMode === "UNIT" && item.units != null;
+  const total = unitTracked ? item.units!.length : item.quantity;
+  const cap = Math.min(total, maxKeep ?? total);
   if (!stay) {
     return (
       <button
         type="button"
-        disabled={disabled}
+        disabled={disabled || cap <= 0}
+        title={cap <= 0 ? "Всё отмечено ремонтом или «Потеряшками» — оставить у клиента нечего" : undefined}
         onClick={() => onChange(newStay(paidThrough, unitTracked ? 0 : 1))}
         aria-label={`Остаётся у клиента: ${item.equipmentName}`}
         className="min-h-11 px-1.5 text-[13px] font-medium text-accent underline-offset-2 hover:underline disabled:opacity-60"
@@ -179,7 +192,6 @@ export function KioskStayEditor({
       </button>
     );
   }
-  const total = unitTracked ? item.units!.length : item.quantity;
   return (
     <div className="space-y-2 rounded-lg border border-teal-border bg-teal-soft/40 px-3 py-2.5" data-testid="kiosk-stay">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -198,12 +210,14 @@ export function KioskStayEditor({
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Какие единицы остаются у клиента: ${item.equipmentName}`}>
           {item.units!.map((u, idx) => {
             const on = stay.unitIds.includes(u.unitId);
+            const locked = !on && lockedUnitIds.includes(u.unitId);
             return (
               <button
                 key={u.unitId}
                 type="button"
                 aria-pressed={on}
-                disabled={disabled}
+                disabled={disabled || locked}
+                title={locked ? "Отмечен ремонт или «Потеряшки» — оставить у клиента нельзя" : undefined}
                 onClick={() => {
                   const unitIds = on ? stay.unitIds.filter((id) => id !== u.unitId) : [...stay.unitIds, u.unitId];
                   onChange(withTerms(stay, { unitIds, quantity: unitIds.length }));
@@ -233,7 +247,7 @@ export function KioskStayEditor({
             <button
               type="button"
               aria-label={`Больше остаётся: ${item.equipmentName}`}
-              disabled={disabled || stay.quantity >= total}
+              disabled={disabled || stay.quantity >= cap}
               onClick={() => onChange(withTerms(stay, { quantity: stay.quantity + 1 }))}
               className="flex h-11 w-11 items-center justify-center text-ink-2 disabled:opacity-40"
             >

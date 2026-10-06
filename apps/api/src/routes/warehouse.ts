@@ -598,6 +598,15 @@ const vehicleMileageEntrySchema = z.object({
   mileage: z.number().int().min(0),
 });
 
+/** Что остаётся у клиента — общая строка для «Готово» и превью доплаты. */
+const kioskStaySchema = z.object({
+  bookingItemId: z.string().min(1),
+  quantity: z.number().int().positive(),
+  until: z.string().datetime(),
+  equipmentUnitIds: z.array(z.string().min(1)).max(500).optional(),
+  acknowledgedConflict: z.boolean().optional(),
+});
+
 const completeSessionBodySchema = z.object({
   repairUnits: z.array(repairUnitSchema).optional(),
   problemUnits: z.array(problemUnitSchema).optional(),
@@ -614,19 +623,8 @@ const completeSessionBodySchema = z.object({
   // которых построен чек-лист. Обе необязательны — старый JS на планшетах их не шлёт.
   itemsVersion: z.string().min(1).max(64).optional(),
   draftRevision: z.number().int().min(0).optional(),
-  // Приёмка: позиции «по плану», которые остаются у клиента, — в продолжение.
-  stays: z
-    .array(
-      z.object({
-        bookingItemId: z.string().min(1),
-        quantity: z.number().int().positive(),
-        until: z.string().datetime(),
-        equipmentUnitIds: z.array(z.string().min(1)).max(500).optional(),
-        acknowledgedConflict: z.boolean().optional(),
-      }),
-    )
-    .max(200)
-    .optional(),
+  // Приёмка: что остаётся у клиента (по плану и сверх оплаченного), — в продолжение.
+  stays: z.array(kioskStaySchema).max(200).optional(),
   expectedSplitRevision: z.number().int().min(0).optional(),
 }).optional();
 
@@ -916,18 +914,7 @@ warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req,
  * оставленное нужно. Та же запись, что «Готово», в откатываемой транзакции.
  */
 const staysPreviewBodySchema = z.object({
-  stays: z
-    .array(
-      z.object({
-        bookingItemId: z.string().min(1),
-        quantity: z.number().int().positive(),
-        until: z.string().datetime(),
-        equipmentUnitIds: z.array(z.string().min(1)).max(500).optional(),
-        acknowledgedConflict: z.boolean().optional(),
-      }),
-    )
-    .min(1)
-    .max(200),
+  stays: z.array(kioskStaySchema).min(1).max(200),
 });
 warehouseScanRouter.post("/sessions/:id/stays-preview", warehouseAuth, async (req, res, next) => {
   try {

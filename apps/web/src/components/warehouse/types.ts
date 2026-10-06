@@ -107,6 +107,20 @@ export interface ReturnDraftGrid {
 }
 
 /**
+ * «Остаётся у клиента» строки приёмки: что и до когда. `planned` — строка
+ * «по плану у клиента» (её срок продлили чипами), иначе — «Остаётся у
+ * клиента…» у обычной строки.
+ */
+export interface ReturnDraftStay {
+  quantity: number;
+  unitIds: string[];
+  until: string;
+  choice: "paid" | "date" | 1 | 2 | 3;
+  acknowledged?: boolean;
+  planned?: boolean;
+}
+
+/**
  * Черновик чек-листа, который киоск хранит на сервере
  * (`ScanSession.draftJson`). Контракт 2.5 плана; zod-схема — в
  * `apps/api/src/services/checklistService.ts` (`checklistDraftSchema`).
@@ -121,6 +135,8 @@ export interface ChecklistDraftV1 {
     units: Record<string, ReturnDraftUnit>;
     grids: Record<string, ReturnDraftGrid>;
     mileages?: Record<string, number | null>;
+    /** «Остаётся у клиента» по строкам — ключ `bookingItemId`. */
+    stays?: Record<string, ReturnDraftStay>;
   };
 }
 
@@ -142,6 +158,7 @@ export function isChecklistDraftV1(value: unknown): value is ChecklistDraftV1 {
     const r = value.return;
     if (!isPlainObject(r) || !isPlainObject(r.units) || !isPlainObject(r.grids)) return false;
     if (r.mileages !== undefined && !isPlainObject(r.mileages)) return false;
+    if (r.stays !== undefined && !isPlainObject(r.stays)) return false;
   }
   return true;
 }

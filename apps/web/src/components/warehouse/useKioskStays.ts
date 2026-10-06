@@ -10,11 +10,11 @@
  *  - превью доплаты и держателей с сервера — только когда что-то остаётся
  *    сверх оплаченного (`POST /sessions/:id/stays-preview`, дебаунс).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { scanApi } from "./api";
 import { beyondPaid, type KioskStay, type KioskStaysPreview } from "./kioskStays";
-import type { ChecklistItem, ChecklistState, PlannedStay, StayInput } from "./types";
+import type { ChecklistItem, ChecklistState, PlannedStay, ReturnDraftStay, StayInput } from "./types";
 
 const STAYS_PREVIEW_DEBOUNCE_MS = 400;
 
@@ -94,8 +94,10 @@ export function useKioskStays({ sessionId, state, baseItems, planned, returnNow 
     return out;
   }, [planned, returnNow, plannedTerms, extraStays, baseItems]);
 
+  // Оплачено — по расчёту сервера: у строки «по плану» он бывает позже срока
+  // по плану (бронь не кратна суткам), и дни между ними бесплатны.
   const paidThroughOf = (bookingItemId: string): string | undefined =>
-    planned.find((p) => p.bookingItemId === bookingItemId)?.until ?? state?.linePaidThrough?.[bookingItemId];
+    state?.linePaidThrough?.[bookingItemId] ?? planned.find((p) => p.bookingItemId === bookingItemId)?.until;
   const anyBeyond = allStays.some((st) => beyondPaid(st.until, paidThroughOf(st.bookingItemId)));
   const staysKey = JSON.stringify(allStays);
 
@@ -132,8 +134,16 @@ export function useKioskStays({ sessionId, state, baseItems, planned, returnNow 
     preview?.continuations.flatMap((c) => c.lines).find((l) => l.bookingItemId === id) ?? null;
   const conflictFor = (id: string) => preview?.conflicts.find((c) => c.bookingItemId === id) ?? null;
   const previewDiscount = Number(preview?.continuations[0]?.discountPercent ?? 0);
-  const unacknowledgedConflicts = (preview?.conflicts ?? []).filter(
-    (c) => !allStays.some((st) => st.bookingItemId === c.bookingItemId && st.acknowledgedConflict),
+  // Конфликт держит «Завершить», только пока по строке что-то остаётся сверх
+  // оплаченного без «под ответственность»: старое превью после снятия
+  // «остаётся» не должно блокировать.
+  const unacknowledgedConflicts = (preview?.conflicts ?? []).filter((c) =>
+    allStays.some(
+      (st) =>
+        st.bookingItemId === c.bookingItemId &&
+        beyondPaid(st.until, paidThroughOf(st.bookingItemId)) &&
+        !st.acknowledgedConflict,
+    ),
   );
   const anyExtraStaying = Array.from(extraStays.values()).some((st) => st.quantity > 0);
 
@@ -149,6 +159,37 @@ export function useKioskStays({ sessionId, state, baseItems, planned, returnNow 
   function setPlannedTerm(bookingItemId: string, next: KioskStay) {
     setPlannedTerms((m) => new Map(m).set(bookingItemId, next));
   }
+
+  /** «Завершить» получил 409 CONTINUATION_CONFLICT: карточки держателей — сразу из ответа. */
+  function applyServerConflicts(conflicts: KioskStaysPreview["conflicts"]) {
+    previewSeq.current += 1;
+    setPreview((p) => ({
+      continuations: p?.continuations ?? [],
+      conflicts,
+      parentNegotiatedTotal: p?.parentNegotiatedTotal ?? null,
+    }));
+    setNonce((n) => n + 1);
+  }
+
+  // Черновик: что и до когда остаётся — переживает перезагрузку планшета.
+  const draftStays = useMemo(() => {
+    const out: Record<string, ReturnDraftStay> = {};
+    for (const [id, st] of extraStays) out[id] = { ...st };
+    for (const [id, st] of plannedTerms) out[id] = { ...st, planned: true };
+    return out;
+  }, [extraStays, plannedTerms]);
+
+  // Стабильная ссылка: восстановление черновика зависит от неё.
+  const restoreStays = useCallback((saved: Record<string, ReturnDraftStay>) => {
+    const extra = new Map<string, KioskStay>();
+    const terms = new Map<string, KioskStay>();
+    for (const [id, { planned: isPlanned, ...st }] of Object.entries(saved)) {
+      if (isPlanned) terms.set(id, st);
+      else extra.set(id, st);
+    }
+    setExtraStays(extra);
+    setPlannedTerms(terms);
+  }, []);
 
   return {
     plannedTerms,
@@ -166,5 +207,9 @@ export function useKioskStays({ sessionId, state, baseItems, planned, returnNow 
     setExtraStay,
     setPlannedTerm,
     refreshPreview: () => setNonce((n) => n + 1),
+    applyServerConflicts,
+    preview,
+    draftStays,
+    restoreStays,
   };
 }

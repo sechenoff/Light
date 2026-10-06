@@ -1,4 +1,5 @@
 import { pluralize } from "../../lib/format";
+import type { ReturnPreview } from "../bookings/returnDialogState";
 
 /**
  * «Остаётся у клиента» в киоске (мокап M3, этап 15) — без React.
@@ -82,25 +83,13 @@ export function withTerms(prev: KioskStay, next: Partial<KioskStay>): KioskStay 
   return { ...merged, acknowledged: same ? merged.acknowledged : undefined };
 }
 
-/** Превью продолжений с сервера (POST /sessions/:id/stays-preview). */
-export type KioskStaysPreview = {
-  continuations: Array<{
-    until: string;
-    docNumber: string | null;
-    lines: Array<{ bookingItemId: string | null; name: string; quantity: number; billedShifts: number; lineSum: string; afterDiscount: string; negotiated: boolean }>;
-    discountPercent: string;
-    surchargeAmount: string;
-    total: string;
-  }>;
-  conflicts: Array<{
-    bookingItemId: string;
-    name: string;
-    needed: number;
-    available: number;
-    from: string;
-    /** С какого момента позиция нужна другой брони — его и показываем. */
-    neededFrom?: string;
-    holder: { projectName: string; clientName: string | null } | null;
-  }>;
-  parentNegotiatedTotal: string | null;
-};
+/**
+ * Превью продолжений с сервера (POST /sessions/:id/stays-preview) — тот же
+ * `previewReturnPartial`, что у окна «Принять возврат» на карточке брони.
+ */
+export type KioskStaysPreview = ReturnPreview;
+
+/** «с пн», «со вт», «со ср» — предлог перед днём недели. */
+export function fromWhen(formatted: string): string {
+  return `${/^(вт|ср)/.test(formatted) ? "со" : "с"} ${formatted}`;
+}
