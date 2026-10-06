@@ -12,8 +12,9 @@
  *    её сроке и её смете. «Бумажные» поля — комментарий, скидка, договорной
  *    итог, водители — править можно;
  *  - у продолжения нельзя менять начало и состав, делать добор (новое
- *    оборудование — новая бронь), архивировать пока оно у клиента. Продление
- *    продолжения появится вместе с дополнительной сметой сверх оплаченного.
+ *    оборудование — новая бронь), архивировать пока оно у клиента. Продлить
+ *    продолжение можно — только срок возврата и только на более поздний:
+ *    лишние смены уходят в его же смету.
  */
 import Decimal from "decimal.js";
 import type { Prisma } from "@prisma/client";
@@ -27,7 +28,7 @@ export const FAMILY_ERROR_CODES = {
   HAS_CONTINUATION: "HAS_CONTINUATION",
   CONTINUATION_EDIT_FORBIDDEN: "CONTINUATION_EDIT_FORBIDDEN",
   CONTINUATION_ADDON_FORBIDDEN: "CONTINUATION_ADDON_FORBIDDEN",
-  CONTINUATION_EXTEND_NOT_YET: "CONTINUATION_EXTEND_NOT_YET",
+  CONTINUATION_EXTEND_EARLIER: "CONTINUATION_EXTEND_EARLIER",
   CONTINUATION_STILL_OUT: "CONTINUATION_STILL_OUT",
 } as const;
 
@@ -61,8 +62,8 @@ export async function assertNoLiveContinuations(client: Db, bookingId: string, w
 /**
  * Правка брони (PATCH /api/bookings/:id) в семье:
  *  - у брони с продолжением — без смены дат и состава;
- *  - у продолжения — без смены дат, состава и продления (продление появится
- *    вместе с дополнительной сметой сверх оплаченного).
+ *  - у продолжения — без смены дат и состава; продлить срок возврата можно
+ *    (лишние смены — в смете продолжения сверх уже оплаченного).
  */
 export async function assertFamilyAllowsEdit(
   client: Db,
@@ -73,17 +74,27 @@ export async function assertFamilyAllowsEdit(
     extend: boolean;
     /** «Не считать вторые сутки» поменяли — в семье это сдвинуло бы оплаченный срок. */
     skipPartialDayChanged?: boolean;
+    /** Сдвинули начало (вместе с продлением тоже считается). */
+    startChanged?: boolean;
+    /** Новый срок возврата не позже прежнего. */
+    endNotLater?: boolean;
   },
 ): Promise<void> {
   if (isContinuation(booking)) {
-    if (change.extend) {
-      throw new HttpError(
-        409,
-        "Продлить продолжение брони пока нельзя — это появится вместе с дополнительной сметой сверх оплаченного",
-        FAMILY_ERROR_CODES.CONTINUATION_EXTEND_NOT_YET,
-      );
+    // Продление продолжения — только срок возврата: лишние смены уходят в его
+    // же смету сверх уже оплаченного (continuationBilling от нового «до»).
+    if (change.extend && !change.itemsChanged && !change.skipPartialDayChanged && !change.startChanged) {
+      if (change.endNotLater) {
+        throw new HttpError(
+          409,
+          "Продлить продолжение можно только на более поздний срок",
+          FAMILY_ERROR_CODES.CONTINUATION_EXTEND_EARLIER,
+        );
+      }
+      await assertNoLiveContinuations(client, booking.id, "продлевать");
+      return;
     }
-    if (change.datesChanged || change.itemsChanged || change.skipPartialDayChanged) {
+    if (change.datesChanged || change.itemsChanged || change.skipPartialDayChanged || change.extend) {
       throw new HttpError(
         409,
         "У продолжения брони даты, состав и «не считать вторые сутки» не правятся: они пришли из приёмки основной брони",

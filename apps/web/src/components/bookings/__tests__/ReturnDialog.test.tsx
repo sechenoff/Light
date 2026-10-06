@@ -12,7 +12,7 @@ const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi
 vi.mock("../../ToastProvider", () => ({ toast: toastMock }));
 
 import { ReturnDialog } from "../ReturnDialog";
-import { initialStays, partialReturnBody, setStayQuantity, summarize, toggleStayUnit, type ReturnPlan } from "../returnDialogState";
+import { formatWhen, initialStays, partialReturnBody, setStayQuantity, summarize, toggleStayUnit, type ReturnPlan } from "../returnDialogState";
 
 const HOUR = 3_600_000;
 const later = (h: number) => new Date(Date.now() + h * HOUR).toISOString();
@@ -118,13 +118,102 @@ describe("окно «Принять возврат»", () => {
     expect(JSON.parse(init.body).stays).toEqual([{ bookingItemId: "i-stand", quantity: 2, until: p.lines[1].paidThrough }]);
   });
 
-  it("оплаченный срок уже прошёл — оставить нельзя, подсказка про дополнительную смету", async () => {
-    mockApi(plan({ lines: [{ ...plan().lines[0], paidThrough: later(-2) }, plan().lines[1]] }));
+  it("оплаченный срок прошёл — «+1 смена» с дополнительной сметой из превью", async () => {
+    const p = plan({ lines: [{ ...plan().lines[0], paidThrough: later(-2) }, plan().lines[1]] });
+    const previewBody = {
+      conflicts: [],
+      parentNegotiatedTotal: null,
+      continuations: [
+        {
+          until: later(22),
+          docNumber: "СМ-2026-0231-1",
+          expectedPaymentDate: null,
+          lines: [{ bookingItemId: "i-storm", name: "Aputure STORM 400x", quantity: 1, billedShifts: 1, lineSum: "4000.00", afterDiscount: "2000.00", negotiated: false }],
+          discountPercent: "50.00",
+          subtotal: "4000.00",
+          discountAmount: "2000.00",
+          surchargeAmount: "0.00",
+          total: "2000.00",
+        },
+      ],
+    };
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-plan") ? p : url.endsWith("/return-partial/preview") ? previewBody : { warning: null, closedScanSessions: 0, continuationIds: ["c1"] },
+    );
     open();
     fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
     const storm = screen.getAllByTestId("return-line").find((li) => li.textContent?.includes("STORM"))!;
-    expect(within(storm).getByRole("button", { name: "Больше: Aputure STORM 400x" })).toBeDisabled();
-    expect(storm).toHaveTextContent("с дополнительной сметой");
+    fireEvent.click(within(storm).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
+    // Оплаченное прошло — первый чип «+1 смена», он и выбран.
+    const chips = within(storm).getAllByRole("radio");
+    expect(chips.map((c) => c.textContent)).toEqual(["+1 смена", "+2 смены", "+3 смены", "дата…"]);
+    expect(chips[0]).toHaveAttribute("aria-checked", "true");
+    await waitFor(() => expect(storm).toHaveTextContent("1 шт × 1 смена → 2 000 ₽ со скидкой"));
+    const price = screen.getByRole("region", { name: "Дополнительная смета" });
+    expect(price).toHaveTextContent("К оплате");
+    expect(price).toHaveTextContent("2 000");
+    fireEvent.click(screen.getByRole("button", { name: "Принять 2 позиции" }));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/api/bookings/b1/return-partial", expect.anything()));
+    const [, init] = apiFetchMock.mock.calls.find(([url]) => url === "/api/bookings/b1/return-partial")!;
+    const sent = JSON.parse(init.body).stays[0];
+    expect(sent.bookingItemId).toBe("i-storm");
+    // +1 смена от сейчас (оплаченное прошло).
+    expect(Date.parse(sent.until) - Date.now()).toBeGreaterThan(23 * HOUR);
+  });
+
+  it("оставленное нужно другой брони — «Принять» ждёт решения; под ответственность — уходит с флагом", async () => {
+    const p = plan({ lines: [{ ...plan().lines[0], paidThrough: later(-2) }, plan().lines[1]] });
+    const previewBody = {
+      parentNegotiatedTotal: null,
+      continuations: [],
+      conflicts: [
+        {
+          bookingItemId: "i-storm",
+          equipmentId: "e1",
+          name: "Aputure STORM 400x",
+          needed: 1,
+          available: 0,
+          from: later(5),
+          until: later(22),
+          holder: { bookingId: "b-other", projectName: "Клип «Ночной рейс»", clientName: "Студия «Полдень»", from: later(5) },
+        },
+      ],
+    };
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-plan") ? p : url.endsWith("/return-partial/preview") ? previewBody : { warning: null, closedScanSessions: 0, continuationIds: ["c1"] },
+    );
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
+    const storm = screen.getAllByTestId("return-line").find((li) => li.textContent?.includes("STORM"))!;
+    fireEvent.click(within(storm).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
+    const holder = await within(storm).findByRole("group", { name: "Нужен другой брони: Aputure STORM 400x" });
+    expect(holder).toHaveTextContent("Нужен брони «Клип «Ночной рейс»»");
+    const primary = screen.getByRole("button", { name: "Принять 2 позиции" });
+    expect(primary).toBeDisabled();
+    fireEvent.click(within(holder).getByRole("button", { name: "Оставить под ответственность" }));
+    expect(primary).toBeEnabled();
+    fireEvent.click(primary);
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/api/bookings/b1/return-partial", expect.anything()));
+    const [, init] = apiFetchMock.mock.calls.find(([url]) => url === "/api/bookings/b1/return-partial")!;
+    expect(JSON.parse(init.body).stays[0]).toMatchObject({ bookingItemId: "i-storm", acknowledgedConflict: true });
+  });
+
+  it("пока оплачено — «до конца оплаченного» без доплаты; «Только до …» у держателя возвращает этот срок", async () => {
+    const p = plan();
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-plan") ? p : url.endsWith("/return-partial/preview") ? { continuations: [], conflicts: [], parentNegotiatedTotal: null } : {},
+    );
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
+    const stand = screen.getAllByTestId("return-line").find((li) => li.textContent?.includes("Стойка"))!;
+    fireEvent.click(within(stand).getByRole("button", { name: "Больше: Стойка C-Stand" }));
+    const chips = within(stand).getAllByRole("radio");
+    expect(chips[0]).toHaveTextContent("до конца оплаченного");
+    expect(chips[0]).toHaveAttribute("aria-checked", "true");
+    expect(stand).toHaveTextContent("без доплаты");
+    fireEvent.click(chips[2]);
+    expect(chips[2]).toHaveAttribute("aria-checked", "true");
+    expect(stand).not.toHaveTextContent("без доплаты");
   });
 
   it("открытая приёмка в киоске — сначала выбор: закончить там или принять здесь", async () => {
@@ -279,5 +368,98 @@ describe("initialStays — штучная позиция по плану", () =>
       ],
     });
     expect(initialStays(p).get("i-storm")).toMatchObject({ quantity: 2, unitIds: ["u1", "u2"] });
+  });
+});
+
+describe("окно «Принять возврат»: сверх оплаченного", () => {
+  const expired = () => plan({ lines: [{ ...plan().lines[0], paidThrough: later(-2) }, plan().lines[1]] });
+  const conflictPreview = (neededFrom: string) => ({
+    parentNegotiatedTotal: null,
+    continuations: [],
+    conflicts: [
+      {
+        bookingItemId: "i-storm",
+        equipmentId: "e1",
+        name: "Aputure STORM 400x",
+        needed: 1,
+        available: 0,
+        from: later(1),
+        until: later(22),
+        neededFrom,
+        holder: { bookingId: "b-other", projectName: "Клип Север", clientName: null, from: neededFrom },
+      },
+    ],
+  });
+  const previewCalls = () => apiFetchMock.mock.calls.filter(([url]) => String(url).endsWith("/return-partial/preview")).length;
+  const stormLine = () => screen.getAllByTestId("return-line").find((li) => li.textContent?.includes("STORM"))!;
+
+  it("в пределах оплаченного превью не запрашивается; срок дальше — запрашивается", async () => {
+    const p = plan();
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-plan") ? p : { continuations: [], conflicts: [], parentNegotiatedTotal: null },
+    );
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
+    fireEvent.click(within(stormLine()).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
+    await new Promise((r) => setTimeout(r, 500));
+    expect(previewCalls()).toBe(0);
+    fireEvent.click(within(stormLine()).getAllByRole("radio")[1]);
+    await waitFor(() => expect(previewCalls()).toBe(1));
+  });
+
+  it("карточка держателя называет начало его брони, а не начало проверки", async () => {
+    const p = expired();
+    const neededFrom = later(30);
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-plan") ? p : url.endsWith("/return-partial/preview") ? conflictPreview(neededFrom) : {},
+    );
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
+    fireEvent.click(within(stormLine()).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
+    const holder = await within(stormLine()).findByRole("group", { name: "Нужен другой брони: Aputure STORM 400x" });
+    expect(holder).toHaveTextContent(`с ${formatWhen(neededFrom)}`);
+    // Скрыт поиском — кнопка всё равно объясняет, кого ждём.
+    expect(screen.getByText(/Нужно другой брони: «Aputure STORM 400x»/)).toBeInTheDocument();
+  });
+
+  it("другой срок — «под ответственность» спрашивается заново", async () => {
+    const p = expired();
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-plan") ? p : url.endsWith("/return-partial/preview") ? conflictPreview(later(5)) : {},
+    );
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
+    fireEvent.click(within(stormLine()).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
+    const holder = await within(stormLine()).findByRole("group", { name: "Нужен другой брони: Aputure STORM 400x" });
+    fireEvent.click(within(holder).getByRole("button", { name: "Оставить под ответственность" }));
+    const primary = screen.getByRole("button", { name: "Принять 2 позиции" });
+    expect(primary).toBeEnabled();
+    fireEvent.click(within(stormLine()).getAllByRole("radio")[1]);
+    expect(primary).toBeDisabled();
+    const again = await within(stormLine()).findByRole("group", { name: "Нужен другой брони: Aputure STORM 400x" });
+    expect(within(again).getByRole("button", { name: "Оставить под ответственность" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("позицию заняли, пока окно было открыто: 409 при «Принять» — превью пересчитано, появилась карточка держателя", async () => {
+    const p = expired();
+    let conflictNow = false;
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/return-plan")) return p;
+      if (url.endsWith("/return-partial/preview")) {
+        return conflictNow ? conflictPreview(later(5)) : { continuations: [], conflicts: [], parentNegotiatedTotal: null };
+      }
+      conflictNow = true;
+      throw Object.assign(new Error("Позиция «Aputure STORM 400x» нужна брони «Клип Север»"), { code: "CONTINUATION_CONFLICT", status: 409 });
+    });
+    const onClose = vi.fn();
+    open(vi.fn(), onClose);
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
+    fireEvent.click(within(stormLine()).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
+    await waitFor(() => expect(previewCalls()).toBe(1));
+    await new Promise((r) => setTimeout(r, 20));
+    fireEvent.click(screen.getByRole("button", { name: "Принять 2 позиции" }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(expect.stringMatching(/Клип Север/)));
+    expect(await within(stormLine()).findByRole("group", { name: "Нужен другой брони: Aputure STORM 400x" })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

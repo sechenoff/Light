@@ -10,10 +10,12 @@
  *  3. принимает основную бронь тем же путём, что ручное «Вернуть»
  *     (bookingManualStatus) — остальное сразу свободно для других броней.
  *
- * На этом этапе — только в пределах оплаченного: оставленное «по плану»
- * (длинная позиция) или сданное раньше срока стоит 0 ₽. Срок «до» позже
- * оплаченного — 409 CONTINUATION_BEYOND_PAID_NOT_YET (дополнительная смета
- * сверх оплаченного — этап 14).
+ * Оставленное «по плану» (длинная позиция) или сданное раньше срока стоит 0 ₽.
+ * Срок «до» позже оплаченного — лишние смены в дополнительной смете
+ * продолжения (этап 14): та же ставка, скидка брони и надбавка за безнал, что в
+ * основной смете. Если оставленное на эти дни нужно другой брони — 409
+ * CONTINUATION_CONFLICT с держателем; «под ответственность»
+ * (`acknowledgedConflict`) — проходит и пишется в журнал.
  */
 import Decimal from "decimal.js";
 import type { Booking, BookingItem, Estimate, EstimateLine, Prisma } from "@prisma/client";
@@ -28,7 +30,8 @@ import { computeDefaultPaymentDate, continuationContextOf, writeMainEstimateInTx
 import { continuationBilling, paidThroughAt, rootLineCoverage, type ShiftCoverage } from "./continuationPricing";
 import { setBookingIssuedOrReturnedInTx } from "./bookingManualStatus";
 import { recomputeBookingFinance } from "./finance";
-import { linePlannedEnd } from "./availability";
+import { getAvailability, linePlannedEnd } from "./availability";
+import { findHoldersBatch, type AddonConflict } from "./addonAvailability";
 
 /** Длинная позиция «по плану у клиента», если её срок позже этого допуска. */
 const PLANNED_STAY_TOLERANCE_MS = 60 * 60 * 1000;
@@ -37,10 +40,16 @@ export const PARTIAL_RETURN_ERROR_CODES = {
   NOT_ISSUED: "PARTIAL_RETURN_NOT_ISSUED",
   STALE: "PARTIAL_RETURN_STALE",
   BAD_STAY: "PARTIAL_RETURN_BAD_STAY",
-  BEYOND_PAID: "CONTINUATION_BEYOND_PAID_NOT_YET",
   UNITS_REQUIRED: "PARTIAL_RETURN_UNITS_REQUIRED",
   PLANNED_STAY_PENDING: "PLANNED_STAY_PENDING",
+  CONFLICT: "CONTINUATION_CONFLICT",
 } as const;
+
+/**
+ * Срок «до» — не дальше года: опечатка в годе (2062 вместо 2026) в поле даты
+ * иначе дала бы смету на миллионы и бронь, занимающую склад десятилетиями.
+ */
+export const MAX_STAY_AHEAD_MS = 365 * 24 * 60 * 60 * 1000;
 
 type BookingWithItems = Booking & {
   items: BookingItem[];
@@ -186,6 +195,29 @@ export type StayInput = {
   until: string;
   /** Штучная позиция — какие именно единицы остались у клиента. */
   equipmentUnitIds?: string[];
+  /**
+   * Оставить, хотя на дни сверх оплаченного позиция нужна другой брони, —
+   * «под ответственность»: прибор и так у клиента, склад его не удержит.
+   */
+  acknowledgedConflict?: boolean;
+};
+
+/** Оставленное нужно другой брони на дни сверх оплаченного. */
+export type StayConflict = {
+  bookingItemId: string;
+  equipmentId: string;
+  name: string;
+  needed: number;
+  available: number;
+  /** С какого момента проверяли (конец оплаченного или сейчас), ISO. */
+  from: string;
+  until: string;
+  /**
+   * С какого момента позиция нужна другой брони, ISO: начало держателя, но не
+   * раньше начала проверки. Его и показываем — «нужна с ср 12:00».
+   */
+  neededFrom: string;
+  holder: AddonConflict | null;
 };
 
 /** Ставка за смену для продолжения: из строки сметы предка, никогда из строки с 0 смен. */
@@ -270,8 +302,10 @@ export async function splitOffContinuationsInTx(
     paymentDates: ReadonlyMap<number, Date>;
     /** Откуда приёмка — в запись журнала о продолжении (киоск: кто и в какой сессии). */
     auditExtra?: Record<string, string>;
+    /** "collect" — для превью: держатели не останавливают, а возвращаются. */
+    conflictMode?: "throw" | "collect";
   },
-): Promise<string[]> {
+): Promise<{ continuationIds: string[]; conflicts: StayConflict[] }> {
   const { booking, now } = args;
   if (args.stays.length === 0) {
     throw new HttpError(400, "Отметьте, что осталось у клиента", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
@@ -300,20 +334,14 @@ export async function splitOffContinuationsInTx(
     if (!Number.isFinite(until.getTime()) || until.getTime() <= now.getTime()) {
       throw new HttpError(400, "Срок «до» должен быть позже текущего момента", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
     }
+    if (until.getTime() > now.getTime() + MAX_STAY_AHEAD_MS) {
+      throw new HttpError(400, "Срок «до» — не дальше чем через год", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
+    }
     const total = (keptByItem.get(item.id) ?? 0) + s.quantity;
     if (!Number.isInteger(s.quantity) || s.quantity <= 0 || total > item.quantity) {
       throw new HttpError(400, "Оставить можно от 1 до количества позиции", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
     }
     keptByItem.set(item.id, total);
-    const paidThrough = paidThroughAt(itemCoverage(booking, item), booking.skipPartialDay);
-    if (until.getTime() > paidThrough.getTime()) {
-      throw new HttpError(
-        409,
-        `Оставить дольше оплаченного (до ${formatMoscowDayTime(paidThrough)}) пока нельзя — это появится вместе с дополнительной сметой`,
-        PARTIAL_RETURN_ERROR_CODES.BEYOND_PAID,
-        { bookingItemId: item.id, paidThrough: paidThrough.toISOString() },
-      );
-    }
     if (item.equipmentId && eqModes.get(item.equipmentId) === "UNIT") {
       const ids = s.equipmentUnitIds ?? [];
       const own = new Set(live.filter((r) => r.bookingItemId === item.id).map((r) => r.equipmentUnitId));
@@ -341,6 +369,30 @@ export async function splitOffContinuationsInTx(
       }
       for (const id of ids) keptUnitIds.add(id);
     }
+  }
+
+  // ── сверх оплаченного: не нужна ли позиция другой брони ──────────────────
+  const conflicts = await stayConflicts(tx, booking, args.stays, now);
+  // Под ответственность — только если подтвердили каждое оставленное этой
+  // позиции, что выходит за начало конфликта (одна галочка не покрывает
+  // другой срок той же позиции).
+  const unacknowledged = conflicts.filter((c) =>
+    args.stays.some(
+      (s) =>
+        s.bookingItemId === c.bookingItemId &&
+        new Date(s.until).getTime() > Date.parse(c.from) &&
+        s.acknowledgedConflict !== true,
+    ),
+  );
+  if (unacknowledged.length > 0 && (args.conflictMode ?? "throw") === "throw") {
+    const first = unacknowledged[0];
+    const who = first.holder ? ` брони «${first.holder.projectName}»` : " другой брони";
+    throw new HttpError(
+      409,
+      `Позиция «${first.name}» нужна${who} с ${formatMoscowDayTime(new Date(first.neededFrom))} — свободно ${Math.max(0, first.available)} из ${first.needed}. Оставить можно под ответственность.`,
+      PARTIAL_RETURN_ERROR_CODES.CONFLICT,
+      { conflicts: unacknowledged },
+    );
   }
 
   // ── продолжения: по одному на каждый срок «до» ───────────────────────────
@@ -442,12 +494,197 @@ export async function splitOffContinuationsInTx(
           until: new Date(untilMs).toISOString(),
           quantity: stays.reduce((sum, s) => sum + s.quantity, 0),
           ...(args.auditExtra ?? { via: "card" }),
+          // Оставили, хотя позиция нужна другой брони, — «под ответственность».
+          ...(stays.some((s) => s.acknowledgedConflict && conflicts.some((c) => c.bookingItemId === s.bookingItemId))
+            ? {
+                acknowledgedConflict: true,
+                conflictBookingIds: conflicts
+                  .filter((c) => stays.some((s) => s.bookingItemId === c.bookingItemId) && c.holder)
+                  .map((c) => c.holder!.bookingId)
+                  .join(", "),
+              }
+            : {}),
         },
       });
     }
     continuationIds.push(child.id);
   }
-  return continuationIds;
+  return { continuationIds, conflicts };
+}
+
+/**
+ * Не нужна ли оставленная сверх оплаченного позиция другой брони: склад на
+ * дни «конец оплаченного → срок до» без самой основной брони (её позиции
+ * сейчас уходят — часть на склад, часть в продолжение). Дни в пределах
+ * оплаченного не проверяются: их бронь и так держала.
+ */
+async function stayConflicts(
+  tx: Prisma.TransactionClient,
+  booking: BookingWithItems,
+  stays: ReadonlyArray<StayInput>,
+  now: Date,
+): Promise<StayConflict[]> {
+  const itemById = new Map(booking.items.map((i) => [i.id, i]));
+  type Need = { bookingItemId: string; quantity: number; from: Date; until: Date };
+  const byEquipment = new Map<string, Need[]>();
+  for (const s of stays) {
+    const item = itemById.get(s.bookingItemId);
+    if (!item?.equipmentId) continue;
+    const paidThrough = paidThroughAt(itemCoverage(booking, item), booking.skipPartialDay);
+    const until = new Date(s.until);
+    if (until.getTime() <= paidThrough.getTime()) continue;
+    const from = new Date(Math.max(paidThrough.getTime(), now.getTime()));
+    const list = byEquipment.get(item.equipmentId) ?? [];
+    list.push({ bookingItemId: item.id, quantity: s.quantity, from, until });
+    byEquipment.set(item.equipmentId, list);
+  }
+  const out: StayConflict[] = [];
+  for (const [equipmentId, needs] of byEquipment) {
+    // Разные сроки одной позиции: «1 шт до чт + 1 шт до сб» до четверга —
+    // это 2 шт, после — 1. Проверяем по отрезкам между сроками, на каждом —
+    // сколько ещё у клиента.
+    const ends = Array.from(new Set(needs.map((n) => n.until.getTime()))).sort((a, b) => a - b);
+    let segStart = new Date(Math.min(...needs.map((n) => n.from.getTime())));
+    for (const end of ends) {
+      const segEnd = new Date(end);
+      if (segEnd.getTime() <= segStart.getTime()) continue;
+      const involved = needs.filter((n) => n.until.getTime() >= end);
+      const needed = involved.reduce((sum, n) => sum + n.quantity, 0);
+      const [row] = await getAvailability({
+        startDate: segStart,
+        endDate: segEnd,
+        equipmentIds: [equipmentId],
+        excludeBookingId: booking.id,
+        tx,
+      });
+      const available = row?.availableQuantity ?? 0;
+      if (available < needed) {
+        const holders = await findHoldersBatch(tx, {
+          equipmentIds: [equipmentId],
+          start: segStart,
+          end: segEnd,
+          excludeBookingId: booking.id,
+        });
+        const holder = holders.get(equipmentId) ?? null;
+        const neededFrom = holder ? Math.max(Date.parse(holder.from), segStart.getTime()) : segStart.getTime();
+        out.push({
+          bookingItemId: involved[0].bookingItemId,
+          equipmentId,
+          name: row?.equipment.name ?? "Позиция",
+          needed,
+          available,
+          from: segStart.toISOString(),
+          until: segEnd.toISOString(),
+          neededFrom: new Date(neededFrom).toISOString(),
+          holder,
+        });
+        // Одной карточки на позицию достаточно: решают по ней.
+        break;
+      }
+      segStart = segEnd;
+    }
+  }
+  return out;
+}
+
+/** Превью продолжения для окна приёмки: цена дополнительной сметы, держатели. */
+export type ContinuationPreview = {
+  until: string;
+  docNumber: string | null;
+  expectedPaymentDate: string | null;
+  lines: Array<{
+    /** Позиция основной брони, из которой строка (для подписи у строки окна). */
+    bookingItemId: string | null;
+    name: string;
+    quantity: number;
+    billedShifts: number;
+    lineSum: string;
+    /** Сумма строки со скидкой брони (договорная цена — без скидки). */
+    afterDiscount: string;
+    negotiated: boolean;
+  }>;
+  /** Скидка брони, % — та же, что в основной смете. */
+  discountPercent: string;
+  subtotal: string;
+  discountAmount: string;
+  surchargeAmount: string;
+  /** К оплате по продолжению (finalAmount). */
+  total: string;
+};
+
+class PreviewRollback extends Error {
+  constructor(readonly result: { continuations: ContinuationPreview[]; conflicts: StayConflict[] }) {
+    super("preview rollback");
+  }
+}
+
+/**
+ * «Что будет, если принять так»: те же проверки и та же запись, что у
+ * приёмки, в транзакции, которая откатывается. Цена дополнительной сметы
+ * поэтому совпадает с той, что запишется, — до копейки.
+ */
+export async function previewReturnPartial(
+  bookingId: string,
+  stays: StayInput[],
+  now = new Date(),
+): Promise<{ continuations: ContinuationPreview[]; conflicts: StayConflict[]; parentNegotiatedTotal: string | null }> {
+  const paymentDates = await stayPaymentDates(stays);
+  let parentNegotiatedTotal: string | null = null;
+  try {
+    await prisma.$transaction(async (tx) => {
+      const booking = await loadIssued(tx, bookingId);
+      parentNegotiatedTotal = booking.manualFinalAmount != null ? booking.manualFinalAmount.toString() : null;
+      const { continuationIds, conflicts } = await splitOffContinuationsInTx(tx, {
+        booking,
+        stays,
+        now,
+        actorUserId: null,
+        paymentDates,
+        conflictMode: "collect",
+      });
+      const children = await tx.booking.findMany({
+        where: { id: { in: continuationIds } },
+        include: { estimates: { where: { kind: "MAIN" }, include: { lines: true } } },
+        orderBy: { endDate: "asc" },
+      });
+      const discount = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
+      const itemIdOf = (equipmentId: string | null, name: string) =>
+        booking.items.find((i) => (equipmentId ? i.equipmentId === equipmentId : i.customName === name))?.id ?? null;
+      throw new PreviewRollback({
+        conflicts,
+        continuations: children.map((c) => {
+          const est = c.estimates[0];
+          return {
+            until: c.endDate.toISOString(),
+            docNumber: c.docNumber,
+            expectedPaymentDate: c.expectedPaymentDate ? c.expectedPaymentDate.toISOString() : null,
+            lines: (est?.lines ?? []).map((l) => {
+              const negotiated = l.listUnitPrice != null;
+              const sum = new Decimal(l.lineSum.toString());
+              return {
+                bookingItemId: itemIdOf(l.equipmentId, l.nameSnapshot),
+                name: l.nameSnapshot,
+                quantity: l.quantity,
+                billedShifts: l.shifts ?? 0,
+                lineSum: sum.toFixed(2),
+                afterDiscount: (negotiated ? sum : sum.mul(new Decimal(100).sub(discount)).div(100)).toFixed(2),
+                negotiated,
+              };
+            }),
+            discountPercent: discount.toFixed(2),
+            subtotal: est ? est.subtotal.toFixed(2) : "0.00",
+            discountAmount: est ? est.discountAmount.toFixed(2) : "0.00",
+            surchargeAmount: c.surchargeAmount.toFixed(2),
+            total: c.finalAmount.toFixed(2),
+          };
+        }),
+      });
+    }, PARTIAL_RETURN_TX_OPTIONS);
+  } catch (err) {
+    if (err instanceof PreviewRollback) return { ...err.result, parentNegotiatedTotal };
+    throw err;
+  }
+  return { continuations: [], conflicts: [], parentNegotiatedTotal };
 }
 
 /**
@@ -471,7 +708,7 @@ export async function returnPartial(args: {
   return prisma.$transaction(async (tx) => {
     const booking = await loadIssued(tx, args.bookingId);
     await claimSplit(tx, booking.id, args.expectedSplitRevision);
-    const continuationIds = await splitOffContinuationsInTx(tx, {
+    const { continuationIds } = await splitOffContinuationsInTx(tx, {
       booking,
       stays: args.stays,
       now,

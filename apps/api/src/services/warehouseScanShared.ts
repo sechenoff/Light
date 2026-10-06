@@ -171,7 +171,14 @@ export interface CompleteSessionOptions {
    * позициях «по плану» приёмка отказывает (PLANNED_STAY_ON_CARD), а не сдаёт
    * их молча. Пустой массив — «вернули всё», и длинные позиции принимаются.
    */
-  stays?: Array<{ bookingItemId: string; quantity: number; until: string; equipmentUnitIds?: string[] }>;
+  stays?: Array<{
+    bookingItemId: string;
+    quantity: number;
+    until: string;
+    equipmentUnitIds?: string[];
+    /** Нужна другой брони сверх оплаченного — оставить под ответственность. */
+    acknowledgedConflict?: boolean;
+  }>;
   /** `ChecklistState.splitRevision`, на котором построен экран (с `stays`). */
   expectedSplitRevision?: number;
 }

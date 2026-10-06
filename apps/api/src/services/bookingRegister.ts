@@ -284,11 +284,20 @@ export function projectRegisterRow(
   liveScanSession = false,
   family: RegisterFamilyInfo = NO_FAMILY,
 ): BookingRegisterRow {
+  // Отменённая бронь ничего не должна (как в /finance/debts): к взысканию 0,
+  // а внесённое по ней — аванс к распоряжению (возврат или удержание), пока
+  // его не удержали. Иначе отменённое продолжение и любая отменённая бронь
+  // висели бы в реестре долгом «к получению».
+  const cancelled = b.status === "CANCELLED";
   const total = dec(b.finalAmount),
     paid = dec(b.amountPaid),
-    outstanding = dec(b.amountOutstanding);
+    outstanding = cancelled ? new Decimal(0) : dec(b.amountOutstanding);
   const writtenOff = dec(b.writeOffAmount);
-  const credit = Decimal.max(0, paid.sub(total));
+  const credit = cancelled
+    ? b.forfeitedAt
+      ? new Decimal(0)
+      : paid
+    : Decimal.max(0, paid.sub(total));
   const projectSummary = projectState(b);
   let due = outstanding.gt(0) ? b.expectedPaymentDate : null;
   let overdue = due && due < now ? outstanding : new Decimal(0);
@@ -314,6 +323,7 @@ export function projectRegisterRow(
   if (outstanding.gt(0)) financeState = paid.gt(0) ? "PARTIAL" : "UNPAID";
   else if (credit.gt(0)) financeState = "CREDIT";
   else if (writtenOff.gt(0)) financeState = "SETTLED";
+  else if (cancelled && paid.lte(0)) financeState = "NO_CHARGES";
   else if (b.project && !projectSummary?.periodCount)
     financeState = "NO_CHARGES";
   else if (total.lte(0))

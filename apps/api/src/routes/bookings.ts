@@ -8,7 +8,8 @@ import {
   continuationOrigin,
   hasIssuedDescendant,
 } from "../services/bookingFamily";
-import { getReturnPlan, hasPlannedStays, plannedStayPendingError, returnPartial } from "../services/bookingContinuation";
+import { getReturnPlan, hasPlannedStays, plannedStayPendingError, previewReturnPartial, returnPartial } from "../services/bookingContinuation";
+import { cancelContinuation } from "../services/continuationCancel";
 import { listBookingRegister } from "../services/bookingRegister";
 import { getBookingIssues } from "../services/bookingIssues";
 import express from "express";
@@ -334,20 +335,26 @@ const bookingStatusActionSchema = z.object({
   allReturned: z.boolean().optional().default(false),
 });
 
+const staysSchema = z
+  .array(
+    z.object({
+      bookingItemId: z.string().min(1),
+      quantity: z.number().int().positive(),
+      until: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "Некорректная дата"),
+      equipmentUnitIds: z.array(z.string().min(1)).optional(),
+      /** Позиция нужна другой брони на дни сверх оплаченного — оставить под ответственность. */
+      acknowledgedConflict: z.boolean().optional(),
+    }),
+  )
+  .min(1, "Отметьте, что осталось у клиента")
+  .max(100, "Слишком много строк в одной приёмке");
+
 const returnPartialSchema = z.object({
-  stays: z
-    .array(
-      z.object({
-        bookingItemId: z.string().min(1),
-        quantity: z.number().int().positive(),
-        until: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "Некорректная дата"),
-        equipmentUnitIds: z.array(z.string().min(1)).optional(),
-      }),
-    )
-    .min(1, "Отметьте, что осталось у клиента")
-    .max(100, "Слишком много строк в одной приёмке"),
+  stays: staysSchema,
   expectedSplitRevision: z.number().int().min(0),
 });
+
+const returnPartialPreviewSchema = z.object({ stays: staysSchema });
 
 function isSchemaOutOfSyncError(err: unknown): boolean {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
@@ -1109,6 +1116,8 @@ router.patch("/:id", async (req, res, next) => {
       extend: isExtendIssued,
       skipPartialDayChanged:
         body.skipPartialDay !== undefined && body.skipPartialDay !== (existing.skipPartialDay ?? false),
+      startChanged: start.getTime() !== existing.startDate.getTime(),
+      endNotLater: end.getTime() <= existing.endDate.getTime(),
     });
 
     // F4+F5: compute resolved expectedPaymentDate for PATCH
@@ -1783,10 +1792,45 @@ router.get("/:id/return-plan", async (req, res, next) => {
 });
 
 /**
+ * POST /api/bookings/:id/cancel-continuation — продолжение оформили по ошибке:
+ * оставленное вернули вместе с основной бронью. Только руководитель, только
+ * выданное продолжение без оплаты (services/continuationCancel).
+ */
+router.post("/:id/cancel-continuation", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const body = z.object({ reason: z.string().trim().min(3, "Напишите, почему отменяете — хотя бы 3 символа").max(500) }).parse(req.body);
+    const result = await cancelContinuation({
+      bookingId: req.params.id,
+      reason: body.reason,
+      actorUserId: req.adminUser!.userId,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/bookings/:id/return-partial/preview — что будет, если принять так:
+ * дополнительная смета каждого продолжения (лишние смены сверх оплаченного,
+ * скидка, надбавка) и брони, которым оставленное нужно. Ничего не пишет.
+ */
+router.post("/:id/return-partial/preview", async (req, res, next) => {
+  try {
+    const body = returnPartialPreviewSchema.parse(req.body);
+    await assertBookingNotArchived(req.params.id);
+    res.json(await previewReturnPartial(req.params.id, body.stays));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * POST /api/bookings/:id/return-partial — «Принять часть — остальное у
  * клиента»: основная бронь принимается, оставленное переходит в бронь-
- * продолжение (services/bookingContinuation). Пока — только в пределах
- * оплаченного.
+ * продолжение (services/bookingContinuation). Сверх оплаченного — с
+ * дополнительной сметой; нужен другой брони — 409 CONTINUATION_CONFLICT,
+ * пока не подтвердят «под ответственность».
  */
 router.post("/:id/return-partial", async (req, res, next) => {
   try {

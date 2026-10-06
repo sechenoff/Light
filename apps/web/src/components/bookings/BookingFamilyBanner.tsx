@@ -32,9 +32,14 @@ type Props = {
   family: BookingFamily;
   /** Открыть приёмку продолжения прямо с карточки основной брони. */
   onAcceptRest: (continuation: BookingFamily["continuations"][number]) => void;
+  /**
+   * Эта бронь — выданное продолжение, а смотрит руководитель: можно отменить
+   * продолжение, оформленное по ошибке. Не передан — кнопки нет.
+   */
+  onCancelContinuation?: () => void;
 };
 
-export function BookingFamilyBanner({ family, onAcceptRest }: Props) {
+export function BookingFamilyBanner({ family, onAcceptRest, onCancelContinuation }: Props) {
   const out = family.continuations.filter((c) => c.status === "ISSUED");
   return (
     <div className="space-y-2">
@@ -44,9 +49,20 @@ export function BookingFamilyBanner({ family, onAcceptRest }: Props) {
             <span className="font-semibold">Продолжение брони{family.parent.docNumber ? ` ${family.parent.docNumber}` : ""}</span>
             {" · "}часть оборудования осталась у клиента после приёмки основной брони
           </span>
-          <Link href={`/bookings/${family.parent.id}`} className="font-medium text-accent hover:underline">
-            Открыть основную →
-          </Link>
+          <span className="flex flex-wrap items-center gap-3">
+            {onCancelContinuation && (
+              <button
+                type="button"
+                onClick={onCancelContinuation}
+                className="min-h-11 rounded border border-rose-border bg-surface px-3 text-sm text-rose hover:bg-rose-soft sm:min-h-9"
+              >
+                Отменить продолжение
+              </button>
+            )}
+            <Link href={`/bookings/${family.parent.id}`} className="font-medium text-accent hover:underline">
+              Открыть основную →
+            </Link>
+          </span>
         </div>
       )}
       {out.map((c) => (

@@ -423,14 +423,14 @@ async function runCompletion(tx: Prisma.TransactionClient, ctx: CompletionCtx): 
     if (stays.length > 0) {
       const issued = await loadIssued(tx, ctx.bookingId);
       await claimSplit(tx, ctx.bookingId, ctx.options.expectedSplitRevision!);
-      summary.continuationIds = await splitOffContinuationsInTx(tx, {
+      ({ continuationIds: summary.continuationIds } = await splitOffContinuationsInTx(tx, {
         booking: issued,
         stays,
         now: new Date(),
         actorUserId: auditUserId,
         paymentDates: ctx.stayPaymentDates ?? new Map(),
         auditExtra: { via: "kiosk", sessionId: ctx.sessionId, workerName: ctx.completedBy },
-      });
+      }));
     }
     await reconcileReturnUnits(tx, ctx, scans, summary);
     await tx.booking.update({ where: { id: ctx.bookingId }, data: { status: "RETURNED" } });

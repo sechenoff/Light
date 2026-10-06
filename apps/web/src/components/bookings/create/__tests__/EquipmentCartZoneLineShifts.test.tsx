@@ -49,7 +49,9 @@ function row(container: HTMLElement, name: string): HTMLElement {
   return rows.find((r) => r.textContent?.includes(name))!;
 }
 
-beforeEach(() => onChangeLineShifts.mockReset());
+beforeEach(() => {
+  onChangeLineShifts.mockReset();
+});
 
 describe("ячейка «Смен» (компьютер)", () => {
   it("по умолчанию — смены брони; ввод 2 и Enter задают свои смены", () => {

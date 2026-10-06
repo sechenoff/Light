@@ -29,7 +29,9 @@ const item = (over: Partial<CatalogSelectedItem> = {}): CatalogSelectedItem => (
 const cart = (...items: CatalogSelectedItem[]) => new Map(items.map((i) => [i.equipmentId, i]));
 const availability = (available: number) => ({ rows: [{ equipmentId: "storm", availableQuantity: available }] });
 
-beforeEach(() => apiFetchMock.mockReset());
+beforeEach(() => {
+  apiFetchMock.mockReset();
+});
 afterEach(() => vi.useRealTimers());
 
 describe("useLineWindowShortages", () => {
