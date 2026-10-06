@@ -5,6 +5,7 @@ import { HttpError } from "../utils/errors";
 import { writeAuditEntry, diffFields } from "./audit";
 import { releaseBookingUnits } from "./bookings";
 import { closeActiveScanSessions, invalidBookingStateMessage } from "./scanSessionPolicy";
+import { assertFamilyAllowsArchive, assertFamilyAllowsPurge } from "./bookingFamily";
 
 /**
  * Отмена, архивация, восстановление и окончательное удаление брони — единая
@@ -156,6 +157,7 @@ export async function archiveBooking(
       startDate: true,
       endDate: true,
       deletedAt: true,
+      parentBookingId: true,
     },
   });
   if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
@@ -164,6 +166,8 @@ export async function archiveBooking(
   }
 
   const released = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // В транзакции: продолжение могли отделить между чтением и архивацией.
+    await assertFamilyAllowsArchive(tx, existing);
     // Условный updateMany: параллельная архивация между чтением и записью —
     // штатный 409, а не второй аудит и повторное закрытие.
     const claimed = await tx.booking.updateMany({
@@ -270,6 +274,7 @@ export async function purgeBooking(bookingId: string, userId: string): Promise<v
       tx.invoice.count({ where: { bookingId } }),
       tx.payment.count({ where: { bookingId, voidedAt: null } }),
     ]);
+    await assertFamilyAllowsPurge(tx, bookingId);
     if (invoiceCount > 0 || paymentCount > 0) {
       throw new HttpError(
         409,

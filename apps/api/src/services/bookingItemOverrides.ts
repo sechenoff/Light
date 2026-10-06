@@ -70,6 +70,9 @@ export function existingItemsForQuote(
     quantity: number;
     negotiatedRatePerShift?: Numeric | null;
     shifts: number | null;
+    coveredShifts?: number | null;
+    shiftAnchorAt?: Date | null;
+    listRatePerShift?: Numeric | null;
   }>,
 ): QuoteItem[] {
   return items.map((i) => ({
@@ -80,6 +83,11 @@ export function existingItemsForQuote(
     negotiatedRatePerShift:
       i.equipmentId && i.negotiatedRatePerShift != null ? Number(i.negotiatedRatePerShift.toString()) : null,
     shifts: i.equipmentId ? i.shifts ?? null : null,
+    // Покрытие позиции продолжения: превью правки продолжения считает только
+    // смены сверх оплаченного, как и пересборка.
+    coveredShifts: i.equipmentId ? i.coveredShifts ?? null : null,
+    shiftAnchorAt: i.equipmentId ? i.shiftAnchorAt ?? null : null,
+    listRatePerShift: i.equipmentId && i.listRatePerShift != null ? i.listRatePerShift.toString() : null,
   }));
 }
 
@@ -91,6 +99,9 @@ export type QuoteItem = {
   quantity: number;
   negotiatedRatePerShift: number | null;
   shifts: number | null;
+  coveredShifts?: number | null;
+  shiftAnchorAt?: Date | null;
+  listRatePerShift?: string | null;
 };
 
 /**

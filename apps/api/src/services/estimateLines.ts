@@ -11,7 +11,8 @@
  */
 import Decimal from "decimal.js";
 
-import { resolveBookingLinePrice } from "./pricing";
+import { resolveBookingLinePrice, resolveCatalogLinePrice } from "./pricing";
+import { continuationBilling } from "./continuationPricing";
 
 /** Категория своей позиции (вне каталога) в снимке сметы. */
 export const CUSTOM_LINE_CATEGORY = "Произвольная позиция";
@@ -72,6 +73,54 @@ export function catalogEstimateLine(
   };
 }
 
+/** Срок продолжения брони: когда отделили оставленное и до когда его держат. */
+export type ContinuationContext = { splitAt: Date; until: Date; skipPartialDay: boolean };
+
+/**
+ * Строка продолжения брони: выставляются только смены сверх уже оплаченного
+ * (continuationBilling), по ставке, зафиксированной при переносе
+ * (listRatePerShift; договорная — как у предка, без скидки). Всё в пределах
+ * оплаченного — строка 0 ₽ с 0 смен: «оплачено в основной смете». Отдельная
+ * ветка, а не resolveCatalogLinePrice: тот держит минимум одну смену.
+ */
+export function continuationEstimateLine(
+  equipmentId: string,
+  equipment: CatalogEquipment,
+  item: {
+    quantity: number;
+    negotiatedRatePerShift?: Money | null;
+    listRatePerShift?: Money | null;
+    coveredShifts: number;
+    shiftAnchorAt: Date;
+  },
+  ctx: ContinuationContext,
+): EstimateLineDraft {
+  const { billedShifts } = continuationBilling({
+    coverage: { anchorAt: item.shiftAnchorAt, coveredShifts: item.coveredShifts },
+    splitAt: ctx.splitAt,
+    until: ctx.until,
+    skipPartialDay: ctx.skipPartialDay,
+  });
+  const base = {
+    equipmentId,
+    categorySnapshot: equipment.category,
+    nameSnapshot: equipment.name,
+    brandSnapshot: equipment.brand ?? null,
+    modelSnapshot: equipment.model ?? null,
+    quantity: item.quantity,
+  };
+  if (billedShifts === 0) {
+    const zero = new Decimal(0);
+    return { ...base, unitPrice: zero, lineSum: zero, listUnitPrice: null, isNegotiated: false, shifts: 0 };
+  }
+  const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+    ratePerShift: (item.listRatePerShift ?? equipment.rentalRatePerShift).toString(),
+    shifts: billedShifts,
+    negotiatedRatePerShift: item.negotiatedRatePerShift != null ? item.negotiatedRatePerShift.toString() : null,
+  });
+  return { ...base, unitPrice, lineSum: unitPrice.mul(item.quantity), listUnitPrice, isNegotiated, shifts: billedShifts };
+}
+
 /** Своя позиция: фиксированная цена, на смены не умножается. */
 export function customEstimateLine(item: {
   customName: string;
@@ -107,12 +156,19 @@ export function estimateLinesFromBookingItems(
     quantity: number;
     negotiatedRatePerShift?: Money | null;
     shifts?: number | null;
+    coveredShifts?: number | null;
+    shiftAnchorAt?: Date | null;
+    listRatePerShift?: Money | null;
     customName?: string | null;
     customUnitPrice?: Money | null;
     customCategory?: string | null;
   }>,
   bookingShifts: number,
-  opts: { quantityOf?: (item: { equipmentId: string; quantity: number }) => number } = {},
+  opts: {
+    quantityOf?: (item: { equipmentId: string; quantity: number }) => number;
+    /** Бронь — продолжение: позиции с покрытием считаются сверх оплаченного. */
+    continuation?: ContinuationContext | null;
+  } = {},
 ): EstimateLineDraft[] {
   return items.flatMap((it): EstimateLineDraft[] => {
     if (it.equipmentId != null && it.equipment != null) {
@@ -120,16 +176,37 @@ export function estimateLinesFromBookingItems(
         ? opts.quantityOf({ equipmentId: it.equipmentId, quantity: it.quantity })
         : it.quantity;
       if (quantity <= 0) return [];
+      if (opts.continuation && (it.coveredShifts != null) !== (it.shiftAnchorAt != null)) {
+        // Покрытие пишет только сервер и всегда парой: половина — порча данных,
+        // по которой нельзя молча посчитать полную цену уже оплаченного.
+        throw new Error(`Позиция продолжения ${it.equipmentId}: покрытие записано не полностью`);
+      }
+      if (opts.continuation && it.coveredShifts != null && it.shiftAnchorAt != null) {
+        return [
+          continuationEstimateLine(
+            it.equipmentId,
+            it.equipment,
+            { ...it, quantity, coveredShifts: it.coveredShifts, shiftAnchorAt: it.shiftAnchorAt },
+            opts.continuation,
+          ),
+        ];
+      }
       return [catalogEstimateLine(it.equipmentId, it.equipment, { ...it, quantity }, bookingShifts)];
     }
-    return [
-      customEstimateLine({
-        customName: it.customName!,
-        customUnitPrice: it.customUnitPrice!,
-        quantity: it.quantity,
-        customCategory: it.customCategory,
-      }),
-    ];
+    const custom = customEstimateLine({
+      customName: it.customName!,
+      customUnitPrice: it.customUnitPrice!,
+      quantity: it.quantity,
+      customCategory: it.customCategory,
+    });
+    // Своя позиция, перешедшая в продолжение, уже оплачена в основной смете:
+    // её цена фиксированная и по сменам не продлевается — 0 ₽ (доплату, если
+    // нужна, руководитель ставит вручную).
+    if (opts.continuation && it.coveredShifts != null) {
+      const zero = new Decimal(0);
+      return [{ ...custom, unitPrice: zero, lineSum: zero, shifts: 0 }];
+    }
+    return [custom];
   });
 }
 

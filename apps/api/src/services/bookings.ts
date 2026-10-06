@@ -11,9 +11,11 @@ import { computeUnitPriceForBookingPeriod, splitEquipmentDiscount } from "./pric
 import {
   CUSTOM_LINE_CATEGORY,
   catalogEstimateLine,
+  continuationEstimateLine,
   customEstimateLine,
   estimateLineCreateData,
   estimateLinesFromBookingItems,
+  type ContinuationContext,
 } from "./estimateLines";
 import { generateEstimateDocNumber } from "./numberingService";
 import { getAvailability, linePlannedEnd } from "./availability";
@@ -38,6 +40,26 @@ async function computeDefaultPaymentDate(endDate: Date): Promise<Date> {
 }
 
 export { CUSTOM_LINE_CATEGORY };
+
+/**
+ * Срок продолжения брони для расчёта его строк: отделили в момент выдачи
+ * продолжения (оно рождается выданным), держат до конца брони. null — обычная
+ * бронь.
+ */
+export function continuationContextOf(booking: {
+  parentBookingId: string | null;
+  issuedAt: Date | null;
+  startDate: Date;
+  endDate: Date;
+  skipPartialDay: boolean;
+}): ContinuationContext | null {
+  if (booking.parentBookingId == null) return null;
+  return {
+    splitAt: booking.issuedAt ?? booking.startDate,
+    until: booking.endDate,
+    skipPartialDay: booking.skipPartialDay,
+  };
+}
 
 function sumDec(values: Decimal[]) {
   return values.reduce((acc, v) => acc.add(v), new Decimal(0));
@@ -140,9 +162,15 @@ export async function quoteEstimate(args: {
     negotiatedRatePerShift?: number | string | null;
     /** Свои смены позиции «не меньше N»; null — как у брони. */
     shifts?: number | null;
+    /** Позиция продолжения брони: что уже оплачено (см. continuationPricing). */
+    coveredShifts?: number | null;
+    shiftAnchorAt?: Date | null;
+    listRatePerShift?: number | string | null;
   }>;
   transport?: QuoteTransportInput[] | null;
   skipPartialDay?: boolean;
+  /** Бронь — продолжение: позиции с покрытием считаются сверх оплаченного. */
+  continuation?: ContinuationContext | null;
   /** Форма оплаты: «По счёту (ИП)» добавляет надбавку к итогу. По умолчанию — наличные. */
   paymentForm?: PaymentForm | null;
   /** Процент надбавки за безнал; null при CASHLESS → берём дефолт из настроек организации. */
@@ -161,7 +189,15 @@ export async function quoteEstimate(args: {
   const catalogLines: QuoteLine[] = catalogItems.map((item) => {
     const eq = equipmentById.get(item.equipmentId!);
     if (!eq) throw new HttpError(400, `Equipment not found: ${item.equipmentId}`);
-    const line = catalogEstimateLine(eq.id, eq, item, shifts);
+    const line =
+      args.continuation && item.coveredShifts != null && item.shiftAnchorAt != null
+        ? continuationEstimateLine(
+            eq.id,
+            eq,
+            { ...item, coveredShifts: item.coveredShifts, shiftAnchorAt: item.shiftAnchorAt },
+            args.continuation,
+          )
+        : catalogEstimateLine(eq.id, eq, item, shifts);
     const { mode } = computeUnitPriceForBookingPeriod({ equipment: eq, shifts: line.shifts ?? shifts });
     return { ...line, pricingMode: mode, isCustom: false };
   });
@@ -733,10 +769,12 @@ export async function rebuildBookingEstimate(
         : null;
 
     // Позиция целиком добор — в MAIN ей места нет (quantityOf вернёт 0).
+    // Продолжение брони: позиции с покрытием считаются сверх уже оплаченного.
     const lines = estimateLinesFromBookingItems(booking.items, shifts, {
       quantityOf: mainQtyCap
         ? ({ equipmentId, quantity }) => Math.min(quantity, mainQtyCap.get(equipmentId) ?? 0)
         : undefined,
+      continuation: continuationContextOf(booking),
     });
 
     const discountPercent = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
@@ -924,7 +962,9 @@ export async function confirmBooking(bookingId: string) {
 
     const shifts = billableShifts24h(booking.startDate, booking.endDate, booking.skipPartialDay ?? false);
     // Create estimate snapshot (stored together with booking).
-    const lines = estimateLinesFromBookingItems(booking.items, shifts);
+    const lines = estimateLinesFromBookingItems(booking.items, shifts, {
+      continuation: continuationContextOf(booking),
+    });
 
     const discountPercent = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
     const { subtotal, discountAmount, totalAfterDiscount } = splitEquipmentDiscount(lines, discountPercent);

@@ -476,6 +476,17 @@ model Booking {
   /// дни. Используется в /in-work для honest «взято {date}» на карточке.
   issuedAt DateTime?
 
+  /// Продолжение брони: бронь, из которой при приёмке перешло оставленное у
+  /// клиента. Без @relation (как ProblemItem.sourceBookingId) — без пересборки
+  /// таблицы при db push. null — обычная бронь.
+  parentBookingId String?
+  /// Основная бронь цепочки продолжений; у самой основной — null. Одна
+  /// индексированная выборка по всей семье вместо обхода цепочки.
+  rootBookingId   String?
+  /// Сколько раз от брони отделяли продолжение — захват от двойного нажатия
+  /// «Принять часть» и исправления «Часть не вернули».
+  splitRevision   Int     @default(0)
+
   @@index([startDate])
   @@index([endDate])
   @@index([status])
@@ -485,6 +496,8 @@ model Booking {
   /// Композитный индекс: основной фильтр списка броней теперь
   /// `WHERE deletedAt IS NULL ORDER BY startDate DESC`.
   @@index([deletedAt, startDate])
+  @@index([parentBookingId])
+  @@index([rootBookingId])
 }
 
 /// Транспорт брони: одна машина со своими параметрами (per-row).
@@ -629,6 +642,19 @@ model BookingItem {
   /// брони его не обнуляет. Позицию ждут обратно на лишние смены позже конца
   /// брони, и склад держит её до этого срока.
   shifts Int?
+
+  /// Только у позиции продолжения брони: сколько смен этих штук уже оплачено,
+  /// считая от shiftAnchorAt (по сетке 24-часовых смен). Пишет только сервер
+  /// при переносе позиции в продолжение; клиент поле не присылает.
+  coveredShifts Int?
+  /// Начало сетки смен для coveredShifts: у первой волны — начало основной
+  /// брони; если оставленное приняли позже оплаченного срока — момент приёмки
+  /// (опоздание основной брони не тарифицируется).
+  shiftAnchorAt DateTime?
+  /// Прайсовая ставка за смену, зафиксированная при переносе в продолжение
+  /// (из строки сметы предка): дополнительная смета не должна пересчитываться
+  /// по текущему прайсу. null — текущий прайс.
+  listRatePerShift Decimal?
 
   booking Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   equipment Equipment? @relation(fields: [equipmentId], references: [id])
