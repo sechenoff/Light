@@ -309,6 +309,32 @@ export interface ChecklistState {
    * `complete({ itemsVersion })`: состав поменялся — 409 `CHECKLIST_OUTDATED`.
    */
   itemsVersion?: string;
+  /**
+   * Приёмка: позиции «по плану у клиента» — взяты дольше брони, их срок впереди.
+   * Сейчас их не принимают: по «Готово» они уходят в продолжение брони, если их
+   * не «вернули сейчас». Старый сервер поля не шлёт.
+   */
+  plannedStays?: PlannedStay[];
+  /** Ревизия разделения брони — уходит в `complete({ expectedSplitRevision })`. */
+  splitRevision?: number;
+}
+
+/** Позиция «по плану у клиента» в чек-листе приёмки. */
+export interface PlannedStay {
+  bookingItemId: string;
+  /** ISO — до когда позиция у клиента (оплачено). */
+  until: string;
+  quantity: number;
+  /** Живые резервы штучной позиции — уходят в продолжение. */
+  unitIds: string[];
+}
+
+/** Что остаётся у клиента по «Готово» (тело `complete`). */
+export interface StayInput {
+  bookingItemId: string;
+  quantity: number;
+  until: string;
+  equipmentUnitIds?: string[];
 }
 
 // ── Return-flow outcomes ─────────────────────────────────────────────────────
@@ -575,6 +601,14 @@ export interface CompletePayload {
    * устройство сохранило позже) — 409 `DRAFT_OUTDATED`.
    */
   draftRevision?: number;
+  /**
+   * Приёмка: что остаётся у клиента по плану — уходит в продолжение брони.
+   * Пустой массив — «вернули всё». Не передано — старый экран: при позициях
+   * «по плану» сервер ответит 409 `PLANNED_STAY_ON_CARD`.
+   */
+  stays?: StayInput[];
+  /** `ChecklistState.splitRevision` — бронь успели разделить на карточке → 409. */
+  expectedSplitRevision?: number;
 }
 
 // ── Summary / complete response (mirrors GET /summary, POST /complete) ────────
@@ -698,6 +732,8 @@ export interface CompleteResult extends SummaryResult {
   manualFinalAmount?: string | null;
   /** Сколько доборов сделано в этой сессии (строк, где выдали больше исходного). */
   addonsAddedInSession?: number;
+  /** Продолжения брони, куда ушли позиции «по плану у клиента» (приёмка). */
+  continuations?: Array<{ id: string; docNumber: string | null; endDate: string; quantity: number }>;
 }
 
 // ── Mutation results ─────────────────────────────────────────────────────────

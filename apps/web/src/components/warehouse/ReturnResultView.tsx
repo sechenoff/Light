@@ -37,6 +37,7 @@
 
 import type { CompleteResult } from "./types";
 import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
+import { formatStayWhen } from "./PlannedStaysBlock";
 import { pluralize } from "../../lib/format";
 
 /** «Кто оформил: …» под названием брони в шапке итога. */
@@ -94,6 +95,7 @@ export function ReturnResultView({
   const hasMissing = missingCount > 0;
   const needsAttention = hasFailures || hasMissing;
   const completedBy = result.completedBy?.trim() || null;
+  const continuations = result.continuations ?? [];
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -175,6 +177,23 @@ export function ReturnResultView({
               </div>
             )}
           </dl>
+
+          {continuations.length > 0 && (
+            <div className="mt-3 rounded-lg border border-teal-border bg-teal-soft px-3 py-3" data-testid="result-continuations">
+              <p className="text-[13px] font-semibold text-teal">Осталось у клиента → продолжение брони</p>
+              <ul className="mt-1.5 space-y-1">
+                {continuations.map((c) => (
+                  <li key={c.id} className="text-[12.5px] leading-snug text-ink-2">
+                    <span className="font-medium text-ink">{c.docNumber ?? "Продолжение"}</span> · {c.quantity} ед. · до{" "}
+                    {formatStayWhen(c.endDate)} · выдано сразу, без согласования
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11.5px] leading-snug text-ink-3">
+                Уже оплачено в основной смете. Продолжение — во вкладке «В работе»: по нему примут остаток одной кнопкой.
+              </p>
+            </div>
+          )}
 
           {hasMissing && (
             <div className="mt-3 rounded-lg border border-rose-border bg-rose-soft px-3 py-3">
