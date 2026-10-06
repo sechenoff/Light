@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3 · Приёмка в киоске</title>
+<!--
+  МОКАП M3 · КИОСК СКЛАДА · ПРИЁМКА, КОГДА ЧАСТЬ ОСТАЁТСЯ У КЛИЕНТА
+  Основа — текущий чек-лист приёмки (ReturnChecklist, CountSplitRow, UnitRow) и
+  мокапы warehouse-scan/00, 01, 05. Новое: блок «По плану у клиента», исход
+  «Остаётся у клиента», чипы срока, расчёт доп. сметы, карточка держателя.
+  Бронь СМ-2026-0231: 6 позиций, 22 ед. Сегодня вт 13 октября, 10:20. Всё вымышлено.
+  Цвета: бирюзовый — «у клиента» (как статус «Выдана»), индиго — «по плану»
+  (как своё число смен в форме), янтарный — «сверх оплаченного» и держатель.
+-->
+<style>@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");*,:after,:before{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }
+
+/*! tailwindcss v3.4.19 | MIT License | https://tailwindcss.com*/*,:after,:before{box-sizing:border-box;border:0 solid #e5e7eb}:after,:before{--tw-content:""}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:IBM Plex Sans,system-ui,sans-serif;font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:IBM Plex Mono,IBM Plex Sans,ui-monospace,monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0}fieldset,legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::-moz-placeholder,textarea::-moz-placeholder{opacity:1;color:#9ca3af}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}body{font-family:IBM Plex Sans,system-ui,sans-serif;font-size:13.5px;line-height:1.6;--tw-bg-opacity:1;background-color:rgb(var(--c-surface-muted)/var(--tw-bg-opacity,1));--tw-text-opacity:1;color:rgb(var(--c-ink)/var(--tw-text-opacity,1));-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}@supports (-webkit-touch-callout:none){input[type=date],input[type=datetime-local],input[type=month],input[type=time]{-webkit-appearance:none;-moz-appearance:none;appearance:none;min-width:0;max-width:100%}input::-webkit-date-and-time-value{text-align:left;min-height:1.25em}}.eyebrow{font-family:IBM Plex Sans Condensed,system-ui,sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;--tw-text-opacity:1;color:rgb(var(--c-ink-3)/var(--tw-text-opacity,1))}.mono-num{font-family:IBM Plex Mono,IBM Plex Sans,ui-monospace,monospace;font-variant-numeric:tabular-nums}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0}.absolute{position:absolute}.relative{position:relative}.inset-0{inset:0}.bottom-full{bottom:100%}.left-0{left:0}.left-\[22\%\]{left:22%}.right-0{right:0}.right-1{right:.25rem}.right-\[22\%\]{right:22%}.top-0{top:0}.z-10{z-index:10}.col-span-3{grid-column:span 3/span 3}.col-start-2{grid-column-start:2}.col-end-\[-1\]{grid-column-end:-1}.row-start-2{grid-row-start:2}.mx-3{margin-left:.75rem;margin-right:.75rem}.mx-5{margin-left:1.25rem;margin-right:1.25rem}.mx-auto{margin-left:auto;margin-right:auto}.my-3{margin-top:.75rem;margin-bottom:.75rem}.-ml-1{margin-left:-.25rem}.-mr-1{margin-right:-.25rem}.-mr-2{margin-right:-.5rem}.-mt-1{margin-top:-.25rem}.-mt-24{margin-top:-6rem}.mb-0\.5{margin-bottom:.125rem}.mb-1{margin-bottom:.25rem}.mb-1\.5{margin-bottom:.375rem}.mb-2{margin-bottom:.5rem}.mb-2\.5{margin-bottom:.625rem}.mb-3{margin-bottom:.75rem}.ml-0\.5{margin-left:.125rem}.ml-1{margin-left:.25rem}.ml-2{margin-left:.5rem}.ml-3{margin-left:.75rem}.ml-auto{margin-left:auto}.mt-0\.5{margin-top:.125rem}.mt-1{margin-top:.25rem}.mt-1\.5{margin-top:.375rem}.mt-10{margin-top:2.5rem}.mt-12{margin-top:3rem}.mt-2{margin-top:.5rem}.mt-2\.5{margin-top:.625rem}.mt-3{margin-top:.75rem}.mt-4{margin-top:1rem}.mt-5{margin-top:1.25rem}.mt-6{margin-top:1.5rem}.mt-8{margin-top:2rem}.block{display:block}.flex{display:flex}.inline-flex{display:inline-flex}.table{display:table}.grid{display:grid}.inline-grid{display:inline-grid}.hidden{display:none}.h-0\.5{height:.125rem}.h-1{height:.25rem}.h-1\.5{height:.375rem}.h-10{height:2.5rem}.h-11{height:2.75rem}.h-12{height:3rem}.h-16{height:4rem}.h-2{height:.5rem}.h-4{height:1rem}.h-5{height:1.25rem}.h-7{height:1.75rem}.h-8{height:2rem}.h-9{height:2.25rem}.h-\[16px\]{height:16px}.h-\[18px\]{height:18px}.h-\[21px\]{height:21px}.h-\[3px\]{height:3px}.h-full{height:100%}.min-h-10{min-height:2.5rem}.min-h-8{min-height:2rem}.min-h-9{min-height:2.25rem}.min-h-\[36px\]{min-height:36px}.min-h-\[52px\]{min-height:52px}.min-h-screen{min-height:100vh}.w-1\.5{width:.375rem}.w-10{width:2.5rem}.w-11{width:2.75rem}.w-12{width:3rem}.w-14{width:3.5rem}.w-2{width:.5rem}.w-4{width:1rem}.w-5{width:1.25rem}.w-6{width:1.5rem}.w-7{width:1.75rem}.w-8{width:2rem}.w-9{width:2.25rem}.w-\[104px\]{width:104px}.w-\[110px\]{width:110px}.w-\[112px\]{width:112px}.w-\[120px\]{width:120px}.w-\[150px\]{width:150px}.w-\[16px\]{width:16px}.w-\[18px\]{width:18px}.w-\[21px\]{width:21px}.w-\[28px\]{width:28px}.w-\[32px\]{width:32px}.w-\[343px\]{width:343px}.w-\[380px\]{width:380px}.w-\[40px\]{width:40px}.w-\[56px\]{width:56px}.w-\[64px\]{width:64px}.w-\[720px\]{width:720px}.w-\[72px\]{width:72px}.w-\[73\%\]{width:73%}.w-\[794px\]{width:794px}.w-\[96px\]{width:96px}.w-full{width:100%}.min-w-0{min-width:0}.min-w-\[1040px\]{min-width:1040px}.min-w-\[120px\]{min-width:120px}.min-w-\[220px\]{min-width:220px}.min-w-\[260px\]{min-width:260px}.min-w-\[420px\]{min-width:420px}.min-w-\[44px\]{min-width:44px}.min-w-\[48px\]{min-width:48px}.min-w-\[560px\]{min-width:560px}.min-w-\[620px\]{min-width:620px}.min-w-\[680px\]{min-width:680px}.min-w-\[860px\]{min-width:860px}.max-w-\[1040px\]{max-width:1040px}.max-w-\[1240px\]{max-width:1240px}.max-w-\[300px\]{max-width:300px}.max-w-\[375px\]{max-width:375px}.max-w-\[380px\]{max-width:380px}.max-w-\[400px\]{max-width:400px}.max-w-\[520px\]{max-width:520px}.max-w-\[560px\]{max-width:560px}.max-w-\[720px\]{max-width:720px}.max-w-\[760px\]{max-width:760px}.max-w-\[880px\]{max-width:880px}.max-w-sm{max-width:24rem}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}.basis-56{flex-basis:14rem}.table-fixed{table-layout:fixed}.border-collapse{border-collapse:collapse}.resize-none{resize:none}.resize{resize:both}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.grid-cols-5{grid-template-columns:repeat(5,minmax(0,1fr))}.grid-cols-\[1\.5fr_1fr_1fr_1fr\]{grid-template-columns:1.5fr 1fr 1fr 1fr}.grid-cols-\[170px_minmax\(0\2c 1fr\)\]{grid-template-columns:170px minmax(0,1fr)}.grid-cols-\[6px_minmax\(0\2c 1fr\)_auto_auto\]{grid-template-columns:6px minmax(0,1fr) auto auto}.grid-cols-\[auto_auto\]{grid-template-columns:auto auto}.grid-cols-\[auto_minmax\(0\2c 1fr\)\]{grid-template-columns:auto minmax(0,1fr)}.grid-cols-\[minmax\(0\2c 1fr\)_auto\]{grid-template-columns:minmax(0,1fr) auto}.grid-cols-\[minmax\(0\2c 1fr\)_auto_auto\]{grid-template-columns:minmax(0,1fr) auto auto}.flex-col{flex-direction:column}.flex-col-reverse{flex-direction:column-reverse}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-end{align-items:flex-end}.items-center{align-items:center}.items-baseline{align-items:baseline}.justify-end{justify-content:flex-end}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.justify-items-center{justify-items:center}.gap-0\.5{gap:.125rem}.gap-1{gap:.25rem}.gap-1\.5{gap:.375rem}.gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}.gap-5{gap:1.25rem}.gap-6{gap:1.5rem}.gap-x-1\.5{-moz-column-gap:.375rem;column-gap:.375rem}.gap-x-2{-moz-column-gap:.5rem;column-gap:.5rem}.gap-x-2\.5{-moz-column-gap:.625rem;column-gap:.625rem}.gap-x-3{-moz-column-gap:.75rem;column-gap:.75rem}.gap-x-4{-moz-column-gap:1rem;column-gap:1rem}.gap-x-6{-moz-column-gap:1.5rem;column-gap:1.5rem}.gap-y-0\.5{row-gap:.125rem}.gap-y-1{row-gap:.25rem}.gap-y-1\.5{row-gap:.375rem}.gap-y-2{row-gap:.5rem}.space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}.space-y-1\.5>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.375rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.375rem*var(--tw-space-y-reverse))}.space-y-10>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(2.5rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(2.5rem*var(--tw-space-y-reverse))}.space-y-2>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.5rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.5rem*var(--tw-space-y-reverse))}.space-y-3>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.75rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.75rem*var(--tw-space-y-reverse))}.space-y-4>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem*var(--tw-space-y-reverse))}.divide-y>:not([hidden])~:not([hidden]){--tw-divide-y-reverse:0;border-top-width:calc(1px*(1 - var(--tw-divide-y-reverse)));border-bottom-width:calc(1px*var(--tw-divide-y-reverse))}.divide-border>:not([hidden])~:not([hidden]){--tw-divide-opacity:1;border-color:rgb(var(--c-border)/var(--tw-divide-opacity,1))}.self-start{align-self:flex-start}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.truncate{overflow:hidden;text-overflow:ellipsis}.truncate,.whitespace-nowrap{white-space:nowrap}.break-words{overflow-wrap:break-word}.rounded{border-radius:4px}.rounded-\[22px\]{border-radius:22px}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:6px}.rounded-md{border-radius:.375rem}.rounded-b{border-bottom-right-radius:4px;border-bottom-left-radius:4px}.rounded-t{border-top-left-radius:4px;border-top-right-radius:4px}.rounded-t-2xl{border-top-left-radius:1rem;border-top-right-radius:1rem}.border{border-width:1px}.border-2{border-width:2px}.border-x{border-left-width:1px;border-right-width:1px}.border-y{border-top-width:1px}.border-b,.border-y{border-bottom-width:1px}.border-b-0{border-bottom-width:0}.border-l-2{border-left-width:2px}.border-l-4{border-left-width:4px}.border-t{border-top-width:1px}.border-t-2{border-top-width:2px}.\!border-dashed{border-style:dashed!important}.border-dashed{border-style:dashed}.border-accent{--tw-border-opacity:1;border-color:rgb(var(--c-accent)/var(--tw-border-opacity,1))}.border-accent-border{--tw-border-opacity:1;border-color:rgb(var(--c-accent-border)/var(--tw-border-opacity,1))}.border-accent-bright{--tw-border-opacity:1;border-color:rgb(var(--c-accent-bright)/var(--tw-border-opacity,1))}.border-amber{--tw-border-opacity:1;border-color:rgb(var(--c-amber)/var(--tw-border-opacity,1))}.border-amber-border{--tw-border-opacity:1;border-color:rgb(var(--c-amber-border)/var(--tw-border-opacity,1))}.border-border{--tw-border-opacity:1;border-color:rgb(var(--c-border)/var(--tw-border-opacity,1))}.border-border-strong{--tw-border-opacity:1;border-color:rgb(var(--c-border-strong)/var(--tw-border-opacity,1))}.border-emerald-border{--tw-border-opacity:1;border-color:rgb(var(--c-emerald-border)/var(--tw-border-opacity,1))}.border-indigo{--tw-border-opacity:1;border-color:rgb(var(--c-indigo)/var(--tw-border-opacity,1))}.border-indigo-border{--tw-border-opacity:1;border-color:rgb(var(--c-indigo-border)/var(--tw-border-opacity,1))}.border-ink{--tw-border-opacity:1;border-color:rgb(var(--c-ink)/var(--tw-border-opacity,1))}.border-ink-2{--tw-border-opacity:1;border-color:rgb(var(--c-ink-2)/var(--tw-border-opacity,1))}.border-inverse{--tw-border-opacity:1;border-color:rgb(var(--c-inverse)/var(--tw-border-opacity,1))}.border-on-inverse\/30{border-color:rgb(var(--c-on-inverse)/.3)}.border-rose{--tw-border-opacity:1;border-color:rgb(var(--c-rose)/var(--tw-border-opacity,1))}.border-rose-border{--tw-border-opacity:1;border-color:rgb(var(--c-rose-border)/var(--tw-border-opacity,1))}.border-teal{--tw-border-opacity:1;border-color:rgb(var(--c-teal)/var(--tw-border-opacity,1))}.border-teal-border{--tw-border-opacity:1;border-color:rgb(var(--c-teal-border)/var(--tw-border-opacity,1))}.border-transparent{border-color:transparent}.border-b-border-strong{--tw-border-opacity:1;border-bottom-color:rgb(var(--c-border-strong)/var(--tw-border-opacity,1))}.border-l-emerald{--tw-border-opacity:1;border-left-color:rgb(var(--c-emerald)/var(--tw-border-opacity,1))}.border-l-rose{--tw-border-opacity:1;border-left-color:rgb(var(--c-rose)/var(--tw-border-opacity,1))}.border-l-teal{--tw-border-opacity:1;border-left-color:rgb(var(--c-teal)/var(--tw-border-opacity,1))}.bg-accent{--tw-bg-opacity:1;background-color:rgb(var(--c-accent)/var(--tw-bg-opacity,1))}.bg-accent-bright{--tw-bg-opacity:1;background-color:rgb(var(--c-accent-bright)/var(--tw-bg-opacity,1))}.bg-accent-chrome{--tw-bg-opacity:1;background-color:rgb(var(--c-accent-chrome)/var(--tw-bg-opacity,1))}.bg-accent-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-accent-soft)/var(--tw-bg-opacity,1))}.bg-accent-soft\/40{background-color:rgb(var(--c-accent-soft)/.4)}.bg-accent-soft\/50{background-color:rgb(var(--c-accent-soft)/.5)}.bg-amber-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-amber-soft)/var(--tw-bg-opacity,1))}.bg-border-strong{--tw-bg-opacity:1;background-color:rgb(var(--c-border-strong)/var(--tw-bg-opacity,1))}.bg-emerald{--tw-bg-opacity:1;background-color:rgb(var(--c-emerald)/var(--tw-bg-opacity,1))}.bg-emerald-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-emerald-soft)/var(--tw-bg-opacity,1))}.bg-emerald-soft\/30{background-color:rgb(var(--c-emerald-soft)/.3)}.bg-emerald-soft\/60{background-color:rgb(var(--c-emerald-soft)/.6)}.bg-indigo{--tw-bg-opacity:1;background-color:rgb(var(--c-indigo)/var(--tw-bg-opacity,1))}.bg-indigo-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-indigo-soft)/var(--tw-bg-opacity,1))}.bg-indigo-soft\/40{background-color:rgb(var(--c-indigo-soft)/.4)}.bg-inverse{--tw-bg-opacity:1;background-color:rgb(var(--c-inverse)/var(--tw-bg-opacity,1))}.bg-ok-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-ok-soft)/var(--tw-bg-opacity,1))}.bg-on-inverse{--tw-bg-opacity:1;background-color:rgb(var(--c-on-inverse)/var(--tw-bg-opacity,1))}.bg-on-inverse\/15{background-color:rgb(var(--c-on-inverse)/.15)}.bg-on-inverse\/20{background-color:rgb(var(--c-on-inverse)/.2)}.bg-rose{--tw-bg-opacity:1;background-color:rgb(var(--c-rose)/var(--tw-bg-opacity,1))}.bg-rose-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-rose-soft)/var(--tw-bg-opacity,1))}.bg-rose-soft\/30{background-color:rgb(var(--c-rose-soft)/.3)}.bg-rose-soft\/50{background-color:rgb(var(--c-rose-soft)/.5)}.bg-rose-soft\/70{background-color:rgb(var(--c-rose-soft)/.7)}.bg-scrim\/50{background-color:rgb(var(--c-scrim)/.5)}.bg-surface{--tw-bg-opacity:1;background-color:rgb(var(--c-surface)/var(--tw-bg-opacity,1))}.bg-surface-muted{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-muted)/var(--tw-bg-opacity,1))}.bg-surface-subtle{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-subtle)/var(--tw-bg-opacity,1))}.bg-teal{--tw-bg-opacity:1;background-color:rgb(var(--c-teal)/var(--tw-bg-opacity,1))}.bg-teal-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-teal-soft)/var(--tw-bg-opacity,1))}.bg-teal-soft\/20{background-color:rgb(var(--c-teal-soft)/.2)}.bg-teal-soft\/40{background-color:rgb(var(--c-teal-soft)/.4)}.bg-gradient-to-b{background-image:linear-gradient(to bottom,var(--tw-gradient-stops))}.from-rose-soft{--tw-gradient-from:rgb(var(--c-rose-soft)/1) var(--tw-gradient-from-position);--tw-gradient-to:rgb(var(--c-rose-soft)/0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to)}.to-surface{--tw-gradient-to:rgb(var(--c-surface)/1) var(--tw-gradient-to-position)}.p-1{padding:.25rem}.p-2{padding:.5rem}.p-3{padding:.75rem}.p-4{padding:1rem}.p-5{padding:1.25rem}.p-6{padding:1.5rem}.px-1{padding-left:.25rem;padding-right:.25rem}.px-1\.5{padding-left:.375rem;padding-right:.375rem}.px-2{padding-left:.5rem;padding-right:.5rem}.px-2\.5{padding-left:.625rem;padding-right:.625rem}.px-3{padding-left:.75rem;padding-right:.75rem}.px-3\.5{padding-left:.875rem;padding-right:.875rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.px-\[56px\]{padding-left:56px;padding-right:56px}.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.py-1{padding-top:.25rem;padding-bottom:.25rem}.py-1\.5{padding-top:.375rem;padding-bottom:.375rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}.py-2\.5{padding-top:.625rem;padding-bottom:.625rem}.py-3{padding-top:.75rem;padding-bottom:.75rem}.py-4{padding-top:1rem;padding-bottom:1rem}.py-6{padding-top:1.5rem;padding-bottom:1.5rem}.py-\[3px\]{padding-top:3px;padding-bottom:3px}.py-px{padding-top:1px;padding-bottom:1px}.pb-0\.5{padding-bottom:.125rem}.pb-1{padding-bottom:.25rem}.pb-1\.5{padding-bottom:.375rem}.pb-16{padding-bottom:4rem}.pb-2{padding-bottom:.5rem}.pb-2\.5{padding-bottom:.625rem}.pb-3{padding-bottom:.75rem}.pb-4{padding-bottom:1rem}.pb-\[48px\]{padding-bottom:48px}.pl-2{padding-left:.5rem}.pl-3{padding-left:.75rem}.pl-5{padding-left:1.25rem}.pl-6{padding-left:1.5rem}.pl-7{padding-left:1.75rem}.pr-2{padding-right:.5rem}.pr-3{padding-right:.75rem}.pr-4{padding-right:1rem}.pr-5{padding-right:1.25rem}.pt-0\.5{padding-top:.125rem}.pt-1{padding-top:.25rem}.pt-1\.5{padding-top:.375rem}.pt-16{padding-top:4rem}.pt-2{padding-top:.5rem}.pt-2\.5{padding-top:.625rem}.pt-3{padding-top:.75rem}.pt-6{padding-top:1.5rem}.pt-\[52px\]{padding-top:52px}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.align-top{vertical-align:top}.align-middle{vertical-align:middle}.align-\[1px\]{vertical-align:1px}.font-cond{font-family:IBM Plex Sans Condensed,system-ui,sans-serif}.font-mono{font-family:IBM Plex Mono,IBM Plex Sans,ui-monospace,monospace}.font-sans{font-family:IBM Plex Sans,system-ui,sans-serif}.text-2xl{font-size:1.5rem;line-height:2rem}.text-3xl{font-size:1.875rem;line-height:2.25rem}.text-\[10\.5px\]{font-size:10.5px}.text-\[10px\]{font-size:10px}.text-\[11\.5px\]{font-size:11.5px}.text-\[11px\]{font-size:11px}.text-\[12\.5px\]{font-size:12.5px}.text-\[12px\]{font-size:12px}.text-\[13\.5px\]{font-size:13.5px}.text-\[13px\]{font-size:13px}.text-\[14px\]{font-size:14px}.text-\[15px\]{font-size:15px}.text-\[18px\]{font-size:18px}.text-\[21px\]{font-size:21px}.text-\[22px\]{font-size:22px}.text-\[9px\]{font-size:9px}.text-base{font-size:1rem;line-height:1.5rem}.text-lg{font-size:1.125rem;line-height:1.75rem}.text-sm{font-size:.875rem;line-height:1.25rem}.text-xl{font-size:1.25rem;line-height:1.75rem}.text-xs{font-size:.75rem;line-height:1rem}.font-bold{font-weight:700}.font-medium{font-weight:500}.font-normal{font-weight:400}.font-semibold{font-weight:600}.uppercase{text-transform:uppercase}.normal-case{text-transform:none}.tabular-nums{--tw-numeric-spacing:tabular-nums;font-variant-numeric:var(--tw-ordinal) var(--tw-slashed-zero) var(--tw-numeric-figure) var(--tw-numeric-spacing) var(--tw-numeric-fraction)}.leading-5{line-height:1.25rem}.leading-\[1\.35\]{line-height:1.35}.leading-none{line-height:1}.leading-snug{line-height:1.375}.leading-tight{line-height:1.25}.tracking-\[0\.08em\]{letter-spacing:.08em}.tracking-normal{letter-spacing:0}.tracking-tight{letter-spacing:-.025em}.tracking-wide{letter-spacing:.025em}.tracking-wider{letter-spacing:.05em}.\!text-accent{color:rgb(var(--c-accent)/var(--tw-text-opacity,1))!important}.\!text-accent,.\!text-ink{--tw-text-opacity:1!important}.\!text-ink{color:rgb(var(--c-ink)/var(--tw-text-opacity,1))!important}.\!text-ink-2{--tw-text-opacity:1!important;color:rgb(var(--c-ink-2)/var(--tw-text-opacity,1))!important}.\!text-on-inverse\/70{color:rgb(var(--c-on-inverse)/.7)!important}.text-accent{--tw-text-opacity:1;color:rgb(var(--c-accent)/var(--tw-text-opacity,1))}.text-accent-bright{--tw-text-opacity:1;color:rgb(var(--c-accent-bright)/var(--tw-text-opacity,1))}.text-amber{--tw-text-opacity:1;color:rgb(var(--c-amber)/var(--tw-text-opacity,1))}.text-border-strong{--tw-text-opacity:1;color:rgb(var(--c-border-strong)/var(--tw-text-opacity,1))}.text-emerald{--tw-text-opacity:1;color:rgb(var(--c-emerald)/var(--tw-text-opacity,1))}.text-indigo{--tw-text-opacity:1;color:rgb(var(--c-indigo)/var(--tw-text-opacity,1))}.text-ink{--tw-text-opacity:1;color:rgb(var(--c-ink)/var(--tw-text-opacity,1))}.text-ink-2{--tw-text-opacity:1;color:rgb(var(--c-ink-2)/var(--tw-text-opacity,1))}.text-ink-3{--tw-text-opacity:1;color:rgb(var(--c-ink-3)/var(--tw-text-opacity,1))}.text-ok{--tw-text-opacity:1;color:rgb(var(--c-ok)/var(--tw-text-opacity,1))}.text-on-inverse{--tw-text-opacity:1;color:rgb(var(--c-on-inverse)/var(--tw-text-opacity,1))}.text-on-inverse\/70{color:rgb(var(--c-on-inverse)/.7)}.text-on-inverse\/80{color:rgb(var(--c-on-inverse)/.8)}.text-rose{--tw-text-opacity:1;color:rgb(var(--c-rose)/var(--tw-text-opacity,1))}.text-surface{--tw-text-opacity:1;color:rgb(var(--c-surface)/var(--tw-text-opacity,1))}.text-teal{--tw-text-opacity:1;color:rgb(var(--c-teal)/var(--tw-text-opacity,1))}.underline{text-decoration-line:underline}.decoration-dotted{text-decoration-style:dotted}.underline-offset-2{text-underline-offset:2px}.underline-offset-4{text-underline-offset:4px}.accent-accent{accent-color:rgb(var(--c-accent)/1)}.opacity-40{opacity:.4}.opacity-60{opacity:.6}.opacity-70{opacity:.7}.opacity-80{opacity:.8}.shadow-sm{--tw-shadow:0 1px 2px rgba(9,9,11,.05),0 0 0 1px rgba(9,9,11,.02);--tw-shadow-colored:0 1px 2px var(--tw-shadow-color),0 0 0 1px var(--tw-shadow-color)}.shadow-sm,.shadow-xs{box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}.shadow-xs{--tw-shadow:0 1px 0 rgba(9,9,11,.03);--tw-shadow-colored:0 1px 0 var(--tw-shadow-color)}.outline-none{outline:2px solid transparent;outline-offset:2px}.ring-\[3px\]{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow,0 0 #0000)}.ring-accent-soft{--tw-ring-opacity:1;--tw-ring-color:rgb(var(--c-accent-soft)/var(--tw-ring-opacity,1))}.transition-colors{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.\[scrollbar-width\:none\]{scrollbar-width:none}:root{color-scheme:light;--c-ink:9 9 11;--c-ink-2:82 82 91;--c-ink-3:161 161 170;--c-surface:255 255 255;--c-surface-muted:250 250 250;--c-surface-subtle:244 244 245;--c-border:228 228 231;--c-border-strong:212 212 216;--c-accent:30 58 138;--c-accent-bright:29 78 216;--c-accent-soft:239 246 255;--c-accent-border:191 219 254;--c-teal:15 118 110;--c-teal-soft:204 251 241;--c-teal-border:153 246 228;--c-amber:161 98 7;--c-amber-soft:254 243 199;--c-amber-border:253 230 138;--c-rose:159 18 57;--c-rose-soft:255 228 230;--c-rose-border:254 205 211;--c-indigo:67 56 202;--c-indigo-soft:224 231 255;--c-indigo-border:199 210 254;--c-slate:51 65 85;--c-slate-soft:241 245 249;--c-slate-border:203 213 225;--c-emerald:4 120 87;--c-emerald-soft:209 250 229;--c-emerald-border:167 243 208;--c-ok:21 128 61;--c-ok-soft:220 252 231;--c-ok-border:187 247 208;--c-warn:161 98 7;--c-warn-soft:254 249 195;--c-inverse:9 9 11;--c-on-inverse:255 255 255;--c-accent-chrome:30 58 138;--c-scrim:9 9 11}:root[data-theme=dark]{color-scheme:dark;--c-ink:230 232 236;--c-ink-2:155 161 172;--c-ink-3:122 128 138;--c-surface:24 29 39;--c-surface-muted:15 19 27;--c-surface-subtle:32 39 51;--c-border:44 52 64;--c-border-strong:62 71 85;--c-accent:96 148 255;--c-accent-bright:111 160 255;--c-accent-soft:23 36 62;--c-accent-border:47 75 125;--c-teal:45 212 191;--c-teal-soft:12 42 38;--c-teal-border:23 70 64;--c-amber:245 191 66;--c-amber-soft:44 34 10;--c-amber-border:74 58 18;--c-rose:251 138 155;--c-rose-soft:46 18 26;--c-rose-border:77 32 44;--c-indigo:165 180 252;--c-indigo-soft:30 33 60;--c-indigo-border:53 58 98;--c-slate:148 163 184;--c-slate-soft:30 37 49;--c-slate-border:60 72 92;--c-emerald:52 211 153;--c-emerald-soft:13 43 31;--c-emerald-border:30 74 56;--c-ok:74 222 128;--c-ok-soft:15 41 26;--c-ok-border:32 72 46;--c-warn:245 191 66;--c-warn-soft:44 38 10;--c-inverse:51 60 76;--c-on-inverse:237 239 243;--c-accent-chrome:26 42 84;--c-scrim:3 5 9}.placeholder\:text-ink-3::-moz-placeholder{--tw-text-opacity:1;color:rgb(var(--c-ink-3)/var(--tw-text-opacity,1))}.placeholder\:text-ink-3::placeholder{--tw-text-opacity:1;color:rgb(var(--c-ink-3)/var(--tw-text-opacity,1))}.hover\:border-accent-border:hover{--tw-border-opacity:1;border-color:rgb(var(--c-accent-border)/var(--tw-border-opacity,1))}.hover\:border-border-strong:hover{--tw-border-opacity:1;border-color:rgb(var(--c-border-strong)/var(--tw-border-opacity,1))}.hover\:bg-accent-border\/40:hover{background-color:rgb(var(--c-accent-border)/.4)}.hover\:bg-accent-bright:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-accent-bright)/var(--tw-bg-opacity,1))}.hover\:bg-accent-soft\/40:hover{background-color:rgb(var(--c-accent-soft)/.4)}.hover\:bg-emerald-soft:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-emerald-soft)/var(--tw-bg-opacity,1))}.hover\:bg-rose-soft:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-rose-soft)/var(--tw-bg-opacity,1))}.hover\:bg-surface-muted:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-muted)/var(--tw-bg-opacity,1))}.hover\:bg-surface-subtle:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-subtle)/var(--tw-bg-opacity,1))}.hover\:bg-surface-subtle\/50:hover{background-color:rgb(var(--c-surface-subtle)/.5)}.hover\:text-accent:hover{--tw-text-opacity:1;color:rgb(var(--c-accent)/var(--tw-text-opacity,1))}.hover\:text-ink:hover{--tw-text-opacity:1;color:rgb(var(--c-ink)/var(--tw-text-opacity,1))}.hover\:text-rose:hover{--tw-text-opacity:1;color:rgb(var(--c-rose)/var(--tw-text-opacity,1))}.hover\:underline:hover{text-decoration-line:underline}.hover\:decoration-solid:hover{text-decoration-style:solid}.focus\:border-accent:focus{--tw-border-opacity:1;border-color:rgb(var(--c-accent)/var(--tw-border-opacity,1))}.focus\:border-accent-bright:focus{--tw-border-opacity:1;border-color:rgb(var(--c-accent-bright)/var(--tw-border-opacity,1))}.focus\:outline-none:focus{outline:2px solid transparent;outline-offset:2px}.focus-visible\:outline:focus-visible{outline-style:solid}.focus-visible\:outline-2:focus-visible{outline-width:2px}.focus-visible\:outline-accent:focus-visible{outline-color:rgb(var(--c-accent)/1)}.group:hover .group-hover\:text-accent{--tw-text-opacity:1;color:rgb(var(--c-accent)/var(--tw-text-opacity,1))}.dark\:bg-emerald-soft:is([data-theme=dark] *){--tw-bg-opacity:1;background-color:rgb(var(--c-emerald-soft)/var(--tw-bg-opacity,1))}.dark\:bg-rose-soft:is([data-theme=dark] *){--tw-bg-opacity:1;background-color:rgb(var(--c-rose-soft)/var(--tw-bg-opacity,1))}.dark\:bg-teal-soft:is([data-theme=dark] *){--tw-bg-opacity:1;background-color:rgb(var(--c-teal-soft)/var(--tw-bg-opacity,1))}.dark\:hover\:bg-emerald-border\/60:hover:is([data-theme=dark] *){background-color:rgb(var(--c-emerald-border)/.6)}.dark\:hover\:bg-rose-border\/60:hover:is([data-theme=dark] *){background-color:rgb(var(--c-rose-border)/.6)}@media (min-width:640px){.sm\:ml-6{margin-left:1.5rem}.sm\:inline{display:inline}.sm\:h-8{height:2rem}.sm\:max-w-\[360px\]{max-width:360px}.sm\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.sm\:flex-row{flex-direction:row}.sm\:items-end{align-items:flex-end}.sm\:items-center{align-items:center}.sm\:justify-end{justify-content:flex-end}.sm\:justify-between{justify-content:space-between}.sm\:self-auto{align-self:auto}.sm\:p-6{padding:1.5rem}.sm\:p-8{padding:2rem}.sm\:px-5{padding-left:1.25rem;padding-right:1.25rem}.sm\:pt-10{padding-top:2.5rem}.sm\:pt-8{padding-top:2rem}.sm\:text-3xl{font-size:1.875rem;line-height:2.25rem}.sm\:text-4xl{font-size:2.25rem;line-height:2.5rem}}@media (min-width:768px){.md\:col-span-2{grid-column:span 2/span 2}.md\:hidden{display:none}.md\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.md\:flex-row{flex-direction:row}.md\:items-center{align-items:center}.md\:self-auto{align-self:auto}.md\:text-right{text-align:right}}@media (min-width:1024px){.lg\:mt-4{margin-top:1rem}.lg\:hidden{display:none}.lg\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.lg\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.lg\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.lg\:grid-cols-5{grid-template-columns:repeat(5,minmax(0,1fr))}.lg\:flex-row{flex-direction:row}.lg\:items-end{align-items:flex-end}.lg\:justify-between{justify-content:space-between}}@media (min-width:1280px){.xl\:mt-4{margin-top:1rem}.xl\:hidden{display:none}.xl\:h-8{height:2rem}.xl\:w-8{width:2rem}.xl\:grid-cols-\[794px_minmax\(0\2c 1fr\)\]{grid-template-columns:794px minmax(0,1fr)}}.\[\&\:\:-webkit-scrollbar\]\:hidden::-webkit-scrollbar{display:none}</style>
+</head>
+<body class="min-h-screen bg-surface-muted">
+<!-- Общая шапка мокапов: переход между M1–M5 и переключатель темы. Не часть интерфейса. -->
+<header class="border-b border-border bg-surface">
+  <div class="mx-auto flex max-w-[1240px] items-center gap-2 px-4 py-2">
+    <nav aria-label="Мокапы" class="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <a data-nav href="index.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">Все мокапы</a>
+      <a data-nav href="m1-form-shifts.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M1 · Форма</a>
+      <a data-nav href="m2-smeta-documents.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M2 · Сметы</a>
+      <a data-nav href="m3-kiosk-return.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M3 · Киоск</a>
+      <a data-nav href="m4-return-dialog.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M4 · Окно приёмки</a>
+      <a data-nav href="m5-booking-family.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M5 · Семья броней</a>
+    </nav>
+    <button id="themeBtn" type="button" class="inline-flex min-h-9 shrink-0 items-center rounded border border-border bg-surface px-3 text-xs font-medium text-ink-2 hover:bg-surface-subtle">Ночная тема</button>
+  </div>
+</header>
+<script>
+(() => {
+  const here = location.pathname.split("/").pop() || "index.html";
+  document.querySelectorAll("[data-nav]").forEach((a) => {
+    if (a.getAttribute("href") === here) a.classList.add("bg-accent-soft", "!text-accent", "font-semibold");
+  });
+  const btn = document.getElementById("themeBtn");
+  const label = () => { btn.textContent = document.documentElement.dataset.theme === "dark" ? "Светлая тема" : "Ночная тема"; };
+  try { const saved = localStorage.getItem("lr:mockup-theme"); if (saved === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) {}
+  label();
+  btn.addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("lr:mockup-theme", next); } catch (e) {}
+    label();
+  });
+  new MutationObserver(label).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>
+
+
+<main class="mx-auto max-w-[1240px] px-4 pb-16 pt-6 sm:pt-8">
+  <p class="eyebrow">Мокап M3 · киоск склада</p>
+  <h1 class="mt-1 font-cond text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Приёмка, когда часть остаётся у клиента</h1>
+  <p class="mt-2 max-w-[760px] text-sm text-ink-2">Обычная приёмка не меняется: «Принять всё разом» и «Готово». Новое появляется, только если у брони есть позиции по плану или кладовщик сам отметил «Остаётся у клиента». Оставленное уходит в продолжение брони со своей сметой — кладовщик видит цену сразу, до нажатия.</p>
+
+  <div class="mt-8 flex flex-wrap items-start gap-5">
+
+    <!-- ═════════════ ЭКРАН 1 · ЧЕК-ЛИСТ ═════════════ -->
+    <section aria-labelledby="k1" class="w-full max-w-[380px]">
+      <p class="eyebrow">Экран 1</p>
+      <h2 id="k1" class="mt-1 text-[15px] font-semibold text-ink">Чек-лист: по плану, «остаётся», держатель</h2>
+      <div class="mt-3 overflow-hidden rounded-[22px] border border-border-strong bg-surface-muted shadow-sm">
+        <header class="bg-accent-chrome px-4 py-3 text-on-inverse">
+          <div class="flex items-center gap-3">
+            <span class="-ml-1 flex h-9 w-9 items-center justify-center rounded text-lg leading-none text-on-inverse/80">←</span>
+            <div class="min-w-0 flex-1">
+              <p class="eyebrow !text-on-inverse/70">Приёмка · вт 13 октября, 10:20</p>
+              <div class="flex min-w-0 items-center gap-2">
+                <h3 class="truncate text-[15px] font-semibold leading-snug">Реклама кофейни «Зерно»</h3>
+              </div>
+              <p class="truncate text-[12px] text-on-inverse/70">Продакшн «Сфера» · 22 ед. · бронь до вт 10:00</p>
+            </div>
+          </div>
+          <div class="mt-2 h-1 overflow-hidden rounded-full bg-on-inverse/20"><div class="h-full w-[73%] bg-on-inverse"></div></div>
+        </header>
+
+        <div class="space-y-3 px-3 pb-4 pt-3">
+          <div class="flex min-h-[36px] items-center gap-3 px-1">
+            <p class="text-[11px] text-ink-3">Черновик сохранён · 10:21</p>
+            <button type="button" class="ml-auto inline-flex h-9 items-center rounded border border-border bg-surface px-3 text-[12px] font-medium text-ink-2">Прервать</button>
+          </div>
+
+          <!-- По плану у клиента -->
+          <section class="overflow-hidden rounded-lg border border-indigo-border bg-surface">
+            <div class="flex items-center justify-between gap-2 border-b border-indigo-border bg-indigo-soft px-3 py-2">
+              <p class="text-[13px] font-semibold text-indigo">По плану у клиента до ср 10:00 · оплачено</p>
+              <span class="mono-num shrink-0 text-[12px] font-semibold text-indigo">3 ед.</span>
+            </div>
+            <p class="px-3 pt-2 text-[11.5px] leading-snug text-ink-2">Взяты на 2 смены. Сейчас их не принимаем — перейдут в продолжение за 0 ₽. Привезли раньше — «Вернули сейчас».</p>
+
+            <div class="space-y-2 border-b border-border px-3 py-2.5">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="text-[13px] font-medium text-ink">Aputure STORM 400x</p>
+                  <p class="text-[11px] text-ink-3">2 прибора · по плану</p>
+                </div>
+                <button type="button" class="inline-flex h-10 shrink-0 items-center rounded border border-emerald-border bg-surface px-3 text-[12px] font-semibold text-emerald">✓ Вернули сейчас</button>
+              </div>
+              <div class="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-1" role="radiogroup" aria-label="До какого срока остаётся">
+                  <button type="button" role="radio" aria-checked="true" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-accent-bright bg-accent-soft font-semibold text-accent">до конца оплаченного</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+1 смена</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+2 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">дата…</button>
+                </div>
+              <p class="text-[11.5px] text-ink-2">Вернут <b class="font-semibold text-ink">ср 14 окт., 10:00</b> · без доплаты</p>
+            </div>
+
+            <div class="space-y-2 px-3 py-2.5">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="text-[13px] font-medium text-ink">Nanlux Evoke 1200</p>
+                  <p class="text-[11px] text-ink-3">1 прибор · по плану</p>
+                </div>
+                <button type="button" class="inline-flex h-10 shrink-0 items-center rounded border border-emerald-border bg-surface px-3 text-[12px] font-semibold text-emerald">✓ Вернули сейчас</button>
+              </div>
+              <div class="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-1" role="radiogroup" aria-label="До какого срока остаётся">
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">до конца оплаченного</button>
+                  <button type="button" role="radio" aria-checked="true" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-accent-bright bg-accent-soft font-semibold text-accent">+1 смена</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+2 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">дата…</button>
+                </div>
+              <p class="text-[11.5px] text-ink-2">Вернут <b class="font-semibold text-ink">чт 15 окт., 10:00</b> · <span class="text-amber">сверх оплаченного +1 смена → <span class="whitespace-nowrap">3 500 ₽ со скидкой</span></span></p>
+
+              <!-- Держатель -->
+              <div class="rounded-md border border-amber-border bg-amber-soft px-3 py-2.5">
+                <p class="text-[12.5px] font-semibold text-amber">Нужен брони Петрова со ср 12:00</p>
+                <p class="mt-0.5 text-[12px] leading-snug text-ink-2">Клип «Ночной рейс». Других свободных Evoke 1200 на ср нет. Клиент сам договорился — склад не запрещает.</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button type="button" class="inline-flex h-10 items-center rounded border border-amber bg-surface px-3 text-[12.5px] font-semibold text-amber">Оставить под ответственность</button>
+                  <button type="button" class="inline-flex h-10 items-center rounded border border-border bg-surface px-3 text-[12.5px] text-ink-2">Только до ср 10:00</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <button type="button" class="block w-full rounded-lg bg-accent-bright px-4 py-3 text-center text-sm font-semibold text-surface">✓ Принять всё, кроме оставленного</button>
+
+          <section>
+            <p class="eyebrow px-1.5 pb-1 pt-1">COB Light</p>
+            <!-- COUNT: часть остаётся -->
+            <div class="rounded-lg border border-l-4 border-border border-l-teal bg-teal-soft/20 p-3">
+              <div class="mb-2 flex items-start justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-[13px] font-semibold text-ink">Aputure LS 60x</p>
+                  <p class="mt-0.5 text-[11px] text-ink-3">все 4 отмечены</p>
+                </div>
+                <div class="flex shrink-0 gap-1">
+                  <span class="rounded-full bg-emerald-soft px-2 py-0.5 text-[11px] font-semibold text-emerald">✓ 2</span>
+                  <span class="rounded-full bg-teal-soft px-2 py-0.5 text-[11px] font-semibold text-teal">у клиента 2</span>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" disabled class="h-10 rounded border border-emerald-border bg-emerald px-3 text-[12px] font-semibold text-surface opacity-40">✓ Принять 1</button>
+                <button type="button" disabled class="h-10 rounded border border-amber-border bg-surface px-3 text-[12px] font-semibold text-amber opacity-40">🔧 Ремонт 1</button>
+                <button type="button" disabled class="h-10 rounded border border-rose-border bg-surface px-3 text-[12px] font-semibold text-rose opacity-40">✗ Проблема 1</button>
+              </div>
+              <div class="mt-3 space-y-2 border-t border-border pt-3">
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                  <span class="text-[12.5px] font-semibold text-teal">Остаётся у клиента:</span>
+                  <span class="inline-flex items-center overflow-hidden rounded border border-teal-border bg-surface">
+                    <button type="button" aria-label="Меньше" class="flex h-10 w-10 items-center justify-center text-ink-2">−</button>
+                    <span class="flex h-10 w-9 items-center justify-center border-x border-teal-border font-mono text-[13px] font-semibold text-teal">2</span>
+                    <button type="button" aria-label="Больше" class="flex h-10 w-10 items-center justify-center text-ink-2">+</button>
+                  </span>
+                  
+                </div>
+                <div class="grid grid-cols-4 gap-1" role="radiogroup" aria-label="До какого срока остаётся">
+                  <button type="button" role="radio" aria-checked="true" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-accent-bright bg-accent-soft font-semibold text-accent">+1 смена</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+2 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+3 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">дата…</button>
+                </div>
+                <p class="text-[11.5px] text-ink-2">Вернут <b class="font-semibold text-ink">ср 14 окт., 10:00</b> · оплачено было до вт 10:00 · <span class="text-amber">2 шт × 1 смена → <span class="whitespace-nowrap">1 200 ₽ со скидкой</span></span></p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <p class="eyebrow px-1.5 pb-1 pt-1">LED</p>
+            <!-- UNIT: 4-й исход -->
+            <div class="rounded-lg border border-teal-border bg-surface px-2.5 py-2">
+              <div class="flex items-center gap-2">
+                <div class="min-w-0 flex-1">
+                  <p class="text-[13px] leading-tight text-ink">Astera Titan Tube, комплект</p>
+                  <p class="mt-0.5 text-[11px] text-ink-3">комплект 1 из 1</p>
+                </div>
+                <div class="flex shrink-0 gap-1">
+                  <button type="button" aria-label="Принято" class="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface-muted text-[13px] text-ink-2">✓</button>
+                  <button type="button" aria-label="Ремонт" class="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface-muted text-[13px]">🔧</button>
+                  <button type="button" aria-label="Проблема" class="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface-muted text-[13px] text-ink-2">✗</button>
+                  <button type="button" aria-label="Остаётся у клиента" aria-pressed="true" class="flex h-10 w-10 items-center justify-center rounded border border-teal bg-teal text-[13px] text-surface">⏳</button>
+                </div>
+              </div>
+              <div class="mt-2 space-y-2 border-t border-dashed border-teal-border pt-2">
+                <p class="text-[12.5px] font-semibold text-teal">Остаётся у клиента до…</p>
+                <div class="grid grid-cols-4 gap-1" role="radiogroup" aria-label="До какого срока остаётся">
+                  <button type="button" role="radio" aria-checked="true" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-accent-bright bg-accent-soft font-semibold text-accent">+1 смена</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+2 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+3 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">дата…</button>
+                </div>
+                <p class="text-[11.5px] text-ink-2">Вернут <b class="font-semibold text-ink">ср 14 окт., 10:00</b> · <span class="text-amber">1 смена → <span class="whitespace-nowrap">6 000 ₽, договорная</span> цена без скидки</span></p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <p class="eyebrow px-1.5 pb-1 pt-1">Грип</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between gap-2 rounded-lg border border-l-4 border-border border-l-emerald bg-emerald-soft/30 px-3 py-2.5">
+                <div class="min-w-0"><p class="truncate text-[13px] font-semibold text-ink">Зажим Super Clamp с пальцем</p><button type="button" class="mt-0.5 inline-flex min-h-8 items-center text-[11.5px] text-teal underline decoration-dotted underline-offset-2">Остаётся у клиента…</button></div>
+                <span class="shrink-0 rounded-full bg-emerald-soft px-2 py-0.5 text-[11px] font-semibold text-emerald">✓ 6</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 rounded-lg border border-l-4 border-border border-l-emerald bg-emerald-soft/30 px-3 py-2.5">
+                <div class="min-w-0"><p class="truncate text-[13px] font-semibold text-ink">Стойка C-Stand 40"</p><button type="button" class="mt-0.5 inline-flex min-h-8 items-center text-[11.5px] text-teal underline decoration-dotted underline-offset-2">Остаётся у клиента…</button></div>
+                <span class="shrink-0 rounded-full bg-emerald-soft px-2 py-0.5 text-[11px] font-semibold text-emerald">✓ 8</span>
+              </div>
+            </div>
+          </section>
+        </div>
+        <nav aria-label="Разделы склада" class="grid grid-cols-5 border-t border-border bg-surface">
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача</a>
+  <a href="#" aria-current="page" class="relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-accent-bright"><span class="absolute left-[22%] right-[22%] top-0 h-0.5 rounded-b bg-accent-bright"></span><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+</nav>
+
+      </div>
+    </section>
+
+    <!-- ═════════════ ЭКРАН 2 · ЦЕНА И ФУТЕР ═════════════ -->
+    <section aria-labelledby="k2" class="w-full max-w-[380px]">
+      <p class="eyebrow">Экран 2 · прокручено вниз</p>
+      <h2 id="k2" class="mt-1 text-[15px] font-semibold text-ink">Цена дополнительной сметы и «Принять 16 ед.»</h2>
+      <div class="mt-3 overflow-hidden rounded-[22px] border border-border-strong bg-surface-muted shadow-sm">
+        <div class="space-y-3 px-3 pb-4 pt-3">
+          <div class="flex items-center justify-between gap-2 rounded-lg border border-l-4 border-border border-l-emerald bg-emerald-soft/30 px-3 py-2.5 opacity-70">
+            <p class="truncate text-[13px] font-semibold text-ink">Стойка C-Stand 40"</p>
+            <span class="shrink-0 rounded-full bg-emerald-soft px-2 py-0.5 text-[11px] font-semibold text-emerald">✓ 8</span>
+          </div>
+
+          <section class="overflow-hidden rounded-lg border border-border bg-surface">
+            <div class="border-b border-border bg-surface-subtle px-3 py-2">
+              <p class="eyebrow">Дополнительная смета</p>
+              <p class="mt-0.5 text-[13px] font-semibold text-ink">Продолжение СМ-2026-0231-1</p>
+            </div>
+            <dl class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 px-3 py-2.5 text-[12.5px]">
+              <dt class="text-ink-2">Aputure STORM 400x · 2 шт <span class="block text-[11px] text-indigo">по плану, оплачено</span></dt><dd class="mono-num text-right text-ink-3">0</dd>
+              <dt class="text-ink-2">Nanlux Evoke 1200 · +1 смена</dt><dd class="mono-num text-right text-ink">7 000</dd>
+              <dt class="text-ink-2">Aputure LS 60x · 2 шт × 1 смена</dt><dd class="mono-num text-right text-ink">2 400</dd>
+              <dt class="text-ink-2">Astera Titan Tube · 1 смена <span class="block text-[11px] text-indigo">договорная, без скидки</span></dt><dd class="mono-num text-right text-ink">6 000</dd>
+              <dt class="text-ink-2">Скидка брони 50 %</dt><dd class="mono-num text-right text-rose">−4 700</dd>
+              <dt class="text-ink-2">Безналичный расчёт +9 %</dt><dd class="mono-num text-right text-ink">963</dd>
+              <dt class="border-t border-border pt-2 font-semibold text-ink">К оплате</dt><dd class="mono-num border-t border-border pt-2 text-right text-[15px] font-bold text-ink">11 663 ₽</dd>
+            </dl>
+            <p class="border-t border-border px-3 py-2 text-[11.5px] text-ink-3">Ставки, скидка и надбавка — как в основной смете. Оплата — до 20 окт.</p>
+          </section>
+        </div>
+
+        <!-- Липкий футер -->
+        <div class="border-t border-border bg-surface px-3 py-3">
+          <dl class="mb-2.5 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 text-[12.5px]">
+            <dt class="text-ink-2">Принимаем на склад</dt><dd class="text-right font-semibold text-emerald">16 ед.</dd>
+            <dt class="text-ink-2">Остаются у клиента</dt><dd class="text-right font-semibold text-teal">6 ед. · 4 позиции</dd>
+            <dt class="text-ink-2">Оставлено под ответственность</dt><dd class="text-right font-semibold text-amber">Evoke 1200</dd>
+          </dl>
+          <p class="mb-2.5 rounded-md border border-border bg-surface-subtle px-3 py-2 text-[11.5px] leading-snug text-ink-2">Основная бронь закроется как «Возвращена частично». Оставленное перейдёт в продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span>.</p>
+          <button type="button" class="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-surface">Принять 16 ед.</button>
+        </div>
+        <nav aria-label="Разделы склада" class="grid grid-cols-5 border-t border-border bg-surface">
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача</a>
+  <a href="#" aria-current="page" class="relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-accent-bright"><span class="absolute left-[22%] right-[22%] top-0 h-0.5 rounded-b bg-accent-bright"></span><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+</nav>
+
+      </div>
+    </section>
+
+    <!-- ═════════════ ЭКРАН 3 · ИТОГ ═════════════ -->
+    <section aria-labelledby="k3" class="w-full max-w-[380px]">
+      <p class="eyebrow">Экран 3</p>
+      <h2 id="k3" class="mt-1 text-[15px] font-semibold text-ink">Итог: осталось у клиента → продолжение</h2>
+      <div class="mt-3 overflow-hidden rounded-[22px] border border-border-strong bg-surface-muted shadow-sm">
+        <header class="bg-accent-chrome px-4 py-3 text-on-inverse">
+          <p class="eyebrow !text-on-inverse/70">Приёмка завершена · 10:24</p>
+          <h3 class="truncate text-[15px] font-semibold leading-snug">Реклама кофейни «Зерно»</h3>
+          <p class="text-[12px] text-on-inverse/70">Продакшн «Сфера» · принял Иван</p>
+        </header>
+        <div class="space-y-3 px-3 pb-4 pt-3">
+          <div class="rounded-lg border border-emerald-border bg-emerald-soft px-3 py-3">
+            <p class="text-[15px] font-semibold text-emerald">✓ Принято 16 ед.</p>
+            <p class="mt-0.5 text-[12px] text-ink-2">Уже свободно для других броней. Основная бронь СМ-2026-0231 — «Возвращена частично».</p>
+          </div>
+
+          <section class="overflow-hidden rounded-lg border border-teal-border bg-surface">
+            <div class="border-b border-teal-border bg-teal-soft/40 px-3 py-2 dark:bg-teal-soft">
+              <p class="text-[13px] font-semibold text-teal">Осталось у клиента → продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span></p>
+              <p class="text-[11.5px] text-ink-2">4 позиции · 6 ед. · выдано сразу, без согласования</p>
+            </div>
+            <ul class="divide-y divide-border text-[12.5px]">
+              <li class="flex items-start justify-between gap-2 px-3 py-2"><span class="min-w-0 text-ink">Aputure STORM 400x · 2<span class="block text-[11px] text-indigo">по плану, оплачено</span></span><span class="mono-num shrink-0 text-right text-ink-2">ср 10:00</span></li>
+              <li class="flex items-start justify-between gap-2 px-3 py-2"><span class="min-w-0 text-ink">Nanlux Evoke 1200 · 1<span class="block text-[11px] text-amber">+1 смена · под ответственность</span></span><span class="mono-num shrink-0 text-right text-ink-2">чт 10:00</span></li>
+              <li class="flex items-start justify-between gap-2 px-3 py-2"><span class="min-w-0 text-ink">Aputure LS 60x · 2 из 4<span class="block text-[11px] text-ink-3">+1 смена</span></span><span class="mono-num shrink-0 text-right text-ink-2">ср 10:00</span></li>
+              <li class="flex items-start justify-between gap-2 px-3 py-2"><span class="min-w-0 text-ink">Astera Titan Tube · 1<span class="block text-[11px] text-ink-3">+1 смена</span></span><span class="mono-num shrink-0 text-right text-ink-2">ср 10:00</span></li>
+            </ul>
+            <div class="flex items-baseline justify-between gap-2 border-t border-border bg-surface-subtle px-3 py-2">
+              <span class="text-[12.5px] text-ink-2">Дополнительная смета · до 20 окт.</span>
+              <span class="mono-num text-[14px] font-bold text-ink">11 663 ₽</span>
+            </div>
+          </section>
+
+          <p class="px-1 text-[12px] text-ink-3">Продолжение уже во вкладке «В работе»: по нему примут остаток одной кнопкой.</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" class="inline-flex h-11 items-center justify-center rounded-lg border border-border bg-surface px-3 text-[13px] font-medium text-ink">К возвратам</button>
+            <button type="button" class="inline-flex h-11 items-center justify-center rounded-lg border border-teal bg-teal px-3 text-[13px] font-semibold text-surface">В работе →</button>
+          </div>
+        </div>
+        <nav aria-label="Разделы склада" class="grid grid-cols-5 border-t border-border bg-surface">
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача</a>
+  <a href="#" aria-current="page" class="relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-accent-bright"><span class="absolute left-[22%] right-[22%] top-0 h-0.5 rounded-b bg-accent-bright"></span><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+</nav>
+
+      </div>
+    </section>
+
+    <!-- ═════════════ ЭКРАН 4 · ЗАБЫЛИ НА ПЛОЩАДКЕ ═════════════ -->
+    <section aria-labelledby="k4" class="w-full max-w-[380px]">
+      <p class="eyebrow">Экран 4 · другой случай</p>
+      <h2 id="k4" class="mt-1 text-[15px] font-semibold text-ink">«Забыли на площадке — без оплаты»</h2>
+      <div class="mt-3 overflow-hidden rounded-[22px] border border-border-strong bg-surface-muted shadow-sm">
+        <div class="space-y-3 px-3 pb-4 pt-3">
+          <p class="eyebrow px-1.5 pt-1">Грип</p>
+          <div class="rounded-lg border border-l-4 border-border border-l-rose bg-rose-soft/30 p-3">
+            <div class="mb-2 flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-[13px] font-semibold text-ink">Стойка C-Stand 40"</p>
+                <p class="mt-0.5 text-[11px] text-ink-3">все 8 отмечены</p>
+              </div>
+              <div class="flex shrink-0 gap-1">
+                <span class="rounded-full bg-emerald-soft px-2 py-0.5 text-[11px] font-semibold text-emerald">✓ 7</span>
+                <span class="rounded-full bg-rose-soft px-2 py-0.5 text-[11px] font-semibold text-rose">✗ 1</span>
+              </div>
+            </div>
+            <div class="space-y-2 border-t border-border pt-3">
+              <p class="text-[11px] font-semibold text-rose">✗ Проблема (на 1 шт)</p>
+              <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Причина">
+                <button type="button" role="radio" aria-checked="true" class="inline-flex h-10 items-center rounded-full border border-rose bg-rose px-3 text-[12px] font-semibold text-surface">Забыли на площадке — без оплаты</button>
+                <button type="button" role="radio" aria-checked="false" class="inline-flex h-10 items-center rounded-full border border-rose-border bg-surface px-3 text-[12px] text-rose">Потерян</button>
+                <button type="button" role="radio" aria-checked="false" class="inline-flex h-10 items-center rounded-full border border-rose-border bg-surface px-3 text-[12px] text-rose">Сломан безвозвратно</button>
+                <button type="button" role="radio" aria-checked="false" class="inline-flex h-10 items-center rounded-full border border-rose-border bg-surface px-3 text-[12px] text-rose">Украден</button>
+              </div>
+              <textarea rows="2" aria-label="Комментарий" class="w-full resize-none rounded border border-border-strong bg-surface px-2.5 py-1.5 text-[13px] text-ink">Осталась на площадке, гафер привезёт в четверг</textarea>
+              <label class="flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-2">Когда привезут
+                <span class="inline-flex h-10 items-center rounded border border-border bg-surface px-3 font-mono text-[12.5px] text-ink">15.10.2026</span></label>
+              <p class="text-[11.5px] text-rose">→ в «Потеряшки» со статусом «Ждём». Денег не начисляем.</p>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-border bg-surface p-3 text-[12.5px]">
+            <p class="font-semibold text-ink">Чем отличается от «Остаётся у клиента»</p>
+            <ul class="mt-1.5 space-y-1.5 text-ink-2">
+              <li><span class="font-semibold text-teal">Остаётся у клиента</span> — клиент работает дальше. Продолжение брони, дополнительная смета, срок возврата.</li>
+              <li><span class="font-semibold text-rose">Забыли на площадке</span> — случайно, никто не работает. Потеряшка «Ждём», без денег. Раньше называлось «Оставлен на площадке», и его путали с первым.</li>
+            </ul>
+          </div>
+        </div>
+        <nav aria-label="Разделы склада" class="grid grid-cols-5 border-t border-border bg-surface">
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача</a>
+  <a href="#" aria-current="page" class="relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-accent-bright"><span class="absolute left-[22%] right-[22%] top-0 h-0.5 rounded-b bg-accent-bright"></span><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе</a>
+  <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+</nav>
+
+      </div>
+    </section>
+  </div>
+
+  <!-- ═════════════ РЕШЕНИЯ ═════════════ -->
+  <section id="decisions" class="mt-12">
+    <p class="eyebrow">Решения по мокапу</p>
+    <div class="mt-3 grid gap-3 lg:grid-cols-3">
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Обычная приёмка — как сейчас</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">Нет позиций по плану и никто не нажал «Остаётся у клиента» — экран не меняется: «Принять всё разом» и «Готово». Блок «По плану» появляется только у броней с такими позициями. У строк по количеству — тихая ссылка «Остаётся у клиента…», которая раскрывает степпер.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Чипы срока</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">У позиций по плану первый чип — «до конца оплаченного». У остальных оплачено только до конца брони, который уже прошёл, поэтому их ряд начинается с «+1 смена». Выбранный чип показывает дату; «дата…» открывает календарь. Сумма за лишние смены видна сразу под строкой.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Держатель — предупреждение, не запрет</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">Прибор и так у клиента, склад его не удержит. Карточка называет бронь, которой он нужен, и даёт два выхода: «Оставить под ответственность» (пишется в журнал) или срок «до ср 10:00». Кнопка внизу считает единицы: «Принять 16 ед.», а не «Завершить приёмку».</p>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

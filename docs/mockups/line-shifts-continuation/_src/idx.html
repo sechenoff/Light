@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Смены и продолжение брони</title>
+<!-- Оглавление мокапов M1–M5 к docs/features/2026-10-06-line-shifts-continuation.md -->
+<style>/*__TAILWIND__*/</style>
+</head>
+<body class="min-h-screen bg-surface-muted">
+<!--@include chrome-->
+
+<main class="mx-auto max-w-[1040px] px-4 pb-16 pt-6 sm:pt-10">
+  <p class="eyebrow">Мокапы · 06.10.2026</p>
+  <h1 class="mt-1 font-cond text-3xl font-semibold tracking-tight text-ink sm:text-4xl">Смены по позиции и продолжение брони</h1>
+  <p class="mt-3 max-w-[720px] text-sm text-ink-2">Позицию можно взять на больше смен, чем всю бронь. Если при возврате часть осталась у клиента, основная бронь закрывается как «Возвращена частично», а оставленное переходит в продолжение со своим номером, сметой и оплатой. Правила — в <span class="font-mono text-[12.5px]">docs/features/2026-10-06-line-shifts-continuation.md</span>.</p>
+
+  <ol class="mt-8 grid gap-3 md:grid-cols-2">
+    <li>
+      <a href="m1-form-shifts.html" class="group flex h-full flex-col rounded-lg border border-border bg-surface p-4 shadow-xs transition-colors hover:border-accent-border hover:bg-accent-soft/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+        <span class="flex items-center gap-2"><span class="rounded bg-accent px-1.5 py-0.5 font-mono text-[11px] font-semibold text-surface">M1</span><span class="text-[15px] font-semibold text-ink group-hover:text-accent">Форма брони: колонка «Смен»</span></span>
+        <span class="mt-1.5 text-[13px] text-ink-2">Поле в ячейке на компьютере, чип «1 см» и шторка со степпером на телефоне. Своё значение, «↺ как у брони», своя позиция «—», нехватка на день.</span>
+      </a>
+    </li>
+    <li>
+      <a href="m2-smeta-documents.html" class="group flex h-full flex-col rounded-lg border border-border bg-surface p-4 shadow-xs transition-colors hover:border-accent-border hover:bg-accent-soft/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+        <span class="flex items-center gap-2"><span class="rounded bg-accent px-1.5 py-0.5 font-mono text-[11px] font-semibold text-surface">M2</span><span class="text-[15px] font-semibold text-ink group-hover:text-accent">Смета и дополнительная смета</span></span>
+        <span class="mt-1.5 text-[13px] text-ink-2">Листы A4: основная смета с колонкой «Смен» по условию и «Смен по брони» в шапке; дополнительная смета продолжения с 0 ₽ «оплачено в основной смете». Как это выглядит в XLSX.</span>
+      </a>
+    </li>
+    <li>
+      <a href="m3-kiosk-return.html" class="group flex h-full flex-col rounded-lg border border-border bg-surface p-4 shadow-xs transition-colors hover:border-accent-border hover:bg-accent-soft/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+        <span class="flex items-center gap-2"><span class="rounded bg-accent px-1.5 py-0.5 font-mono text-[11px] font-semibold text-surface">M3</span><span class="text-[15px] font-semibold text-ink group-hover:text-accent">Киоск: приёмка с «Остаётся у клиента»</span></span>
+        <span class="mt-1.5 text-[13px] text-ink-2">Блок «По плану у клиента», степпер у строки по количеству, четвёртый исход у штучной, чипы срока, цена доп. сметы, держатель, «Принять 16 ед.», итог и «Забыли на площадке — без оплаты».</span>
+      </a>
+    </li>
+    <li>
+      <a href="m4-return-dialog.html" class="group flex h-full flex-col rounded-lg border border-border bg-surface p-4 shadow-xs transition-colors hover:border-accent-border hover:bg-accent-soft/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+        <span class="flex items-center gap-2"><span class="rounded bg-accent px-1.5 py-0.5 font-mono text-[11px] font-semibold text-surface">M4</span><span class="text-[15px] font-semibold text-ink group-hover:text-accent">Окно «Принять возврат»</span></span>
+        <span class="mt-1.5 text-[13px] text-ink-2">Заполнено по плану — «Принять 53 позиции»; «Вернули не всё» с ценой и держателем; договорной итог; приёмка уже открыта в киоске; исправление «Часть не вернули». Модальное окно и шторка.</span>
+      </a>
+    </li>
+    <li class="md:col-span-2">
+      <a href="m5-booking-family.html" class="group flex h-full flex-col rounded-lg border border-border bg-surface p-4 shadow-xs transition-colors hover:border-accent-border hover:bg-accent-soft/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+        <span class="flex items-center gap-2"><span class="rounded bg-accent px-1.5 py-0.5 font-mono text-[11px] font-semibold text-surface">M5</span><span class="text-[15px] font-semibold text-ink group-hover:text-accent">Семья броней: основная и продолжение</span></span>
+        <span class="mt-1.5 text-[13px] text-ink-2">Баннер «Возвращена частично» и общий итог на основной брони, карточка продолжения с «Отменить продолжение», вложенная строка реестра с заливкой по оплате, «В работе» в киоске, личный кабинет и платёж «Разнести по продолжениям».</span>
+      </a>
+    </li>
+  </ol>
+
+  <section class="mt-10 grid gap-3 md:grid-cols-2">
+    <div class="rounded-lg border border-border bg-surface p-4">
+      <p class="eyebrow">Сюжет 1 · M1, M4</p>
+      <p class="mt-1 text-sm font-semibold text-ink">СМ-2026-0244 · Сериал «Северный ветер», 3-й блок</p>
+      <p class="mt-1 text-[13px] text-ink-2">55 позиций, 1 смена: пн 12 окт. 10:00 → вт 13 окт. 10:00. Две позиции на 2 смены — до ср 10:00. Возврат вт 14:20, с опозданием.</p>
+    </div>
+    <div class="rounded-lg border border-border bg-surface p-4">
+      <p class="eyebrow">Сюжет 2 · M2, M3, M5</p>
+      <p class="mt-1 text-sm font-semibold text-ink">СМ-2026-0231 · Реклама кофейни «Зерно»</p>
+      <p class="mt-1 text-[13px] text-ink-2">7 позиций (одна своя), та же 1 смена, скидка 50 %, по счёту +9 %, итог 28 340 ₽. При возврате у клиента остались 4 позиции → продолжение СМ-2026-0231-1 на 11 663 ₽.</p>
+    </div>
+  </section>
+
+  <p class="mt-8 text-[12.5px] text-ink-3">Первые эскизы к плану — <a href="sketch-v0.html" class="text-accent underline decoration-dotted underline-offset-2">sketch-v0.html</a>. Снимки 375 / 768 / 1024 / 1440 и ночная тема — в папке <span class="font-mono">_shots/</span>. Клиенты, суммы и реквизиты вымышлены.</p>
+</main>
+</body>
+</html>
