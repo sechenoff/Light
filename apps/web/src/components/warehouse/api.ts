@@ -26,6 +26,7 @@
  */
 
 import { CHECKLIST_DRAFT_LIMITS, SCAN_ERROR } from "./types";
+import type { KioskStaysPreview } from "./kioskStays";
 import type {
   AddItemResult,
   AddonEstimateView,
@@ -35,6 +36,7 @@ import type {
   ChecklistDraftV1,
   CompletePayload,
   CompleteResult,
+  StayInput,
   ChecklistState,
   AddonResult,
   InWorkBooking,
@@ -754,6 +756,18 @@ export function complete(
   );
 }
 
+/**
+ * POST /api/warehouse/sessions/:id/stays-preview — цена дополнительной сметы
+ * за оставленное сверх оплаченного и брони, которым оставленное нужно.
+ * Ничего не записывает.
+ */
+export function staysPreview(sessionId: string, stays: StayInput[]): Promise<KioskStaysPreview> {
+  return request<KioskStaysPreview>(`/api/warehouse/sessions/${sessionId}/stays-preview`, {
+    method: "POST",
+    body: { stays },
+  });
+}
+
 export interface CancelSessionOptions {
   /** Зачем прерываем; без причины сервер пишет «прервана в киоске». */
   reason?: KioskCancelReason;
@@ -916,6 +930,7 @@ export const scanApi = {
   deletePhoto,
   getSummary,
   complete,
+  staysPreview,
   cancel,
   getAddonEstimate,
   addonEstimatePdfUrl,

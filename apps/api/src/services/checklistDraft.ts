@@ -77,6 +77,16 @@ const returnGridSchema = z.object({
   slots: z.array(returnSlotSchema).max(MAX_GRID_SLOTS),
 });
 
+/** «Остаётся у клиента» строки: что и до когда (этап 15). */
+const returnStaySchema = z.object({
+  quantity: z.number().int().min(0).max(MAX_DRAFT_QTY),
+  unitIds: z.array(z.string().max(64)).max(MAX_GRID_SLOTS),
+  until: z.string().max(40),
+  choice: z.union([z.enum(["paid", "date"]), z.literal(1), z.literal(2), z.literal(3)]),
+  acknowledged: z.boolean().optional(),
+  planned: z.boolean().optional(),
+});
+
 /**
  * Черновик чек-листа v1. Лишние поля отбрасываются (tolerant reader): старый
  * планшет не должен ломать сохранение, если форма расширится.
@@ -91,6 +101,7 @@ export const checklistDraftSchema = z.object({
       // Не строже, чем /complete (целое ≥ 0): иначе одно показание, которое
       // «Готово» примет, сорвало бы сохранение всего черновика приёмки.
       mileages: z.record(draftKey, z.number().min(0).max(Number.MAX_SAFE_INTEGER).nullable()).optional(),
+      stays: z.record(draftKey, returnStaySchema).optional(),
     })
     .optional(),
 });
@@ -113,7 +124,8 @@ function countDraftKeys(d: ChecklistDraftV1): number {
     size(d.issue?.rows) +
     size(d.return?.units) +
     size(d.return?.grids) +
-    size(d.return?.mileages)
+    size(d.return?.mileages) +
+    size(d.return?.stays)
   );
 }
 

@@ -553,18 +553,38 @@ describe("киоск", () => {
     expect(await prisma.booking.count({ where: { parentBookingId: b.id } })).toBe(0);
   });
 
+  it("киоск: превью оставленного сверх оплаченного — цена; срок оплаты строк в чек-листе", async () => {
+    const b = await issuedBooking();
+    const session = await returnSession(b.id);
+    const { getChecklistState } = await import("../services/checklistService");
+    const state = await getChecklistState(session.id);
+    // Стойка оплачена до конца брони, STORM «по плану» — на сутки позже.
+    expect(state.linePaidThrough[itemOf(b, stand).id]).toBe(b.endDate.toISOString());
+    expect(state.linePaidThrough[itemOf(b, storm).id]).toBe(new Date(b.endDate.getTime() + DAY).toISOString());
+    const stays = [{ bookingItemId: itemOf(b, stand).id, quantity: 2, until: new Date(b.endDate.getTime() + DAY).toISOString() }];
+    const res = await request(app).post(`/api/warehouse/sessions/${session.id}/stays-preview`).set(AUTH()).send({ stays });
+    expect(res.status).toBe(200);
+    // 2 стойки × 500 × 1 лишняя смена, скидка 50 %.
+    expect(res.body.continuations[0]).toMatchObject({ total: "500.00" });
+    expect((await prisma.booking.findUnique({ where: { id: b.id } })).status).toBe("ISSUED");
+    const issue = await prisma.scanSession.create({ data: { bookingId: b.id, workerName: "Иван", operation: "ISSUE", status: "ACTIVE" } });
+    const refused = await request(app).post(`/api/warehouse/sessions/${issue.id}/stays-preview`).set(AUTH()).send({ stays });
+    expect(refused.status).toBe(409);
+  });
+
   it("киоск: дольше оплаченного — продолжение с дополнительной сметой", async () => {
     const b = await issuedBooking();
     const session = await returnSession(b.id);
-    const { completeSession } = await import("../services/warehouseScan");
     // STORM по плану оплачен до конца брони + сутки; ещё двое суток — 2 лишние смены.
     const later = new Date(b.endDate.getTime() + 3 * DAY).toISOString();
-    const summary = await completeSession(session.id, {
-      stays: [{ bookingItemId: itemOf(b, storm).id, quantity: 2, until: later }],
-      expectedSplitRevision: 0,
-    });
-    const child = await prisma.booking.findUnique({ where: { id: summary.continuationIds[0] } });
-    // 1000 × 2 смены × 2 шт = 4000, скидка брони 50 %.
+    const res = await request(app)
+      .post(`/api/warehouse/sessions/${session.id}/complete`)
+      .set(AUTH())
+      .send({ stays: [{ bookingItemId: itemOf(b, storm).id, quantity: 2, until: later }], expectedSplitRevision: 0 });
+    expect(res.status).toBe(200);
+    // 1000 × 2 смены × 2 шт = 4000, скидка брони 50 % — экран итога называет доплату.
+    expect(res.body.continuations).toEqual([expect.objectContaining({ quantity: 2, finalAmount: "2000.00" })]);
+    const child = await prisma.booking.findUnique({ where: { id: res.body.continuations[0].id } });
     expect(Number(child.finalAmount)).toBe(2000);
   });
 

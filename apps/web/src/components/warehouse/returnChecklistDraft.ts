@@ -20,6 +20,7 @@
 import { CHECKLIST_DRAFT_LIMITS, isChecklistDraftV1 } from "./types";
 import { matchDraftEntries } from "./useChecklistDraft";
 import type {
+  ReturnDraftStay,
   ChecklistDraftV1,
   ChecklistItem,
   ProblemDraft,
@@ -143,6 +144,8 @@ export function buildReturnDraft(args: {
   outcomes: OutcomeMap;
   unitGrids: UnitGridMap;
   mileages: readonly VehicleMileageEntry[];
+  /** «Остаётся у клиента» по строкам (ключ — bookingItemId). */
+  stays?: Record<string, ReturnDraftStay>;
 }): ChecklistDraftV1 {
   const units: Record<string, ReturnDraftUnit> = {};
   const grids: Record<string, ReturnDraftGrid> = {};
@@ -169,6 +172,9 @@ export function buildReturnDraft(args: {
     for (const m of args.mileages) mileages[m.vehicleId] = m.mileage;
     draft.return = { units, grids, mileages };
   }
+  // Без «остаётся у клиента» перезагрузка планшета вернула бы строку
+  // целиком: оставленное молча стало бы «принятым».
+  if (args.stays && Object.keys(args.stays).length > 0) draft.return = { ...draft.return!, stays: { ...args.stays } };
   return draft;
 }
 
@@ -256,6 +262,8 @@ export interface HydratedReturn {
   toUncheck: string[];
   /** Восстановлено хоть что-то из черновика. */
   restoredAny: boolean;
+  /** «Остаётся у клиента» из черновика — только по строкам, что есть в брони. */
+  stays: Record<string, ReturnDraftStay>;
 }
 
 /**
@@ -322,6 +330,17 @@ export function hydrateReturnDraft(
     }
   }
 
+  const stays: Record<string, ReturnDraftStay> = {};
+  for (const [id, st] of Object.entries(ret?.stays ?? {})) {
+    const item = visible.find((i) => i.bookingItemId === id);
+    if (!item || !st || typeof st.until !== "string" || Number.isNaN(Date.parse(st.until))) continue;
+    const unitIds = Array.isArray(st.unitIds) ? st.unitIds.filter((u) => (item.units ?? []).some((x) => x.unitId === u)) : [];
+    const quantity = item.trackingMode === "UNIT" && item.units ? unitIds.length : Math.min(Math.max(0, Math.floor(st.quantity)), item.quantity);
+    if (!Number.isFinite(quantity)) continue;
+    stays[id] = { ...st, quantity, unitIds };
+    restoredAny = true;
+  }
+
   return {
     outcomes,
     unitGrids,
@@ -331,5 +350,6 @@ export function hydrateReturnDraft(
     toCheck,
     toUncheck,
     restoredAny,
+    stays,
   };
 }

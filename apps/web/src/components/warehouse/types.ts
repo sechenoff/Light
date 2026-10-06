@@ -107,6 +107,20 @@ export interface ReturnDraftGrid {
 }
 
 /**
+ * «Остаётся у клиента» строки приёмки: что и до когда. `planned` — строка
+ * «по плану у клиента» (её срок продлили чипами), иначе — «Остаётся у
+ * клиента…» у обычной строки.
+ */
+export interface ReturnDraftStay {
+  quantity: number;
+  unitIds: string[];
+  until: string;
+  choice: "paid" | "date" | 1 | 2 | 3;
+  acknowledged?: boolean;
+  planned?: boolean;
+}
+
+/**
  * Черновик чек-листа, который киоск хранит на сервере
  * (`ScanSession.draftJson`). Контракт 2.5 плана; zod-схема — в
  * `apps/api/src/services/checklistService.ts` (`checklistDraftSchema`).
@@ -121,6 +135,8 @@ export interface ChecklistDraftV1 {
     units: Record<string, ReturnDraftUnit>;
     grids: Record<string, ReturnDraftGrid>;
     mileages?: Record<string, number | null>;
+    /** «Остаётся у клиента» по строкам — ключ `bookingItemId`. */
+    stays?: Record<string, ReturnDraftStay>;
   };
 }
 
@@ -142,6 +158,7 @@ export function isChecklistDraftV1(value: unknown): value is ChecklistDraftV1 {
     const r = value.return;
     if (!isPlainObject(r) || !isPlainObject(r.units) || !isPlainObject(r.grids)) return false;
     if (r.mileages !== undefined && !isPlainObject(r.mileages)) return false;
+    if (r.stays !== undefined && !isPlainObject(r.stays)) return false;
   }
   return true;
 }
@@ -317,6 +334,8 @@ export interface ChecklistState {
   plannedStays?: PlannedStay[];
   /** Ревизия разделения брони — уходит в `complete({ expectedSplitRevision })`. */
   splitRevision?: number;
+  /** Приёмка: до когда оплачена строка (ISO), bookingItemId → срок. */
+  linePaidThrough?: Record<string, string>;
 }
 
 /** Позиция «по плану у клиента» в чек-листе приёмки. */
@@ -335,6 +354,8 @@ export interface StayInput {
   quantity: number;
   until: string;
   equipmentUnitIds?: string[];
+  /** Нужна другой брони сверх оплаченного — оставить «под ответственность». */
+  acknowledgedConflict?: boolean;
 }
 
 // ── Return-flow outcomes ─────────────────────────────────────────────────────
@@ -733,7 +754,14 @@ export interface CompleteResult extends SummaryResult {
   /** Сколько доборов сделано в этой сессии (строк, где выдали больше исходного). */
   addonsAddedInSession?: number;
   /** Продолжения брони, куда ушли позиции «по плану у клиента» (приёмка). */
-  continuations?: Array<{ id: string; docNumber: string | null; endDate: string; quantity: number }>;
+  continuations?: Array<{
+    id: string;
+    docNumber: string | null;
+    endDate: string;
+    quantity: number;
+    /** Дополнительная смета продолжения; «0.00» — всё в пределах оплаченного. Нет у старого сервера. */
+    finalAmount?: string;
+  }>;
 }
 
 // ── Mutation results ─────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import { prisma } from "../prisma";
 import { warehouseAuth } from "../middleware/warehouseAuth";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { HttpError } from "../utils/errors";
+import { previewReturnPartial } from "../services/bookingContinuation";
 import { writeAuditEntry, diffFields } from "../services/audit";
 import {
   createSession,
@@ -597,6 +598,15 @@ const vehicleMileageEntrySchema = z.object({
   mileage: z.number().int().min(0),
 });
 
+/** Что остаётся у клиента — общая строка для «Готово» и превью доплаты. */
+const kioskStaySchema = z.object({
+  bookingItemId: z.string().min(1),
+  quantity: z.number().int().positive(),
+  until: z.string().datetime(),
+  equipmentUnitIds: z.array(z.string().min(1)).max(500).optional(),
+  acknowledgedConflict: z.boolean().optional(),
+});
+
 const completeSessionBodySchema = z.object({
   repairUnits: z.array(repairUnitSchema).optional(),
   problemUnits: z.array(problemUnitSchema).optional(),
@@ -613,19 +623,8 @@ const completeSessionBodySchema = z.object({
   // которых построен чек-лист. Обе необязательны — старый JS на планшетах их не шлёт.
   itemsVersion: z.string().min(1).max(64).optional(),
   draftRevision: z.number().int().min(0).optional(),
-  // Приёмка: позиции «по плану», которые остаются у клиента, — в продолжение.
-  stays: z
-    .array(
-      z.object({
-        bookingItemId: z.string().min(1),
-        quantity: z.number().int().positive(),
-        until: z.string().datetime(),
-        equipmentUnitIds: z.array(z.string().min(1)).max(500).optional(),
-        acknowledgedConflict: z.boolean().optional(),
-      }),
-    )
-    .max(200)
-    .optional(),
+  // Приёмка: что остаётся у клиента (по плану и сверх оплаченного), — в продолжение.
+  stays: z.array(kioskStaySchema).max(200).optional(),
   expectedSplitRevision: z.number().int().min(0).optional(),
 }).optional();
 
@@ -679,7 +678,7 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       continuationIds.length > 0
         ? await prisma.booking.findMany({
             where: { id: { in: continuationIds } },
-            select: { id: true, docNumber: true, endDate: true, items: { select: { quantity: true } } },
+            select: { id: true, docNumber: true, endDate: true, finalAmount: true, items: { select: { quantity: true } } },
             orderBy: { endDate: "asc" },
           })
         : [];
@@ -728,6 +727,8 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
         docNumber: c.docNumber,
         endDate: c.endDate.toISOString(),
         quantity: c.items.reduce((sum, i) => sum + i.quantity, 0),
+        // Дополнительная смета: 0 — всё в пределах оплаченного.
+        finalAmount: new Decimal(c.finalAmount.toString()).toFixed(2),
       })),
     });
   } catch (err) {
@@ -902,6 +903,27 @@ warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req,
     // брони, а не плановые даты (выданное заранее и просроченное уже у клиента).
     const results = await searchAddonCandidates({ bookingId: session.bookingId, q, issuingNow: true });
     res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/warehouse/sessions/:id/stays-preview — что будет, если оставить у
+ * клиента так: цена дополнительной сметы каждого продолжения и брони, которым
+ * оставленное нужно. Та же запись, что «Готово», в откатываемой транзакции.
+ */
+const staysPreviewBodySchema = z.object({
+  stays: z.array(kioskStaySchema).min(1).max(200),
+});
+warehouseScanRouter.post("/sessions/:id/stays-preview", warehouseAuth, async (req, res, next) => {
+  try {
+    const { stays } = staysPreviewBodySchema.parse(req.body);
+    const { session } = await assertSessionWritable(prisma, req.params.id);
+    if (session.operation !== "RETURN") {
+      throw new HttpError(409, "Оставить у клиента можно только на приёмке", "INVALID_SPLIT");
+    }
+    res.json(await previewReturnPartial(session.bookingId, stays));
   } catch (err) {
     next(err);
   }
