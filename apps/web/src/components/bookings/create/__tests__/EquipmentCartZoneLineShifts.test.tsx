@@ -6,7 +6,7 @@
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EquipmentCartZone, computeCartTotal } from "../EquipmentCartZone";
-import { longLinesSummary, parseShiftsInput, sanitizeLineShifts } from "../lineShifts";
+import { formatDueBy, formatDueLong, longLinesSummary, parseShiftsInput, sanitizeLineShifts } from "../lineShifts";
 import type { CatalogSelectedItem, CustomItem } from "../types";
 
 vi.mock("../../../ToastProvider", () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }));
@@ -62,6 +62,22 @@ describe("ячейка «Смен» (компьютер)", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.blur(input, { target: { value: "2" } });
     expect(onChangeLineShifts).toHaveBeenCalledWith("storm", 2);
+  });
+
+  it("после Enter фокус возвращается на число — место в смете не теряется", () => {
+    const { container } = renderCart([item({ equipmentId: "storm", name: "Aputure STORM 1200x" })]);
+    const r = row(container, "STORM");
+    fireEvent.click(within(r).getByRole("button", { name: /Смен: 1/ }));
+    const input = within(r).getByRole("textbox");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(document.activeElement).toBe(within(r).getByRole("button", { name: /Смен: 1/ }));
+  });
+
+  it("без дат брони срок не выдумывается", () => {
+    const { container } = renderCart([item({ equipmentId: "storm", name: "Aputure STORM 1200x", shifts: 2 })], {
+      bookingEndMs: null,
+    });
+    expect(row(container, "STORM")).not.toHaveTextContent("возврат");
   });
 
   it("Esc отменяет ввод, ↑ прибавляет смену", () => {
@@ -156,6 +172,9 @@ describe("арифметика", () => {
     expect(parseShiftsInput("")).toBeNull();
     expect(parseShiftsInput("0")).toBeNull();
     expect(parseShiftsInput("99")).toBe(60);
+    // Запятую не выбрасываем: «1,5» — это 1, а не 15.
+    expect(parseShiftsInput("1,5")).toBe(1);
+    expect(parseShiftsInput("2.5")).toBe(2);
     expect(sanitizeLineShifts("2")).toBeNull();
     expect(sanitizeLineShifts(2.5)).toBeNull();
     expect(sanitizeLineShifts(4)).toBe(4);
@@ -166,5 +185,14 @@ describe("арифметика", () => {
       "2 позиции на 2 смены · 1 позиция на 3 смены",
     );
     expect(longLinesSummary([{ shifts: 1 }, { shifts: null }], 1)).toBeNull();
+  });
+});
+
+describe("подписи срока", () => {
+  // Дата-образец для формата, не для логики времени: тест не протухает.
+  it("короткий месяц без лишней точки у «мая», с точкой у сокращённых", () => {
+    expect(formatDueLong(new Date(2031, 4, 15, 10, 0).getTime())).toMatch(/^[а-я]{2} 15 мая 10:00$/);
+    expect(formatDueLong(new Date(2031, 9, 15, 10, 0).getTime())).toMatch(/^[а-я]{2} 15 окт\. 10:00$/);
+    expect(formatDueBy(new Date(2031, 4, 15, 10, 0).getTime())).toMatch(/^[а-я]{2} 15 мая к 10:00$/);
   });
 });

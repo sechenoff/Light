@@ -78,6 +78,11 @@ export interface AddonSearchRow {
   /** Сколько можно добрать под ответственность (чужие брони подвинуть можно, склад — нет). */
   ackCap?: number;
   alreadyInBooking: number;
+  /**
+   * На сколько смен считается добор: у позиции, уже взятой на свои смены, —
+   * её смены (так посчитает доп-смета), иначе смены брони. Старый сервер не шлёт.
+   */
+  lineShifts?: number;
   availability: "AVAILABLE" | "UNAVAILABLE";
   conflict: AddonConflictInfo | null;
 }
@@ -96,6 +101,8 @@ type CartRow = {
   max: number;
   alreadyInBooking: number;
   rentalRatePerShift: string;
+  /** Смены строки добора; null — смены брони. */
+  lineShifts: number | null;
   conflict: AddonConflictInfo | null;
 };
 
@@ -354,6 +361,7 @@ export function AddonItemsModal({
           max,
           alreadyInBooking: r.alreadyInBooking,
           rentalRatePerShift: r.rentalRatePerShift,
+          lineShifts: r.lineShifts != null && r.lineShifts > 0 ? r.lineShifts : null,
           conflict: r.conflict,
         },
       ];
@@ -391,8 +399,10 @@ export function AddonItemsModal({
   const needsAck = allConflicts.length > 0;
 
   const shiftsSafe = Math.max(1, Math.floor(shifts) || 1);
+  // Позиция, взятая в бронь на свои смены, доберётся на них же — как в доп-смете.
+  const shiftsOf = (c: CartRow) => c.lineShifts ?? shiftsSafe;
   const estimatedBeforeDiscount = useMemo(
-    () => cart.reduce((sum, c) => sum + Number(c.rentalRatePerShift) * shiftsSafe * c.qty, 0),
+    () => cart.reduce((sum, c) => sum + Number(c.rentalRatePerShift) * (c.lineShifts ?? shiftsSafe) * c.qty, 0),
     [cart, shiftsSafe],
   );
   const discountNum = discountPercent != null ? Number(discountPercent) : 0;
@@ -654,6 +664,12 @@ export function AddonItemsModal({
                       <div className="text-xs text-ink-3">
                         {formatMoneyRub(c.rentalRatePerShift)}/смена
                         {c.alreadyInBooking > 0 ? ` · в брони уже ×${c.alreadyInBooking}` : ""}
+                        {shiftsOf(c) > shiftsSafe ? (
+                          <span className="text-indigo">
+                            {" "}
+                            · на {shiftsOf(c)} {pluralize(shiftsOf(c), "смену", "смены", "смен")}, как у позиции в брони
+                          </span>
+                        ) : null}
                         {c.conflict ? (
                           <span className="text-rose">
                             {c.conflict.holderStatus === "ISSUED" ? " · числится у клиента" : " · занято другой бронью"}
@@ -692,7 +708,7 @@ export function AddonItemsModal({
                       </button>
                     </div>
                     <div className="ml-auto w-24 text-right text-sm mono-num text-ink sm:ml-0">
-                      {formatMoneyRub(Number(c.rentalRatePerShift) * shiftsSafe * c.qty)}
+                      {formatMoneyRub(Number(c.rentalRatePerShift) * shiftsOf(c) * c.qty)}
                     </div>
                     <button
                       type="button"

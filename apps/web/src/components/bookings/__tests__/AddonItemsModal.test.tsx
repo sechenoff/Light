@@ -125,6 +125,16 @@ describe("AddonItemsModal", () => {
     });
   });
 
+  it("позиция, взятая в бронь на свои смены, добирается на них же", async () => {
+    // Бронь на 2 смены, Aputure в брони на 3 — добор одной штуки 1000 × 3.
+    mockSearch([{ ...FREE_ROW, lineShifts: 3 }]);
+    renderModal();
+    fireEvent.change(screen.getByLabelText("Поиск по каталогу"), { target: { value: "apu" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Добавить Aputure 600d" }));
+    expect(screen.getByText(/на 3 смены, как у позиции в брони/)).toBeInTheDocument();
+    expect(screen.getByText(/до скидки/)).toHaveTextContent("3 000");
+  });
+
   it("switches mode to MERGE via the radio group", async () => {
     mockSearch([FREE_ROW]);
     const { onAdded } = renderModal();

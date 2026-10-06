@@ -19,7 +19,8 @@ export { MAX_LINE_SHIFTS, effectiveLineShifts, lineDueAt };
  * больше предела — предел.
  */
 export function parseShiftsInput(raw: string): number | null {
-  const digits = raw.replace(/[^\d]/g, "");
+  // Только ведущие цифры: «1,5» — это 1, а не 15, если просто выбросить запятую.
+  const digits = raw.trim().match(/^\d+/)?.[0] ?? "";
   if (!digits) return null;
   const n = Number(digits);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -99,18 +100,19 @@ export function formatDueShort(ms: number): string {
   return `${pick(p, "weekday")} ${pick(p, "hour")}:${pick(p, "minute")}`;
 }
 
-/** «ср 14 окт. 10:00» — срок в плашке и шторке. */
+/**
+ * «ср 14 окт. 10:00» — срок в плашке и шторке. Короткий месяц ru-RU уже несёт
+ * точку там, где слово сокращено («окт.»), и не несёт у «мая».
+ */
 export function formatDueLong(ms: number): string {
   const p = parts(ms, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-  const month = pick(p, "month").replace(/\.$/, "");
-  return `${pick(p, "weekday")} ${pick(p, "day")} ${month}. ${pick(p, "hour")}:${pick(p, "minute")}`;
+  return `${pick(p, "weekday")} ${pick(p, "day")} ${pick(p, "month")} ${pick(p, "hour")}:${pick(p, "minute")}`;
 }
 
 /** «вт 13 окт. к 10:00» — когда ждём бронь и длинные позиции (плашка состава). */
 export function formatDueBy(ms: number): string {
   const p = parts(ms, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-  const month = pick(p, "month").replace(/\.$/, "");
-  return `${pick(p, "weekday")} ${pick(p, "day")} ${month}. к ${pick(p, "hour")}:${pick(p, "minute")}`;
+  return `${pick(p, "weekday")} ${pick(p, "day")} ${pick(p, "month")} к ${pick(p, "hour")}:${pick(p, "minute")}`;
 }
 
 /** «на ср» — день, на который не хватает склада. */

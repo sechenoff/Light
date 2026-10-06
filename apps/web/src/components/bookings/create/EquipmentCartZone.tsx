@@ -283,8 +283,9 @@ export function EquipmentCartZone({
 }: Props) {
   // Шторка смен (телефон) — одна на состав, по equipmentId.
   const [sheetFor, setSheetFor] = useState<string | null>(null);
-  const dueFor = (lineShifts: number | null) =>
-    lineDueAt(bookingEndMs ?? Date.now(), shifts, lineShifts);
+  // Нет дат брони — нет и срока строки: подпись «возврат …» не выдумываем.
+  const dueFor = (lineShifts: number | null): number | null =>
+    bookingEndMs != null ? lineDueAt(bookingEndMs, shifts, lineShifts) : null;
   const catalogRow = (it: CatalogSelectedItem): CartRow => ({
     key: `eq-${it.equipmentId}`,
     name: it.name,
@@ -298,7 +299,7 @@ export function EquipmentCartZone({
     perShift: true,
     shiftFactor: effectiveLineShifts(shifts, it.shifts),
     ownShifts: it.shifts ?? null,
-    dueMs: bookingEndMs != null && isLongLine(shifts, it.shifts) ? dueFor(it.shifts ?? null) : null,
+    dueMs: isLongLine(shifts, it.shifts) ? dueFor(it.shifts ?? null) : null,
     shortage: isLongLine(shifts, it.shifts) ? lineShortages?.get(it.equipmentId) ?? null : null,
     onShiftsChange: onChangeLineShifts
       ? (next) => onChangeLineShifts(it.equipmentId, next)
@@ -692,7 +693,8 @@ export function EquipmentCartZone({
                         </span>
                       ) : (
                         <span className="text-ink-3">
-                          <span className="font-sans">за весь срок</span> × {row.quantity} =
+                          <span className="font-sans">за весь срок, без смен</span>
+                          {row.quantity > 1 && <> × {row.quantity}</>} =
                         </span>
                       )}
                       <span className="font-semibold text-ink">

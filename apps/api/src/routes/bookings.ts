@@ -20,7 +20,7 @@ import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
 import { carryItemOverrides, existingItemsForQuote, quoteItemsFromBody } from "../services/bookingItemOverrides";
-import { createBookingDraft, createQuickBooking, confirmBooking, continuationContextOf, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, resolveBookingSurchargePercent, CUSTOM_LINE_CATEGORY } from "../services/bookings";
+import { assertLongLineWindowsAvailable, createBookingDraft, createQuickBooking, confirmBooking, continuationContextOf, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, resolveBookingSurchargePercent, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
 import { writeOffBookingDebt, cancelBookingDebtWriteOff } from "../services/debtWriteOff";
@@ -1178,6 +1178,49 @@ router.patch("/:id", async (req, res, next) => {
         });
         const itemsToWrite = carryItemOverrides(body.items, currentItems);
         writtenItems = itemsToWrite;
+        // Подтверждённая бронь держит склад: позиция, которую правка взяла на
+        // больше смен, проверяется на дополнительные дни, как при подтверждении.
+        if (existing.status === "CONFIRMED") {
+          const oldPeriod = {
+            startDate: existing.startDate,
+            endDate: existing.endDate,
+            skipPartialDay: existing.skipPartialDay ?? false,
+          };
+          const newPeriod = {
+            startDate: start,
+            endDate: end,
+            skipPartialDay: body.skipPartialDay ?? existing.skipPartialDay ?? false,
+          };
+          const previousShifts = new Map(currentItems.map((c) => [c.equipmentId, c.shifts]));
+          const names = new Map(
+            (
+              await tx.equipment.findMany({
+                where: { id: { in: itemsToWrite.map((i) => i.equipmentId).filter((v): v is string => v != null) } },
+                select: { id: true, name: true },
+              })
+            ).map((e) => [e.id, e.name]),
+          );
+          await assertLongLineWindowsAvailable(tx, {
+            bookingId: id,
+            startDate: start,
+            lines: itemsToWrite
+              .filter((i): i is typeof i & { equipmentId: string } => Boolean(i.equipmentId))
+              .map((i) => {
+                const newEnd = linePlannedEnd(newPeriod, i.shifts);
+                const prevShifts = previousShifts.get(i.equipmentId);
+                const previousEnd =
+                  prevShifts !== undefined ? linePlannedEnd(oldPeriod, prevShifts) : newPeriod.endDate;
+                return {
+                  equipmentId: i.equipmentId,
+                  name: names.get(i.equipmentId) ?? i.equipmentId,
+                  quantity: i.quantity,
+                  // Окно не короче конца брони: продление дат — не эта проверка.
+                  previousEnd: new Date(Math.max(previousEnd.getTime(), newPeriod.endDate.getTime())),
+                  newEnd,
+                };
+              }),
+          });
+        }
         await tx.bookingItem.deleteMany({ where: { bookingId: id } });
         await tx.bookingItem.createMany({
           data: itemsToWrite.map((it) => ({

@@ -79,6 +79,7 @@ const FIELD_LABELS: Record<string, string> = {
   customName: "Название позиции",
   customUnitPrice: "Цена позиции",
   negotiatedRatePerShift: "Договорная цена за смену",
+  shifts: "Смен у позиции",
   unitPrice: "Цена за смену",
   pricePerShift: "Цена за смену",
   subtotalRub: "Стоимость транспорта",

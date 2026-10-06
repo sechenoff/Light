@@ -43,6 +43,7 @@ import type { Prisma } from "@prisma/client";
 
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
+import { billableShifts24h } from "../utils/dates";
 import { writeAuditEntry } from "./audit";
 import { findAddonConflict, findHoldersBatch, type AddonConflict } from "./addonAvailability";
 import { recomputeAddonEstimate } from "./addonEstimate";
@@ -100,6 +101,11 @@ export interface AddonSearchResult {
   ackCap: number;
   /** Сколько этой позиции уже в брони (0 — позиции ещё нет). */
   alreadyInBooking: number;
+  /**
+   * На сколько смен считается добор этой позиции: у позиции, уже взятой в
+   * бронь на свои смены, — её смены (так доп-смета и посчитает), иначе смены брони.
+   */
+  lineShifts: number;
   availability: "AVAILABLE" | "UNAVAILABLE";
   conflict: AddonConflict | null;
 }
@@ -160,10 +166,11 @@ export async function searchAddonCandidates(args: {
 }): Promise<AddonSearchResult[]> {
   const booking = await prisma.booking.findUnique({
     where: { id: args.bookingId },
-    select: { startDate: true, endDate: true, status: true, parentBookingId: true },
+    select: { startDate: true, endDate: true, status: true, parentBookingId: true, skipPartialDay: true },
   });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
   assertAddonAllowedForFamily(booking);
+  const bookingShifts = billableShifts24h(booking.startDate, booking.endDate, booking.skipPartialDay ?? false);
   const window = addonWindow(booking, { issuingNow: args.issuingNow ?? booking.status === "ISSUED" });
 
   const rows = await getAvailability({
@@ -190,6 +197,14 @@ export async function searchAddonCandidates(args: {
     end: window.end,
     excludeBookingId: args.bookingId,
   });
+  const ownShifts = new Map(
+    (
+      await prisma.bookingItem.findMany({
+        where: { bookingId: args.bookingId, equipmentId: { in: trimmed.map((r) => r.equipment.id) } },
+        select: { equipmentId: true, shifts: true },
+      })
+    ).map((i) => [i.equipmentId, i.shifts]),
+  );
 
   return trimmed.map((row) => {
     const cap = caps.get(row.equipment.id);
@@ -207,6 +222,7 @@ export async function searchAddonCandidates(args: {
       addCap,
       ackCap,
       alreadyInBooking: cap?.alreadyInBooking ?? 0,
+      lineShifts: effectiveLineShifts(bookingShifts, ownShifts.get(row.equipment.id) ?? null),
       // Склад в окне (без учёта этой брони). «Свободно, но в брони уже добрано
       // до предела» — AVAILABLE при addCap 0: киоск показывает это отдельно.
       availability: row.availableQuantity > 0 ? "AVAILABLE" : "UNAVAILABLE",

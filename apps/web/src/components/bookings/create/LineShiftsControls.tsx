@@ -12,7 +12,7 @@
  * степпером: цифровая клавиатура закрывает полэкрана, а в поле шириной 30 px
  * трудно попасть пальцем.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useDialog } from "../../../hooks/useDialog";
 import { formatMoneyRubWhole } from "../../../lib/format";
@@ -46,8 +46,8 @@ type CellProps = {
   /** Своё значение позиции; null — как у брони. */
   own: number | null;
   bookingShifts: number;
-  /** Срок возврата строки при данном числе смен (мс). */
-  dueFor: (lineShifts: number | null) => number;
+  /** Срок возврата строки при данном числе смен (мс); null — дат брони ещё нет. */
+  dueFor: (lineShifts: number | null) => number | null;
   /** Новое значение или null — как у брони. Не передан — только чтение. */
   onChange?: (next: number | null) => void;
 };
@@ -60,9 +60,19 @@ export function LineShiftsCell({ name, own, bookingShifts, dueFor, onChange }: C
   const openedWithRef = useRef<string | null>(null);
   // Escape приходит раньше blur: без флага отмена превращалась в фиксацию.
   const cancelledRef = useRef(false);
+  // Enter и Esc закрывают поле с клавиатуры — фокус возвращается на число,
+  // иначе в смете на 55 строк он падал на <body> и место терялось.
+  const refocusRef = useRef(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const effective = effectiveLineShifts(bookingShifts, own);
   const long = isLongLine(bookingShifts, own);
   const editing = draft !== null;
+
+  useEffect(() => {
+    if (editing || !refocusRef.current) return;
+    refocusRef.current = false;
+    triggerRef.current?.focus();
+  }, [editing]);
 
   function open() {
     if (!onChange) return;
@@ -87,15 +97,23 @@ export function LineShiftsCell({ name, own, bookingShifts, dueFor, onChange }: C
 
   const draftValue = editing ? parseShiftsInput(draft as string) : own;
   const draftLong = isLongLine(bookingShifts, draftValue);
+  const draftDue = draftLong ? dueFor(draftValue) : null;
+  const ownDue = long ? dueFor(own) : null;
   const caption = editing ? (
     <>
       <div className={`mt-1 whitespace-nowrap text-[11.5px] ${draftLong ? "text-indigo" : "text-ink-3"}`}>
-        {draftLong ? `возврат ${formatDueShort(dueFor(draftValue))}` : "совпадает со сроком брони"}
+        {draftLong
+          ? draftDue != null
+            ? `возврат ${formatDueShort(draftDue)}`
+            : "позже брони"
+          : "совпадает со сроком брони"}
       </div>
       <div className="mt-0.5 whitespace-nowrap font-mono text-[10.5px] text-ink-3">Enter · Esc · ↑↓</div>
     </>
   ) : long ? (
-    <div className="mt-1 whitespace-nowrap text-[11.5px] text-indigo">возврат {formatDueShort(dueFor(own))}</div>
+    ownDue != null ? (
+      <div className="mt-1 whitespace-nowrap text-[11.5px] text-indigo">возврат {formatDueShort(ownDue)}</div>
+    ) : null
   ) : own != null ? (
     <div className="mt-1 whitespace-nowrap text-[11.5px] text-ink-3">совпадает со сроком брони</div>
   ) : null;
@@ -130,11 +148,13 @@ export function LineShiftsCell({ name, own, bookingShifts, dueFor, onChange }: C
               const el = e.target as HTMLInputElement;
               if (e.key === "Enter") {
                 e.preventDefault();
+                refocusRef.current = true;
                 el.blur();
               } else if (e.key === "Escape") {
                 e.preventDefault();
                 e.stopPropagation();
                 cancelledRef.current = true;
+                refocusRef.current = true;
                 el.blur();
               } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                 e.preventDefault();
@@ -147,6 +167,7 @@ export function LineShiftsCell({ name, own, bookingShifts, dueFor, onChange }: C
           />
         ) : onChange ? (
           <button
+            ref={triggerRef}
             type="button"
             onClick={open}
             aria-label={
@@ -210,7 +231,7 @@ type SheetProps = {
   periodLabel: string | null;
   /** Действующая ставка за смену. */
   rate: number;
-  dueFor: (lineShifts: number | null) => number;
+  dueFor: (lineShifts: number | null) => number | null;
   shortage: LineShortage | null;
   onChange: (next: number | null) => void;
   onClose: () => void;
@@ -236,6 +257,7 @@ export function LineShiftsSheet({
   const step = (next: number) => onChange(next <= bookingShifts ? null : Math.min(MAX_LINE_SHIFTS, next));
   const quick = [bookingShifts + 1, bookingShifts + 2, bookingShifts + 4].filter((n) => n <= MAX_LINE_SHIFTS);
   const sum = rate * quantity * effective;
+  const due = long ? dueFor(own) : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim/50" onClick={onClose}>
@@ -318,7 +340,7 @@ export function LineShiftsSheet({
         <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-md border border-border bg-surface-subtle px-3 py-2.5 text-[12.5px]">
           <dt className="text-ink-3">Возврат</dt>
           <dd className={`text-right font-medium ${long ? "text-indigo" : "text-ink-2"}`}>
-            {long ? formatDueLong(dueFor(own)) : "вместе с бронью"}
+            {!long ? "вместе с бронью" : due != null ? formatDueLong(due) : "позже брони"}
           </dd>
           <dt className="text-ink-3">Сумма</dt>
           <dd className="text-right">

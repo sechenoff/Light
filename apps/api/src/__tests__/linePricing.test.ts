@@ -313,6 +313,74 @@ describe("свои смены позиции из тела запроса (фо�
     expect((await prisma.bookingItem.findFirst({ where: { bookingId: id, equipmentId: stand } })).shifts).toBe(2);
   });
 
+  it("правка одних смен позиции пишет запись в журнал брони", async () => {
+    const id = await createDraft();
+    const before = await prisma.auditEntry.count({ where: { entityId: id, action: "BOOKING_UPDATE" } });
+    const res = await request(app)
+      .patch(`/api/bookings/${id}`)
+      .set(AUTH())
+      .send({
+        items: [
+          { equipmentId: storm, quantity: 2, shifts: 3 },
+          { equipmentId: stand, quantity: 1 },
+          { customName: "Расходники", customUnitPrice: 1500, quantity: 1 },
+        ],
+      });
+    expect(res.status).toBe(200);
+    const entries = await prisma.auditEntry.findMany({
+      where: { entityId: id, action: "BOOKING_UPDATE" },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(entries).toHaveLength(before + 1);
+    const last = entries.at(-1);
+    const parse = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v);
+    expect(parse(last.before).itemsDetails["Aputure STORM 400x"].shifts).toBeNull();
+    expect(parse(last.after).itemsDetails["Aputure STORM 400x"].shifts).toBe(3);
+  });
+
+  it("подтверждённая бронь: позицию нельзя взять дольше, если склад на эти дни занят", async () => {
+    // Своя позиция с запасом 3 — чтобы не делить склад с остальными тестами.
+    const lamp = (
+      await prisma.equipment.create({
+        data: { importKey: "lpr-lamp", name: "Nanlux Evoke 1200", category: "Свет", totalQuantity: 3, rentalRatePerShift: 7000, stockTrackingMode: "COUNT" },
+      })
+    ).id;
+    const draft = async (start: Date, end: Date, quantity: number) => {
+      const res = await request(app)
+        .post("/api/bookings/draft")
+        .set(AUTH())
+        .send({
+          client: { name: "Продакшн «Сфера»" },
+          projectName: "Проверка склада",
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          items: [{ equipmentId: lamp, quantity }],
+        });
+      expect(res.status).toBe(200);
+      return (res.body.booking?.id ?? res.body.id) as string;
+    };
+    const mine = await draft(START, END, 2);
+    await svc.confirmBooking(mine);
+    // Соседняя бронь занимает 2 из 3 на следующие сутки.
+    const other = await draft(new Date(END.getTime() + HOUR), new Date(END.getTime() + DAY), 2);
+    await svc.confirmBooking(other);
+
+    const longer = await request(app)
+      .patch(`/api/bookings/${mine}`)
+      .set(AUTH())
+      .send({ items: [{ equipmentId: lamp, quantity: 2, shifts: 2 }] });
+    expect(longer.status).toBe(409);
+    expect(longer.body.message).toMatch(/Nanlux Evoke 1200 \(до .+\): нужно 2, свободно 1 из 3/);
+    expect((await prisma.bookingItem.findFirst({ where: { bookingId: mine, equipmentId: lamp } })).shifts).toBeNull();
+
+    // Без удлинения правка проходит — уже подтверждённое не перепроверяется.
+    const same = await request(app)
+      .patch(`/api/bookings/${mine}`)
+      .set(AUTH())
+      .send({ items: [{ equipmentId: lamp, quantity: 2 }] });
+    expect(same.status).toBe(200);
+  });
+
   it("расчёт /quote отдаёт строку на её смены", async () => {
     const res = await request(app)
       .post("/api/bookings/quote")
