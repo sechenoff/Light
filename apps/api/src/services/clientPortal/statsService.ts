@@ -41,7 +41,7 @@ export async function computeLkStats(
       quantity: true,
       lineSum: true,
       estimateId: true,
-      estimate: { select: { bookingId: true } },
+      estimate: { select: { bookingId: true, booking: { select: { parentBookingId: true, rootBookingId: true } } } },
     },
   });
 
@@ -65,8 +65,11 @@ export async function computeLkStats(
       totalQty: 0,
       totalSpent: 0,
     };
-    cur.bookingIds.add(ln.estimate.bookingId);
-    cur.totalQty += ln.quantity;
+    // Продолжение брони — та же аренда: считаем её основной бронью, а штуки
+    // продолжения уже посчитаны в основной смете. Деньги продолжения — свои.
+    const owner = ln.estimate.booking;
+    cur.bookingIds.add(owner.rootBookingId ?? ln.estimate.bookingId);
+    if (owner.parentBookingId == null) cur.totalQty += ln.quantity;
     cur.totalSpent += Number(ln.lineSum);
     agg.set(ln.equipmentId, cur);
   }
@@ -90,7 +93,8 @@ export async function computeLkStats(
   // ── typical kit ─────────────────────────────────────────────────────────────
   // Uses last ≤10 qualifying bookings (regardless of period filter).
   const recentBookingIds = await prisma.booking.findMany({
-    where: { clientId, status: { in: [...QUALIFYING_STATUSES] as BookingStatus[] } },
+    // Продолжения — не отдельные аренды: в выборку «последние брони» не идут.
+    where: { clientId, parentBookingId: null, status: { in: [...QUALIFYING_STATUSES] as BookingStatus[] } },
     orderBy: { startDate: "desc" },
     take: TYPICAL_KIT_SAMPLE,
     select: { id: true },

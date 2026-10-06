@@ -26,6 +26,7 @@ import {
 } from "../../services/documentExport/invoice/renderInvoicePdf";
 import { getSettings } from "../../services/organizationService";
 import { buildAttachmentContentDisposition } from "../../utils/contentDisposition";
+import { actWaitsForContinuationError, continuationOrigin, hasIssuedDescendant } from "../../services/bookingFamily";
 
 const router = Router();
 
@@ -105,6 +106,7 @@ router.get("/", lkAuth, async (req, res, next) => {
           status: true,
           finalAmount: true,
           amountOutstanding: true,
+          parentBookingId: true,
           _count: { select: { items: true } },
         },
       }),
@@ -129,6 +131,9 @@ router.get("/", lkAuth, async (req, res, next) => {
         finalAmount: b.finalAmount.toString(),
         amountOutstanding: b.amountOutstanding.toString(),
         itemCount: b.project?._count.lots ?? b._count.items,
+        // Продолжение брони: часть оборудования осталась после приёмки основной —
+        // кабинет показывает его под основной бронью.
+        continuationOf: b.parentBookingId,
       })),
       nextCursor,
       totalCount,
@@ -292,7 +297,7 @@ router.get("/:id/estimate.pdf", lkAuth, async (req, res, next) => {
       // Без него портал показывал расчётную сумму, а счёт на ту же бронь —
       // согласованную: заказчик видел два разных числа за один заказ.
       const full = buildFullSmeta({
-        booking,
+        booking: { ...booking, continuationOf: await continuationOrigin(prisma, booking) },
         main,
         addon,
         org,
@@ -328,11 +333,13 @@ router.get("/:id/act.pdf", lkAuth, async (req, res, next) => {
     const clientId = lkClientId(req);
     const booking = await prisma.booking.findUnique({
       where: { id: req.params.id },
-      select: { clientId: true, status: true, deletedAt: true },
+      select: { id: true, clientId: true, status: true, deletedAt: true, rootBookingId: true },
     });
     // LKG-4: архивную бронь клиент не открывает и её PDF не качает.
     if (!booking || booking.clientId !== clientId || booking.deletedAt) throw new HttpError(404, "Не найдено", "NOT_FOUND");
     if (booking.status !== "RETURNED") throw new HttpError(404, "Не найдено", "NOT_FOUND");
+    // Часть оборудования ещё у клиента по продолжению — акт после приёмки остатка.
+    if (await hasIssuedDescendant(prisma, booking)) throw actWaitsForContinuationError();
 
     const pdfBuf = await buildBookingActPdf(req.params.id);
     res.setHeader("Content-Type", "application/pdf");

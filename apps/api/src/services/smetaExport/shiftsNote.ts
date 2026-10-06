@@ -24,6 +24,7 @@ export function lineShiftsNote(
   doc: { shiftsCount: number; showShiftsColumn: boolean },
   opts: { withCount: boolean },
 ): string | null {
+  if (line.shifts === 0) return "оплачено в основной смете";
   if (line.shifts == null) return doc.shiftsCount > 1 ? "цена за весь срок аренды" : null;
   if (opts.withCount && doc.showShiftsColumn && line.shifts !== Math.max(1, doc.shiftsCount)) {
     return `на ${line.shifts} ${pluralShifts(line.shifts)}`;

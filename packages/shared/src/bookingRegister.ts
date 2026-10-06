@@ -102,6 +102,15 @@ export interface BookingRegisterRow {
   needsReview: boolean;
   actions: RegisterAction[];
   onHand: number;
+  /**
+   * Бронь — продолжение другой: при приёмке основной часть оборудования
+   * осталась у клиента и перешла сюда. id и номер брони, из которой перешло.
+   */
+  continuationOf?: { id: string; docNumber: string | null } | null;
+  /** Сколько единиц ещё у клиента по продолжениям этой брони (ниже по цепочке). */
+  continuationsOnHand?: number;
+  /** Бронь возвращена, но часть оборудования ещё у клиента по продолжению. */
+  partiallyReturned?: boolean;
   projectSummary: null | {
     periodCount: number;
     closedThrough: string | null;

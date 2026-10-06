@@ -1198,10 +1198,23 @@ warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
       },
     });
 
+    // Продолжение брони (оставленное у клиента после приёмки основной): «взято»
+    // — когда выдали основную, а не момент приёмки; плюс номер основной.
+    const rootIds = Array.from(new Set(bookings.map((b) => b.rootBookingId).filter((v): v is string => v != null)));
+    const roots = rootIds.length
+      ? await prisma.booking.findMany({
+          where: { id: { in: rootIds } },
+          select: { id: true, docNumber: true, issuedAt: true, confirmedAt: true },
+        })
+      : [];
+    const rootById = new Map(roots.map((r) => [r.id, r]));
+
     const now = Date.now();
     const out = bookings.map((b) => {
       const overdueMs = now - b.endDate.getTime();
       const isOverdue = overdueMs > 0;
+      const root = b.rootBookingId ? rootById.get(b.rootBookingId) : undefined;
+      const takenAt = root ? root.issuedAt ?? root.confirmedAt : b.issuedAt ?? b.confirmedAt;
       return {
         bookingId: b.id,
         displayNo: "#" + b.id.slice(-6).toUpperCase(),
@@ -1210,7 +1223,8 @@ warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
         clientPhone: b.client?.phone ?? null,
         // Prefer the real physical-issuance moment (set by completeSession ISSUE);
         // fall back to confirmedAt for legacy bookings predating Booking.issuedAt.
-        issuedAt: b.issuedAt?.toISOString() ?? b.confirmedAt?.toISOString() ?? null,
+        issuedAt: takenAt?.toISOString() ?? null,
+        continuationOf: b.rootBookingId ? { docNumber: root?.docNumber ?? null } : null,
         expectedReturnAt: b.endDate.toISOString(),
         itemsCount: b._count.items,
         finalAmount: b.finalAmount.toString(),

@@ -451,7 +451,8 @@ class SmetaPdfWriter {
       x += c.shifts;
     }
     d.fillColor(C.ink2);
-    d.text(rub(line.pricePerShift), x + CELL_PAD, ty, {
+    // Уже оплачено в основной смете — цены за смену нет.
+    d.text(line.shifts === 0 ? "—" : rub(line.pricePerShift), x + CELL_PAD, ty, {
       width: c.price - CELL_PAD * 2,
       align: "right",
       lineBreak: false,

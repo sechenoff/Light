@@ -136,6 +136,7 @@ const select = {
   paymentForm: true,
   legacyFinance: true,
   forfeitedAt: true,
+  parentBookingId: true,
   items: { select: { quantity: true } },
   scanSessions: {
     select: { operation: true, status: true },
@@ -227,12 +228,61 @@ function projectState(b: SourceRow) {
   };
 }
 
+/** Что строка знает о семье броней (продолжения при частичной приёмке). */
+export type RegisterFamilyInfo = {
+  continuationOf: { id: string; docNumber: string | null } | null;
+  continuationsOnHand: number;
+};
+const NO_FAMILY: RegisterFamilyInfo = { continuationOf: null, continuationsOnHand: 0 };
+
+/**
+ * Семья по всем броням реестра одним проходом (они уже загружены): у
+ * продолжения — бронь, из которой оно перешло; у брони — сколько единиц ещё у
+ * клиента по её продолжениям ниже по цепочке. Без лишних запросов.
+ */
+export function registerFamilyInfo(
+  sources: ReadonlyArray<{
+    id: string;
+    docNumber: string | null;
+    parentBookingId: string | null;
+    status: string;
+    items: ReadonlyArray<{ quantity: number }>;
+  }>,
+): Map<string, RegisterFamilyInfo> {
+  const result = new Map<string, RegisterFamilyInfo>();
+  const byId = new Map(sources.map((b) => [b.id, b]));
+  const children = new Map<string, string[]>();
+  for (const b of sources) {
+    if (!b.parentBookingId) continue;
+    children.set(b.parentBookingId, [...(children.get(b.parentBookingId) ?? []), b.id]);
+  }
+  if (children.size === 0) return result;
+  for (const b of sources) {
+    const parent = b.parentBookingId ? byId.get(b.parentBookingId) : undefined;
+    let onHand = 0;
+    const queue = [...(children.get(b.id) ?? [])];
+    while (queue.length > 0) {
+      const child = byId.get(queue.shift()!);
+      if (!child) continue;
+      if (child.status === "ISSUED") onHand += child.items.reduce((s, i) => s + i.quantity, 0);
+      queue.push(...(children.get(child.id) ?? []));
+    }
+    if (!b.parentBookingId && onHand === 0) continue;
+    result.set(b.id, {
+      continuationOf: b.parentBookingId ? { id: b.parentBookingId, docNumber: parent?.docNumber ?? null } : null,
+      continuationsOnHand: onHand,
+    });
+  }
+  return result;
+}
+
 export function projectRegisterRow(
   b: SourceRow,
   openProblems: number,
   now: Date,
   issues = emptyIssueSummary(),
   liveScanSession = false,
+  family: RegisterFamilyInfo = NO_FAMILY,
 ): BookingRegisterRow {
   const total = dec(b.finalAmount),
     paid = dec(b.amountPaid),
@@ -313,6 +363,8 @@ export function projectRegisterRow(
     !cancellationReview &&
     !projectSummary?.unclosedBilling &&
     onHand === 0 &&
+    // Бронь закрыта, а часть оборудования ещё у клиента по продолжению — не завершена.
+    family.continuationsOnHand === 0 &&
     !projectSummary?.plannedQuantity;
   const actions: BookingRegisterRow["actions"] = [];
   if (b.status === "DRAFT") actions.push("prepare");
@@ -376,6 +428,9 @@ export function projectRegisterRow(
     needsReview,
     actions,
     onHand,
+    continuationOf: family.continuationOf,
+    continuationsOnHand: family.continuationsOnHand,
+    partiallyReturned: b.status === "RETURNED" && family.continuationsOnHand > 0,
     projectSummary,
   };
 }
@@ -608,6 +663,7 @@ export async function listBookingRegister(
   for (const s of activeSessions) {
     activeByBooking.set(s.bookingId, [...(activeByBooking.get(s.bookingId) ?? []), s.operation]);
   }
+  const families = registerFamilyInfo(sources);
   const all = sources.map((b) => {
     const issues = summaries.get(b.id) ?? emptyIssueSummary();
     // «Идёт в киоске» — только живая сессия; устаревшая (бронь уже выдана или
@@ -615,7 +671,7 @@ export async function listBookingRegister(
     const live = (activeByBooking.get(b.id) ?? []).some((op) =>
       isSessionLive(op, { status: b.status, deletedAt: null }),
     );
-    return projectRegisterRow(b, issues.missingCases, now, issues, live);
+    return projectRegisterRow(b, issues.missingCases, now, issues, live, families.get(b.id));
   });
   const base = all.filter((r) => matches(r, q));
   const scopeCounts = Object.fromEntries(

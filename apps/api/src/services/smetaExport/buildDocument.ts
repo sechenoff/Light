@@ -131,8 +131,10 @@ export function buildSmetaExportDocument(args: {
     // (у позиции, взятой дольше брони, их больше), свою позицию не делим
     // вовсе: её цена фиксированная, и раньше в многосменной брони колонка
     // «цена / смена» печатала её половину.
-    const lineShifts = l.isCustom ? null : Math.max(1, l.shifts ?? docShifts);
-    const divisor = new Decimal(lineShifts ?? 1);
+    // 0 — строка продолжения брони в пределах оплаченного: 0 ₽, смен к оплате
+    // нет (и у каталожной, и у своей позиции, перешедшей в продолжение).
+    const lineShifts = l.shifts === 0 ? 0 : l.isCustom ? null : Math.max(1, l.shifts ?? docShifts);
+    const divisor = new Decimal(Math.max(1, lineShifts ?? 1));
     const unit = new Decimal(l.unitPrice.toString());
     // Прайсовую цену тоже приводим к «за смену» — обе цифры в одной единице,
     // иначе в документе рядом окажутся цена за смену и цена за период.
@@ -218,6 +220,12 @@ export function buildSmetaFromPersistedEstimate(args: {
     docNumber?: string | null;
     expectedPaymentDate?: Date | null;
     createdAt?: Date;
+    /**
+     * Бронь — продолжение (оставленное у клиента после приёмки основной): номер
+     * и дата сметы основной брони. Тогда документ — «Дополнительная смета»
+     * со строкой «продолжение к смете № … от …».
+     */
+    continuationOf?: { docNumber: string | null; createdAt: Date } | null;
   };
   estimate: {
     kind?: "MAIN" | "ADDON";
@@ -285,6 +293,17 @@ export function buildSmetaFromPersistedEstimate(args: {
     ordering: args.ordering ?? null,
   });
 
+  const origin = args.booking.continuationOf;
+  if (origin && args.estimate.kind !== "ADDON") {
+    return {
+      ...baseDoc,
+      documentTitleRu: "Дополнительная смета",
+      // Строка под заголовком (там, где у обычной сметы английский перевод):
+      // к какой смете это продолжение — без неё два документа одной съёмки
+      // выглядят как две независимые аренды.
+      documentTitleEn: `продолжение к смете${origin.docNumber ? ` № ${origin.docNumber}` : ""} от ${fmtRuDate(origin.createdAt)}`,
+    };
+  }
   if (args.estimate.kind === "ADDON") {
     return {
       ...baseDoc,

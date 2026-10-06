@@ -67,9 +67,10 @@ async function aggregateDemand(
         select: {
           startDate: true,
           endDate: true,
+          rootBookingId: true,
           estimates: {
             where: { kind: "MAIN" },
-            select: { shifts: true },
+            select: { shifts: true, lines: { select: { equipmentId: true, shifts: true } } },
             orderBy: { createdAt: "desc" },
             take: 1,
           },
@@ -84,8 +85,14 @@ async function aggregateDemand(
 
   for (const item of items) {
     if (!item.equipmentId) continue;
+    // Смены строки, а не брони: позиция бывает взята дольше брони, а строка
+    // продолжения в пределах оплаченного — 0 смен (её штуки уже посчитаны в
+    // основной брони).
+    const main = item.booking.estimates[0];
+    const lineShifts = main?.lines.find((l) => l.equipmentId === item.equipmentId)?.shifts;
     const shifts =
-      item.booking.estimates[0]?.shifts ??
+      lineShifts ??
+      main?.shifts ??
       Math.max(
         1,
         Math.ceil(
@@ -95,9 +102,11 @@ async function aggregateDemand(
     const entry = out.get(item.equipmentId) ?? { bookingsCount: 0, qtyShifts: 0 };
     entry.qtyShifts += item.quantity * shifts;
 
+    // Продолжение — та же аренда, что основная бронь: считаем её один раз.
+    const rentalId = item.booking.rootBookingId ?? item.bookingId;
     const seenSet = seen.get(item.equipmentId) ?? new Set<string>();
-    if (!seenSet.has(item.bookingId)) {
-      seenSet.add(item.bookingId);
+    if (!seenSet.has(rentalId)) {
+      seenSet.add(rentalId);
       entry.bookingsCount += 1;
       seen.set(item.equipmentId, seenSet);
     }

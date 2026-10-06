@@ -234,7 +234,8 @@ export function addSmetaSheetToWorkbook(
       r.getCell(3).font = { size: 10, color: { argb: XC.ink } };
       r.getCell(3).alignment = { vertical: "middle", horizontal: "center" };
 
-      r.getCell(4).value = parseMoney(line.pricePerShift);
+      // Уже оплачено в основной смете — цены за смену нет.
+      r.getCell(4).value = line.shifts === 0 ? "—" : parseMoney(line.pricePerShift);
       r.getCell(4).numFmt = RUB_FMT;
       r.getCell(4).font = { size: 10, color: { argb: XC.ink2 } };
       r.getCell(4).alignment = { vertical: "middle", horizontal: "right" };
