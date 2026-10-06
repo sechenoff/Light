@@ -733,12 +733,10 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
       Array.from(selected.values()).map((s) => ({
         equipmentId: s.equipmentId,
         quantity: s.quantity,
-        // null не шлём: сервер трактует отсутствие поля как «по прайсу»,
-        // а null — как явный сброс договорной цены. На создании разницы нет,
-        // при правке брони она принципиальна.
-        ...(s.negotiatedRatePerShift != null
-          ? { negotiatedRatePerShift: s.negotiatedRatePerShift }
-          : { negotiatedRatePerShift: null }),
+        // Форма — полный редактор состава, поэтому значение шлёт всегда явно:
+        // null = «по прайсу». Не переданное поле сервер оставил бы как было
+        // (так работают ретро-правка и бот).
+        negotiatedRatePerShift: s.negotiatedRatePerShift ?? null,
       })),
     [selected],
   );

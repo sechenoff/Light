@@ -8,7 +8,7 @@ import { Prisma, type BookingStatus } from "@prisma/client";
 import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
-import { carryItemOverrides, existingItemsForQuote } from "../services/bookingItemOverrides";
+import { carryItemOverrides, existingItemsForQuote, quoteItemsFromBody } from "../services/bookingItemOverrides";
 import { createBookingDraft, createQuickBooking, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, resolveBookingSurchargePercent, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
@@ -862,13 +862,7 @@ router.patch("/:id", async (req, res, next) => {
       assertBookingRangeOrder(start, end);
 
       const itemsAfter = body.items
-        ? carryItemOverrides(body.items, existing.items).map((it) => ({
-            equipmentId: it.equipmentId,
-            customName: it.customName,
-            customUnitPrice: it.customUnitPrice,
-            quantity: it.quantity,
-            negotiatedRatePerShift: it.negotiatedRatePerShift,
-          }))
+        ? quoteItemsFromBody(carryItemOverrides(body.items, existing.items))
         : existingItemsForQuote(existing.items);
 
       // Форма оплаты в превью: из тела, иначе как на брони.
@@ -1092,6 +1086,9 @@ router.patch("/:id", async (req, res, next) => {
         ? transportReplacement.reduce((acc, t) => acc.add(new Decimal(t.subtotalRub)), new Decimal(0))
         : null;
 
+    // Позиции, записанные транзакцией: по ним же пересчитывается бронь на
+    // согласовании, а не по снимку до правки.
+    let writtenItems: ReturnType<typeof carryItemOverrides<NonNullable<typeof body.items>[number]>> | null = null;
     const booking = await prisma.$transaction(async (tx) => {
       // Повторно внутри транзакции: выдачу могли начать между проверкой и записью.
       if (touchesKioskChecklist) await assertNoIssueInProgress(tx, id);
@@ -1104,6 +1101,7 @@ router.patch("/:id", async (req, res, next) => {
           select: { equipmentId: true, negotiatedRatePerShift: true },
         });
         const itemsToWrite = carryItemOverrides(body.items, currentItems);
+        writtenItems = itemsToWrite;
         await tx.bookingItem.deleteMany({ where: { bookingId: id } });
         await tx.bookingItem.createMany({
           data: itemsToWrite.map((it) => ({
@@ -1356,14 +1354,8 @@ router.patch("/:id", async (req, res, next) => {
     // (rebuildBookingEstimate не обновляет поля на брони, только estimate-snapshot).
     if (wasInReview) {
       try {
-        const itemsAfter = body.items
-          ? carryItemOverrides(body.items, existing.items).map((it) => ({
-              equipmentId: it.equipmentId,
-              customName: it.customName,
-              customUnitPrice: it.customUnitPrice,
-              quantity: it.quantity,
-              negotiatedRatePerShift: it.negotiatedRatePerShift,
-            }))
+        const itemsAfter = writtenItems
+          ? quoteItemsFromBody(writtenItems)
           : existingItemsForQuote(existing.items);
         const quote = await quoteEstimate({
           startDate: start,

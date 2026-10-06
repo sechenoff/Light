@@ -188,6 +188,27 @@ describe("PATCH /api/bookings/:id — договорная цена пережи
     const booking = await prisma.booking.findUnique({ where: { id } });
     expect(Number(booking.finalAmount)).toBe(37000);
   });
+  it("бронь на согласовании: правка состава без поля считает по договорной цене", async () => {
+    const id = await createDraft();
+    await prisma.booking.update({ where: { id }, data: { status: "PENDING_APPROVAL" } });
+    const res = await request(app)
+      .patch(`/api/bookings/${id}`)
+      .set(AUTH())
+      .send({ items: [{ equipmentId: skyId, quantity: 3 }, { equipmentId: apuId, quantity: 1 }] });
+    expect(res.status).toBe(200);
+    // 7 000 × 3 × 2 = 42 000 договорных + 5 000 × 2 = 10 000 прайсовых, скидки нет.
+    const booking = await prisma.booking.findUnique({ where: { id } });
+    expect(Number(booking.finalAmount)).toBe(52000);
+  });
+
+  it("договорная цена у произвольной позиции по-прежнему отклоняется", async () => {
+    const id = await createDraft();
+    const res = await request(app)
+      .patch(`/api/bookings/${id}`)
+      .set(AUTH())
+      .send({ items: [{ equipmentId: null, customName: "Расходники", customUnitPrice: 1500, quantity: 1, negotiatedRatePerShift: 900 }] });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("ретро-правка возвращённой брони", () => {

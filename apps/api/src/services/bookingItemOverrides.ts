@@ -16,6 +16,7 @@
  * должна переживать сохранение, которое её не трогает.
  */
 
+/** Prisma.Decimal, число или строка — всё, у чего есть точное строковое представление. */
 type Numeric = { toString(): string } | number | string;
 
 export type ItemOverridesInput = {
@@ -72,5 +73,30 @@ export function existingItemsForQuote(
     quantity: i.quantity,
     negotiatedRatePerShift:
       i.equipmentId && i.negotiatedRatePerShift != null ? Number(i.negotiatedRatePerShift.toString()) : null,
+  }));
+}
+
+/** Позиции из тела PATCH (после carryItemOverrides) как вход quoteEstimate. */
+export function quoteItemsFromBody(
+  items: ReadonlyArray<{
+    equipmentId?: string;
+    customName?: string;
+    customUnitPrice?: number;
+    quantity: number;
+    negotiatedRatePerShift: number | null;
+  }>,
+): Array<{
+  equipmentId?: string;
+  customName?: string;
+  customUnitPrice?: number;
+  quantity: number;
+  negotiatedRatePerShift: number | null;
+}> {
+  return items.map((it) => ({
+    equipmentId: it.equipmentId,
+    customName: it.customName,
+    customUnitPrice: it.customUnitPrice,
+    quantity: it.quantity,
+    negotiatedRatePerShift: it.negotiatedRatePerShift,
   }));
 }
