@@ -595,10 +595,12 @@ async function stayConflicts(
           excludeBookingId: booking.id,
           excludeHolderIds: familyIds,
         });
-        // Держатель занимает позицию с начала своей брони, а выданный раньше
-        // срока — с момента выдачи. Кому она нужна только после срока «до»,
-        // дефицит не объясняет (окно поиска у длинной строки шире отрезка) —
-        // такого не называем.
+        // Держатель занимает позицию с начала своей брони, выданный раньше
+        // срока — с момента выдачи, проект — со своей партии. Из нескольких
+        // назван тот, кто занимает раньше, — то есть задевающий отрезок, если
+        // такой есть. Кому она нужна только после срока «до», дефицит не
+        // объясняет (окно поиска у длинной строки шире отрезка) — такого не
+        // называем.
         const found = holders.get(equipmentId) ?? null;
         const occupiedFrom = found ? holderOccupiedFrom(found) : null;
         const holder = found && occupiedFrom! < segEnd.getTime() ? found : null;
@@ -623,7 +625,12 @@ async function stayConflicts(
   return out;
 }
 
-/** С какого момента держатель занимает позицию: начало брони или, у выданной раньше срока, выдача. */
+/**
+ * С какого момента держатель занимает позицию: начало брони или, у выданной
+ * раньше срока, выдача. У партии проекта `from` — уже её фактическое начало
+ * (выдача партии или первый день), так что формула та же — и совпадает с
+ * началом резерва, по которому держатель выбран (addonAvailability).
+ */
 function holderOccupiedFrom(h: AddonConflict): number {
   const start = Date.parse(h.from);
   const issued = h.issuedAt ? Date.parse(h.issuedAt) : Number.POSITIVE_INFINITY;

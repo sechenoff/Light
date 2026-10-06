@@ -695,3 +695,87 @@ describe("«Часть не вернули»: третий круг провер
     expect(after).toMatchObject({ acknowledgedConflict: true, conflictBookingIds: early.id });
   });
 });
+
+/** Московская дата (YYYY-MM-DD) момента `ms` — формат дат партий проекта. */
+const moscowDay = (ms: number) => new Date(ms + 3 * HOUR).toISOString().slice(0, 10);
+/** Полночь по Москве — с неё партия проекта занимает позицию (projectMidnight). */
+const moscowMidnight = (ymd: string) => new Date(`${ymd}T00:00:00+03:00`);
+
+/**
+ * Длинный проект, выданный неделю назад, и его партия на позицию: склад
+ * партия занимает со своего первого дня, а не с начала проекта.
+ */
+async function projectWithLot(equipmentId: string, quantity: number, fromDate: string, throughDate: string) {
+  const project = await prisma.booking.create({
+    data: {
+      clientId, projectName: "Сериал «Долгий»", mode: "PROJECT", status: "ISSUED",
+      startDate: new Date(N - 7 * DAY), endDate: new Date(N + 30 * DAY), issuedAt: new Date(N - 7 * DAY),
+    },
+  });
+  await prisma.bookingProject.create({ data: { bookingId: project.id } });
+  await prisma.projectLot.create({
+    data: { bookingId: project.id, equipmentId, nameSnapshot: "Партия", quantity, ratePerShift: 500, fromDate, throughDate },
+  });
+  return project;
+}
+
+describe("«Часть не вернули»: держатель — партия проекта", () => {
+  it("партия начинается завтра — «нужна с» и карточка держателя — с начала партии, а не проекта", async () => {
+    const eq = await freshStand();
+    const { b, standItem } = await returnedBooking({ standId: eq });
+    const first = moscowDay(Date.now() + DAY);
+    const project = await projectWithLot(eq, 18, first, moscowDay(Date.now() + 2 * DAY));
+    const pv = await preview(b.id, [{ bookingItemId: standItem, quantity: 3, until: new Date(N + 3 * DAY).toISOString() }]);
+    expect(pv.status).toBe(200);
+    expect(pv.body.conflicts).toEqual([
+      expect.objectContaining({
+        needed: 3,
+        available: 2,
+        neededFrom: moscowMidnight(first).toISOString(),
+        holder: expect.objectContaining({
+          bookingId: project.id,
+          from: moscowMidnight(first).toISOString(),
+          to: moscowMidnight(moscowDay(Date.now() + 3 * DAY)).toISOString(),
+          // Проект выдан, а партия ещё на складе.
+          holderStatus: "CONFIRMED",
+          issuedAt: null,
+        }),
+      }),
+    ]);
+  });
+
+  it("партия после срока «до» не заслоняет бронь, которой позиция нужна внутри отрезка", async () => {
+    seq += 1;
+    const eq = (
+      await prisma.equipment.create({
+        data: { importKey: `rcor-lot-${seq}`, name: `Прибор ${seq}`, category: "Свет", totalQuantity: 2, rentalRatePerShift: 1000, stockTrackingMode: "COUNT" },
+      })
+    ).id;
+    const start = new Date(N - 20 * HOUR);
+    // Длинная строка (3 смены) — держателей ищут в окне до её срока, шире отрезка.
+    const b = await prisma.booking.create({
+      data: {
+        clientId, projectName: `Длинная ${seq}`, docNumber: `СМ-RC-${seq}`, status: "ISSUED", startDate: start, endDate: new Date(N + 4 * HOUR), issuedAt: start, legacyFinance: false,
+        items: { create: [{ equipmentId: eq, quantity: 2, shifts: 3 }] },
+      },
+      include: { items: true },
+    });
+    const { rebuildBookingEstimate } = await import("../services/bookings");
+    await rebuildBookingEstimate(b.id);
+    expect((await request(app).post(`/api/bookings/${b.id}/status`).set(AUTH()).send({ action: "return", allReturned: true })).status).toBe(200);
+    const until = new Date(Date.now() + DAY);
+    // Проект выдан неделю назад, но его партия берёт прибор только после срока «до».
+    await projectWithLot(eq, 1, moscowDay(until.getTime() + DAY), moscowDay(until.getTime() + 2 * DAY));
+    const inside = await confirmedHolder(eq, 1, Date.now() + 2 * HOUR, Date.now() + 10 * HOUR, "Внутри отрезка");
+    const pv = await preview(b.id, [{ bookingItemId: b.items[0].id, quantity: 2, until: until.toISOString() }]);
+    expect(pv.status).toBe(200);
+    expect(pv.body.conflicts).toEqual([
+      expect.objectContaining({
+        needed: 2,
+        available: 1,
+        neededFrom: inside.startDate.toISOString(),
+        holder: expect.objectContaining({ bookingId: inside.id, projectName: "Внутри отрезка" }),
+      }),
+    ]);
+  });
+});
