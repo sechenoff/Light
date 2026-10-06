@@ -51,6 +51,7 @@ import { createFinanceEvent, recomputeBookingFinance } from "./finance";
 import { resolveBookingLinePrice, splitEquipmentDiscount } from "./pricing";
 import { effectiveLineShifts } from "@light-rental/shared";
 import { pluralShifts } from "./smetaExport/shiftsNote";
+import { assertAddonAllowedForFamily } from "./bookingFamily";
 import { findBlockingScanSession, scanSessionActiveError } from "./scanSessionPolicy";
 import { addonWindow, computeAddCaps, overStockError, reserveUnits, type StockWindow } from "./stockCap";
 
@@ -159,9 +160,10 @@ export async function searchAddonCandidates(args: {
 }): Promise<AddonSearchResult[]> {
   const booking = await prisma.booking.findUnique({
     where: { id: args.bookingId },
-    select: { startDate: true, endDate: true, status: true },
+    select: { startDate: true, endDate: true, status: true, parentBookingId: true },
   });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+  assertAddonAllowedForFamily(booking);
   const window = addonWindow(booking, { issuingNow: args.issuingNow ?? booking.status === "ISSUED" });
 
   const rows = await getAvailability({
@@ -419,12 +421,13 @@ async function loadAlreadyInBooking(
 async function loadBookingForAddon(bookingId: string) {
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
-    select: { id: true, status: true, deletedAt: true, startDate: true, endDate: true },
+    select: { id: true, status: true, deletedAt: true, startDate: true, endDate: true, parentBookingId: true },
   });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
   if (booking.deletedAt) {
     throw new HttpError(409, "Бронь в архиве — действие недоступно", "BOOKING_ARCHIVED");
   }
+  assertAddonAllowedForFamily(booking);
   return booking;
 }
 

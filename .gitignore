@@ -40,3 +40,4 @@ apps/api/inspect-xlsx*.cjs
 # Local Claude session transcripts (2 legacy files remain tracked; this only
 # prevents new ones from being committed).
 .claude/data/sessions/
+**/.claude/data/sessions/

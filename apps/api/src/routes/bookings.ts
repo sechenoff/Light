@@ -1,4 +1,5 @@
 import { setBookingIssuedOrReturnedManually } from "../services/bookingManualStatus";
+import { assertFamilyAllowsEdit } from "../services/bookingFamily";
 import { listBookingRegister } from "../services/bookingRegister";
 import { getBookingIssues } from "../services/bookingIssues";
 import express from "express";
@@ -9,7 +10,7 @@ import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
 import { carryItemOverrides, existingItemsForQuote, quoteItemsFromBody } from "../services/bookingItemOverrides";
-import { createBookingDraft, createQuickBooking, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, resolveBookingSurchargePercent, CUSTOM_LINE_CATEGORY } from "../services/bookings";
+import { createBookingDraft, createQuickBooking, confirmBooking, continuationContextOf, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, resolveBookingSurchargePercent, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
 import { writeOffBookingDebt, cancelBookingDebtWriteOff } from "../services/debtWriteOff";
@@ -861,6 +862,16 @@ router.patch("/:id", async (req, res, next) => {
         ? parseBookingRangeBound(body.endDate, "end")
         : existing.endDate;
       assertBookingRangeOrder(start, end);
+      // Превью правки, которую семья броней не пропустит, — тот же отказ, а не
+      // сумма по правилам обычной брони.
+      await assertFamilyAllowsEdit(prisma, existing, {
+        datesChanged:
+          start.getTime() !== existing.startDate.getTime() || end.getTime() !== existing.endDate.getTime(),
+        itemsChanged: Boolean(body.items),
+        extend: body.extendEndDate != null,
+        skipPartialDayChanged:
+          body.skipPartialDay !== undefined && body.skipPartialDay !== (existing.skipPartialDay ?? false),
+      });
 
       const itemsAfter = body.items
         ? quoteItemsFromBody(carryItemOverrides(body.items, existing.items))
@@ -890,6 +901,7 @@ router.patch("/:id", async (req, res, next) => {
         items: itemsAfter,
         transport: body.transport ?? null,
         skipPartialDay: body.skipPartialDay !== undefined ? body.skipPartialDay : (existing.skipPartialDay ?? false),
+        continuation: continuationContextOf({ ...existing, startDate: start, endDate: end }),
         paymentForm: dryRunPaymentForm,
         cashlessSurchargePercent: dryRunSurchargePercent?.toString() ?? null,
       });
@@ -1038,6 +1050,15 @@ router.patch("/:id", async (req, res, next) => {
       (Boolean(body.items) || datesChanged) &&
       (existing.status === "CONFIRMED" || existing.status === "PENDING_APPROVAL");
     if (touchesKioskChecklist) await assertNoIssueInProgress(prisma, id);
+    // Семья броней: у брони с продолжением и у самого продолжения даты и
+    // состав не правятся (services/bookingFamily).
+    await assertFamilyAllowsEdit(prisma, existing, {
+      datesChanged,
+      itemsChanged: Boolean(body.items),
+      extend: isExtendIssued,
+      skipPartialDayChanged:
+        body.skipPartialDay !== undefined && body.skipPartialDay !== (existing.skipPartialDay ?? false),
+    });
 
     // F4+F5: compute resolved expectedPaymentDate for PATCH
     // null from client = re-default (F5, consistent with POST).
@@ -2616,9 +2637,10 @@ router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
 
     const existing = await prisma.booking.findUnique({
       where: { id },
-      select: { id: true, startDate: true, endDate: true, status: true, projectName: true },
+      select: { id: true, startDate: true, endDate: true, status: true, projectName: true, parentBookingId: true },
     });
     if (!existing) throw new HttpError(404, "Бронь не найдена");
+    await assertFamilyAllowsEdit(prisma, existing, { datesChanged: true, itemsChanged: false, extend: false });
 
     const updateData: Record<string, unknown> = {};
     if (body.startDate) updateData.startDate = new Date(body.startDate);
