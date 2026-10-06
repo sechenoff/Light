@@ -61,8 +61,8 @@ export async function assertNoLiveContinuations(client: Db, bookingId: string, w
 /**
  * Правка брони (PATCH /api/bookings/:id) в семье:
  *  - у брони с продолжением — без смены дат и состава;
- *  - у продолжения — без смены дат, состава и продления (продление появится
- *    вместе с дополнительной сметой сверх оплаченного).
+ *  - у продолжения — без смены дат и состава; продлить срок возврата можно
+ *    (лишние смены — в смете продолжения сверх уже оплаченного).
  */
 export async function assertFamilyAllowsEdit(
   client: Db,
@@ -76,14 +76,13 @@ export async function assertFamilyAllowsEdit(
   },
 ): Promise<void> {
   if (isContinuation(booking)) {
-    if (change.extend) {
-      throw new HttpError(
-        409,
-        "Продлить продолжение брони пока нельзя — это появится вместе с дополнительной сметой сверх оплаченного",
-        FAMILY_ERROR_CODES.CONTINUATION_EXTEND_NOT_YET,
-      );
+    // Продление продолжения — только срок возврата: лишние смены уходят в его
+    // же смету сверх уже оплаченного (continuationBilling от нового «до»).
+    if (change.extend && !change.itemsChanged && !change.skipPartialDayChanged) {
+      await assertNoLiveContinuations(client, booking.id, "продлевать");
+      return;
     }
-    if (change.datesChanged || change.itemsChanged || change.skipPartialDayChanged) {
+    if (change.datesChanged || change.itemsChanged || change.skipPartialDayChanged || change.extend) {
       throw new HttpError(
         409,
         "У продолжения брони даты, состав и «не считать вторые сутки» не правятся: они пришли из приёмки основной брони",

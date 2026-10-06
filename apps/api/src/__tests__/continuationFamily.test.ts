@@ -283,7 +283,7 @@ describe("гарды семьи", () => {
     expect(backdate.body.code).toBe("HAS_CONTINUATION");
   });
 
-  it("у продолжения начало не правится, продление — позже, добора нет", async () => {
+  it("у продолжения начало не правится, продление — в его смету сверх оплаченного, добора нет", async () => {
     const { child } = await mkFamily();
     const start = await request(app)
       .patch(`/api/bookings/${child}`)
@@ -291,12 +291,18 @@ describe("гарды семьи", () => {
       .send({ retroactive: true, startDate: new Date(N - DAY - HOUR).toISOString() });
     expect(start.status).toBe(409);
     expect(start.body.code).toBe("CONTINUATION_EDIT_FORBIDDEN");
+    // Фикстура пересобирает смету, но не итог брони — сравниваем сметы.
+    const before = Number((await mainOf(child)).totalAfterDiscount);
     const extend = await request(app)
       .patch(`/api/bookings/${child}`)
       .set(AUTH())
       .send({ extendEndDate: new Date(N + 2 * DAY).toISOString() });
-    expect(extend.status).toBe(409);
-    expect(extend.body.code).toBe("CONTINUATION_EXTEND_NOT_YET");
+    expect(extend.status).toBe(200);
+    const after = await prisma.booking.findUnique({ where: { id: child } });
+    expect(after.endDate.toISOString()).toBe(new Date(N + 2 * DAY).toISOString());
+    // Ещё сутки у клиента: STORM ×2 по 1000 и стойка 600 — смена сверх, скидка 50 %.
+    expect(Number((await mainOf(child)).totalAfterDiscount) - before).toBe((2 * 1000 + 600) * 0.5);
+    expect(Number(after.finalAmount)).toBe(Number((await mainOf(child)).totalAfterDiscount));
     const search = await request(app).get(`/api/bookings/${child}/addon-search`).query({ q: "сто" }).set(AUTH());
     expect(search.status).toBe(409);
     expect(search.body.code).toBe("CONTINUATION_ADDON_FORBIDDEN");
