@@ -260,6 +260,22 @@ router.post("/:id/payments", sa, async (req, res, next) => {
     next(e);
   }
 });
+router.post("/:id/client", sa, async (req, res, next) => {
+  try {
+    const b = z
+      .object({ ...rev, clientId: z.string().min(1, "Укажите клиента") })
+      .parse(req.body);
+    const client = await service.changeProjectClient(
+      req.params.id,
+      b.revision,
+      b.clientId,
+      author(req),
+    );
+    res.json({ client });
+  } catch (e) {
+    next(e);
+  }
+});
 router.post("/:id/cancel", sa, async (req, res, next) => {
   try {
     const b = z.object(rev).parse(req.body);

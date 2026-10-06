@@ -20,6 +20,7 @@ import { writeAuditEntry, diffFields } from "./audit";
 import { getSettings } from "./organizationService";
 import { formatPercent, resolveSurchargePercent } from "./paymentForm";
 import { continuationOrigin } from "./bookingFamily";
+import { findClientByName } from "./clientNames";
 
 type TxClient = Prisma.TransactionClient;
 
@@ -243,7 +244,9 @@ async function resolveClient(
   }
   const name = args.client?.name?.trim();
   if (!name) throw new HttpError(400, "Укажите контрагента", "BILL_CLIENT_REQUIRED");
-  const byName = await tx.client.findUnique({ where: { name } });
+  // Тот же клиент в другом написании («петя куб» = «Петя Куб») — не новый.
+  const known = await findClientByName(tx, name);
+  const byName = known ? await tx.client.findUnique({ where: { id: known.id } }) : null;
   if (byName) {
     return Object.keys(patch).length > 0 ? tx.client.update({ where: { id: byName.id }, data: patch }) : byName;
   }

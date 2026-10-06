@@ -2,6 +2,7 @@ import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
 import { writeAuditEntry } from "./audit";
+import { findClientByName } from "./clientNames";
 
 export interface LegacyImportRow {
   filename: string;
@@ -28,14 +29,9 @@ export async function importLegacyBookings(
     for (const row of rows) {
       const normalizedName = row.clientName.trim();
 
-      // Case-insensitive client lookup.
-      // SQLite не поддерживает mode: "insensitive" для кириллицы через LIKE,
-      // поэтому используем JS-сравнение: загружаем все имена и фильтруем toLowerCase().
-      // Коллекция клиентов небольшая, поэтому это приемлемо.
-      const lowerNorm = normalizedName.toLowerCase();
-      const allClients = await tx.client.findMany({ select: { id: true, name: true } });
-      const existingClient =
-        allClients.find((c) => c.name.toLowerCase() === lowerNorm) ?? null;
+      // Клиент в любом написании (регистр, «ё/е», кавычки, пробелы) — то же
+      // правило, что у брони и справочника: импорт не заводит дублей.
+      const existingClient = await findClientByName(tx, normalizedName);
 
       const client =
         existingClient ??

@@ -6,6 +6,8 @@ import { prisma } from "../prisma";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { getClientStats } from "../services/clientStats";
 import { writeAuditEntry, diffFields } from "../services/audit";
+import { findClientByName, findSimilarClients, searchClientIds } from "../services/clientNames";
+import { mergeClients, previewClientMerge } from "../services/clientMerge";
 import { HttpError } from "../utils/errors";
 
 const router = express.Router();
@@ -133,6 +135,24 @@ function legalDataFromBody(body: Partial<Record<(typeof LEGAL_KEYS)[number], str
 }
 
 /**
+ * Имя свободно, если такого клиента нет ни в каком написании: «петя куб» при
+ * существующем «Петя Куб» — не новый клиент, а дубль. 409 называет
+ * существующего, чтобы окно выбора могло сразу подставить его.
+ */
+async function assertNameFree(tx: Prisma.TransactionClient, name: string, selfId?: string): Promise<void> {
+  const taken = await findClientByName(tx, name, { excludeId: selfId });
+  if (!taken) return;
+  throw new HttpError(
+    409,
+    selfId
+      ? `Клиент «${taken.name}» уже есть — объедините карточки`
+      : `Клиент «${taken.name}» уже есть`,
+    "CLIENT_NAME_TAKEN",
+    { clientId: taken.id, name: taken.name },
+  );
+}
+
+/**
  * GET /api/clients
  * Список клиентов для селектов/автокомплита.
  * Доступ: SUPER_ADMIN, WAREHOUSE.
@@ -174,11 +194,18 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
       return;
     }
 
-    const where = q.search
-      ? { name: { contains: q.search } }
-      : {};
+    // Поиск — в приложении, а не LIKE: SQLite сравнивает кириллицу с учётом
+    // регистра, и «петя» не находил «Петя Куб». Окно выбора клиента тогда
+    // предлагало «создать нового» — так и заводились дубли.
+    if (q.search) {
+      const ids = await searchClientIds(prisma, q.search, q.limit);
+      const rows = await prisma.client.findMany({ where: { id: { in: ids } }, select: clientListSelect });
+      const byId = new Map(rows.map((c) => [c.id, c]));
+      const ordered = ids.map((id) => byId.get(id)).filter((c): c is ClientListRow => Boolean(c));
+      res.json({ clients: ordered.map(serializeClientListRow) });
+      return;
+    }
     const clients = await prisma.client.findMany({
-      where,
       select: clientListSelect,
       orderBy: { name: "asc" },
       take: q.limit,
@@ -201,6 +228,7 @@ router.post("/", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
     let created: ClientCard;
     try {
       created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await assertNameFree(tx, body.name);
         const client = await tx.client.create({
           data: {
             name: body.name,
@@ -252,6 +280,9 @@ router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
           select: clientCardSelect,
         });
         if (!existing) throw new HttpError(404, "Клиент не найден", "CLIENT_NOT_FOUND");
+        // Только если имя правда меняют: форма шлёт имя всегда, а у двух
+        // уже заведённых «близнецов» иначе нельзя было бы поправить и телефон.
+        if (body.name !== undefined && body.name !== existing.name) await assertNameFree(tx, body.name, id);
         const client = await tx.client.update({
           where: { id },
           data: {
@@ -320,6 +351,69 @@ router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
       throw err;
     }
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/clients/:id/similar
+ * Клиенты с похожим написанием имени — кандидаты в дубли для объединения.
+ * Доступ: SUPER_ADMIN.
+ */
+router.get("/:id/similar", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const similar = await findSimilarClients(prisma, req.params.id);
+    if (!similar) throw new HttpError(404, "Клиент не найден", "CLIENT_NOT_FOUND");
+    const rows = await prisma.client.findMany({
+      where: { id: { in: similar.map((s) => s.id) } },
+      select: clientListSelect,
+    });
+    const byId = new Map(rows.map((c) => [c.id, c]));
+    res.json({
+      clients: similar.flatMap((s) => {
+        const row = byId.get(s.id);
+        return row ? [{ ...serializeClientListRow(row), similarity: s.score }] : [];
+      }),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const mergePreviewQuerySchema = z.object({ into: z.string().trim().min(1, "Укажите, с кем объединить") });
+const mergeBodySchema = z.object({ intoClientId: z.string().trim().min(1, "Укажите, с кем объединить") });
+
+/**
+ * GET /api/clients/:id/merge-preview?into=<id>
+ * Что произойдёт, если влить клиента :id в карточку `into`: сколько броней,
+ * счетов, кредит-нот и задач переедет, что станет с контактами и кабинетом.
+ * Ничего не меняет. Доступ: SUPER_ADMIN.
+ */
+router.get("/:id/merge-preview", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const q = mergePreviewQuerySchema.parse(req.query);
+    res.json(await previewClientMerge(req.params.id, q.into));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/clients/:id/merge  { intoClientId }
+ * Влить дубль :id в основную карточку: всё переходит к ней, дубль удаляется.
+ * Одна транзакция, журнал — у обеих карточек и у каждой брони.
+ * Доступ: SUPER_ADMIN.
+ */
+router.post("/:id/merge", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const body = mergeBodySchema.parse(req.body);
+    const result = await mergeClients({
+      sourceId: req.params.id,
+      targetId: body.intoClientId,
+      userId: req.adminUser!.userId,
+    });
+    res.json(result);
   } catch (err) {
     next(err);
   }

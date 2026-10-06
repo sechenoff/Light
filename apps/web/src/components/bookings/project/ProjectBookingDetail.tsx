@@ -7,6 +7,7 @@ import { apiFetch } from "../../../lib/api";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { bookingStatusLabel } from "../../../lib/bookingConstants";
 import { ProjectActionDialog, type ProjectAction } from "./ProjectActionDialog";
+import { ChangeClientModal } from "../ChangeClientModal";
 import { BookingIssuesButton } from "../issues/BookingIssuesPanel";
 import { readBookingsListHref } from "../bookingsListNav";
 import {
@@ -31,6 +32,7 @@ export function ProjectBookingDetail({ bookingId }: { bookingId: string }) {
   const [viewDate, setViewDate] = useState(todayMoscow());
   const [month, setMonth] = useState("");
   const [showHistory, setShowHistory] = useState(false);
+  const [changeClientOpen, setChangeClientOpen] = useState(false);
   const [dialog, setDialog] = useState<{
     action: ProjectAction;
     lot?: ProjectLot;
@@ -136,7 +138,21 @@ export function ProjectBookingDetail({ bookingId }: { bookingId: string }) {
             {p.booking.projectName}
           </h1>
           <p className="mt-2 text-sm text-ink-3">
-            {p.booking.client.name} · {date(p.fromDate)} — {date(p.throughDate)}{" "}
+            {p.booking.client.name}
+            {isAdmin && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => setChangeClientOpen(true)}
+                  aria-label="Сменить клиента проекта"
+                  className="inline-flex min-h-8 items-center rounded border border-border px-2 align-baseline text-xs text-ink-3 transition-colors hover:bg-surface-subtle hover:text-ink"
+                >
+                  Сменить
+                </button>
+              </>
+            )}{" "}
+            · {date(p.fromDate)} — {date(p.throughDate)}{" "}
             ·{" "}
             {bookingStatusLabel(
               p.booking.status as Parameters<typeof bookingStatusLabel>[0],
@@ -623,6 +639,18 @@ export function ProjectBookingDetail({ bookingId }: { bookingId: string }) {
           onSaved={reload}
         />
       )}
+      <ChangeClientModal
+        open={changeClientOpen}
+        bookingId={bookingId}
+        currentClientId={p.booking.client.id}
+        currentClientName={p.booking.client.name}
+        projectRevision={p.revision}
+        onClose={() => setChangeClientOpen(false)}
+        onSuccess={() => {
+          setChangeClientOpen(false);
+          void reload();
+        }}
+      />
     </div>
   );
 }

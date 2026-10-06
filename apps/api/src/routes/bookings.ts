@@ -1,13 +1,14 @@
 import { setBookingIssuedOrReturnedManually } from "../services/bookingManualStatus";
 import {
   actWaitsForContinuationError,
-  assertFamilyAllowsClientChange,
   assertFamilyAllowsEdit,
   assertUnchangedSinceRead,
   bookingFamilySummary,
   continuationOrigin,
   hasIssuedDescendant,
 } from "../services/bookingFamily";
+import { moveBookingFamilyToClient } from "../services/bookingClient";
+import { findClientByName, resolveClientForBooking } from "../services/clientNames";
 import { getReturnPlan, hasPlannedStays, plannedStayPendingError, previewReturnPartial, returnPartial } from "../services/bookingContinuation";
 import { correctReturn, getCorrectionPlan, previewReturnCorrection } from "../services/returnCorrection";
 import { cancelContinuation } from "../services/continuationCancel";
@@ -2010,10 +2011,7 @@ router.post("/quote", async (req, res, next) => {
     // Раньше здесь был upsert по имени — дебаунс-превью формы засорял
     // справочник частичными именами («Мосфи», «Мосфил», …). Клиент создаётся
     // только в не-dryRun POST /draft. Паттерн — как в dryRun-ветке /draft.
-    const existingClient = await prisma.client.findFirst({
-      where: { name: body.client.name.trim() },
-      select: { id: true },
-    });
+    const existingClient = await findClientByName(prisma, body.client.name);
     const clientIdForQuote = existingClient?.id ?? "dry-run-placeholder";
 
     const estimate = await quoteEstimate({
@@ -2090,22 +2088,13 @@ router.post("/quote/export", async (req, res, next) => {
       throw new HttpError(400, e instanceof Error ? e.message : "Некорректный период аренды");
     }
 
-    const client = await prisma.client.upsert({
-      where: { name: body.client.name.trim() },
-      update: {
-        // Conditional spread: only write fields that were explicitly provided.
-        // Prevents the booking form (which only collects `name`) from wiping
-        // existing phone/email/comment on a Client when autocomplete is used.
-        ...(body.client.phone !== undefined ? { phone: body.client.phone } : {}),
-        ...(body.client.email !== undefined ? { email: body.client.email } : {}),
-        ...(body.client.comment !== undefined ? { comment: body.client.comment } : {}),
-      },
-      create: {
-        name: body.client.name.trim(),
-        phone: body.client.phone ?? null,
-        email: body.client.email ?? null,
-        comment: body.client.comment ?? null,
-      },
+    // Тот же клиент в любом написании; телефон существующему только
+    // дозаполняется — как в /draft.
+    const client = await resolveClientForBooking(prisma, {
+      name: body.client.name,
+      phone: body.client.phone ?? null,
+      email: body.client.email,
+      comment: body.client.comment,
     });
 
     const estimate = await quoteEstimate({
@@ -2223,11 +2212,8 @@ router.post("/draft", async (req, res, next) => {
 
     // ── dryRun: превью брони без записи в БД ─────────────────────────────────
     if (body.dryRun) {
-      // Ищем существующего клиента по имени (не upsert-им)
-      const existingClient = await prisma.client.findFirst({
-        where: { name: body.client.name.trim() },
-        select: { id: true },
-      });
+      // Ищем существующего клиента по имени (не upsert-им) — в любом написании.
+      const existingClient = await findClientByName(prisma, body.client.name);
       const clientIdForQuote = existingClient?.id ?? "dry-run-placeholder";
 
       const estimate = await quoteEstimate({
@@ -2290,28 +2276,15 @@ router.post("/draft", async (req, res, next) => {
     // Новому клиенту — записываем; существующему без телефона — дозаполняем;
     // существующий телефон НЕ перезаписываем (форма может прислать устаревший
     // или частично набранный номер — источник правды остаётся в /admin/clients).
-    const clientName = body.client.name.trim();
-    const providedPhone = (body.client.phone ?? body.clientPhone ?? "").trim() || null;
-    const existingClientRec = await prisma.client.findUnique({
-      where: { name: clientName },
-      select: { phone: true },
-    });
-    const client = await prisma.client.upsert({
-      where: { name: clientName },
-      update: {
-        // Conditional spread: only write fields that were explicitly provided.
-        // Prevents the booking form (which only collects `name`) from wiping
-        // existing email/comment on a Client when autocomplete is used.
-        ...(providedPhone && !existingClientRec?.phone ? { phone: providedPhone } : {}),
-        ...(body.client.email !== undefined ? { email: body.client.email } : {}),
-        ...(body.client.comment !== undefined ? { comment: body.client.comment } : {}),
-      },
-      create: {
-        name: clientName,
-        phone: providedPhone,
-        email: body.client.email ?? null,
-        comment: body.client.comment ?? null,
-      },
+    // Клиент ищется в любом написании («петя куб» = «Петя Куб»): иначе
+    // каждая опечатка в регистре заводила бы дубль. Почта и комментарий
+    // пишутся, только если их прислали явно — форма шлёт одно имя и не должна
+    // стирать то, что заполнено в справочнике.
+    const client = await resolveClientForBooking(prisma, {
+      name: body.client.name,
+      phone: body.client.phone ?? body.clientPhone ?? null,
+      email: body.client.email,
+      comment: body.client.comment,
     });
 
     // Compute per-vehicle transport snapshots if provided
@@ -2408,18 +2381,11 @@ router.post("/quick", async (req, res, next) => {
       throw new HttpError(400, e instanceof Error ? e.message : "Некорректный период аренды");
     }
 
-    const clientName = body.client.name.trim();
-    const providedPhone = body.client.phone?.trim() || null;
     // Телефон существующему клиенту только дозаполняем — не перетираем
-    // (та же семантика, что у POST /draft).
-    const existing = await prisma.client.findUnique({
-      where: { name: clientName },
-      select: { phone: true },
-    });
-    const client = await prisma.client.upsert({
-      where: { name: clientName },
-      update: providedPhone && !existing?.phone ? { phone: providedPhone } : {},
-      create: { name: clientName, phone: providedPhone },
+    // (та же семантика, что у POST /draft); клиент — в любом написании имени.
+    const client = await resolveClientForBooking(prisma, {
+      name: body.client.name,
+      phone: body.client.phone ?? null,
     });
 
     const booking = await createQuickBooking({
@@ -2623,7 +2589,6 @@ router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req
 
     let nextClient = existing.client;
     if (body.clientId && body.clientId !== existing.clientId) {
-      await assertFamilyAllowsClientChange(prisma, existing);
       const candidate = await prisma.client.findUnique({ where: { id: body.clientId } });
       if (!candidate) throw new HttpError(404, "Клиент не найден", "CLIENT_NOT_FOUND");
       nextClient = candidate;
@@ -2659,6 +2624,12 @@ router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req
         data: updateData,
         include: { client: true, items: { include: { equipment: true } }, estimates: { include: { lines: true } } },
       });
+      // Клиент семьи один: продолжения (или основная бронь) переходят вместе
+      // с исправленной бронью. Сама она уже переведена выше и не задваивается.
+      const familyMoved =
+        body.clientId && body.clientId !== existing.clientId
+          ? await moveBookingFamilyToClient(tx, { booking: existing, client: nextClient, userId })
+          : [];
 
       await writeAuditEntry({
         tx,
@@ -2684,10 +2655,12 @@ router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req
         }),
       });
 
-      return booking;
+      return { booking, changedBookings: body.clientId && body.clientId !== existing.clientId ? 1 + familyMoved.length : 0 };
     });
 
-    res.json({ booking: await serializeBookingOrdered(updated as any) });
+    // changedBookings — у скольких броней сменился клиент (вся семья); окно
+    // правки говорит об этом, если их больше одной.
+    res.json({ booking: await serializeBookingOrdered(updated.booking as any), changedBookings: updated.changedBookings });
   } catch (err) {
     next(err);
   }
@@ -2995,8 +2968,6 @@ router.post(
       if (existing.clientId === newClientId) {
         throw new HttpError(400, "Бронь уже принадлежит этому клиенту", "NO_CHANGE");
       }
-      // Клиент семьи броней (основная и продолжения) — общий.
-      await assertFamilyAllowsClientChange(prisma, existing);
 
       // 4. Проверяем, что новый клиент существует
       const newClient = await prisma.client.findUnique({
@@ -3005,31 +2976,25 @@ router.post(
       });
       if (!newClient) throw new HttpError(400, "Клиент не найден", "INVALID_CLIENT_ID");
 
-      // 5. Транзакция: обновить + аудит
-      const updated = await prisma.$transaction(async (tx) => {
-        const updatedBooking = await tx.booking.update({
+      // 5. Транзакция: бронь и вся её семья (основная и продолжения — один
+      // клиент) + запись в журнале каждой брони.
+      const { updated, changed } = await prisma.$transaction(async (tx) => {
+        const changedIds = await moveBookingFamilyToClient(tx, {
+          booking: existing,
+          client: newClient,
+          userId: req.adminUser!.userId,
+        });
+        const updatedBooking = await tx.booking.findUniqueOrThrow({
           where: { id: existing.id },
-          data: { clientId: newClientId },
           include: {
             client: true,
             items: { include: { equipment: true } },
           },
         });
-
-        await writeAuditEntry({
-          tx,
-          userId: req.adminUser!.userId,
-          action: "BOOKING_CLIENT_CHANGED",
-          entityType: "Booking",
-          entityId: existing.id,
-          before: { clientId: existing.client.id, clientName: existing.client.name },
-          after: { clientId: newClient.id, clientName: newClient.name },
-        });
-
-        return updatedBooking;
+        return { updated: updatedBooking, changed: changedIds };
       });
 
-      res.json({ booking: await serializeBookingOrdered(updated as any) });
+      res.json({ booking: await serializeBookingOrdered(updated as any), changedBookings: changed.length });
     } catch (err) {
       next(err);
     }

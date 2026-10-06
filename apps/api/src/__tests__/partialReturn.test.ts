@@ -422,18 +422,23 @@ describe("проверки оставленного", () => {
 });
 
 describe("семья после частичной приёмки", () => {
-  it("клиента не сменить у одной брони семьи", async () => {
+  it("клиент меняется у всей семьи сразу — у основной и продолжения он один", async () => {
     const b = await issuedBooking();
     const p = await plan(b.id);
     const res = await request(app)
       .post(`/api/bookings/${b.id}/return-partial`)
       .set(AUTH())
       .send({ stays: [{ bookingItemId: itemOf(b, storm).id, quantity: 1, until: p.lines.find((l: any) => l.equipmentId === storm).plannedStayUntil }], expectedSplitRevision: p.splitRevision });
+    const childId = res.body.continuationIds[0];
     const other = await prisma.client.create({ data: { name: "Другой клиент" } });
-    for (const id of [b.id, res.body.continuationIds[0]]) {
-      const change = await request(app).post(`/api/bookings/${id}/change-client`).set(AUTH()).send({ clientId: other.id });
-      expect(change.status).toBe(409);
-      expect(change.body.code).toBe("HAS_CONTINUATION");
+    const third = await prisma.client.create({ data: { name: "Третий клиент" } });
+    for (const [id, client] of [[childId, other], [b.id, third]] as const) {
+      const change = await request(app).post(`/api/bookings/${id}/change-client`).set(AUTH()).send({ clientId: client.id });
+      expect(change.status).toBe(200);
+      expect(change.body.changedBookings).toBe(2);
+      for (const member of [b.id, childId]) {
+        expect((await prisma.booking.findUnique({ where: { id: member } })).clientId).toBe(client.id);
+      }
     }
   });
 

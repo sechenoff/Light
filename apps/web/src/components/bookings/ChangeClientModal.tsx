@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../lib/api";
+import { normalizeClientName } from "../../lib/clientName";
+import { pluralize } from "../../lib/format";
 import { toast } from "../ToastProvider";
 
 interface ClientOption {
@@ -16,6 +18,25 @@ interface Props {
   onClose: () => void;
   onSuccess: () => void;
   bookingId: string;
+  /**
+   * У брони есть продолжения (или это продолжение): у основной брони и
+   * продолжений клиент один, поэтому он сменится у всей семьи.
+   */
+  family?: boolean;
+  /**
+   * Длинный проект меняется своими операциями — со сверкой ревизии и записью
+   * в историю проекта. Передана — смена идёт через /api/booking-projects.
+   */
+  projectRevision?: number;
+}
+
+/** Ответ 409 CLIENT_NAME_TAKEN называет уже существующего клиента. */
+function takenClient(e: unknown): ClientOption | null {
+  const err = e as { code?: string; details?: unknown };
+  const d = err?.details as { clientId?: unknown; name?: unknown } | undefined;
+  return err?.code === "CLIENT_NAME_TAKEN" && typeof d?.clientId === "string" && typeof d?.name === "string"
+    ? { id: d.clientId, name: d.name }
+    : null;
 }
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -29,7 +50,10 @@ export function ChangeClientModal({
   onClose,
   onSuccess,
   bookingId,
+  family = false,
+  projectRevision,
 }: Props) {
+  const isProject = projectRevision !== undefined;
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
@@ -131,22 +155,40 @@ export function ChangeClientModal({
   // совпадений нет точного (без учёта регистра). Это позволяет создать нового
   // клиента сразу из модалки, не уходя в отдельный экран.
   const hasExactMatch = clients.some(
-    (c) => c.name.toLowerCase() === trimmedSearch.toLowerCase(),
+    (c) => normalizeClientName(c.name) === normalizeClientName(trimmedSearch),
   );
   const canCreate = trimmedSearch.length >= 2 && !hasExactMatch;
 
   const confirmDisabled = submitting || creating || !selectedId;
+
+  /** Назначить клиента; вернуть, у скольких броней он сменился. */
+  async function assign(clientId: string): Promise<number> {
+    if (isProject) {
+      await apiFetch(`/api/booking-projects/${bookingId}/client`, {
+        method: "POST",
+        body: JSON.stringify({ revision: projectRevision, clientId }),
+      });
+      return 1;
+    }
+    const res = await apiFetch<{ changedBookings?: number }>(`/api/bookings/${bookingId}/change-client`, {
+      method: "POST",
+      body: JSON.stringify({ clientId }),
+    });
+    return res?.changedBookings ?? 1;
+  }
+
+  function changedToast(changed: number): string {
+    return changed > 1
+      ? `Клиент изменён у ${changed} ${pluralize(changed, "брони", "броней", "броней")} семьи`
+      : "Клиент изменён";
+  }
 
   async function handleConfirm(): Promise<void> {
     if (!selectedId) return;
     setError(null);
     setSubmitting(true);
     try {
-      await apiFetch(`/api/bookings/${bookingId}/change-client`, {
-        method: "POST",
-        body: JSON.stringify({ clientId: selectedId }),
-      });
-      toast.success("Клиент изменён");
+      toast.success(changedToast(await assign(selectedId)));
       onSuccess();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Не удалось сменить клиента";
@@ -174,11 +216,7 @@ export function ChangeClientModal({
 
       // Сразу применяем смену — пользователь редко хочет создать и не назначить.
       try {
-        await apiFetch(`/api/bookings/${bookingId}/change-client`, {
-          method: "POST",
-          body: JSON.stringify({ clientId: newClient.id }),
-        });
-        toast.success("Клиент назначен на бронь");
+        toast.success(changedToast(await assign(newClient.id)));
         onSuccess();
       } catch (assignErr: unknown) {
         const message =
@@ -186,8 +224,19 @@ export function ChangeClientModal({
         setError(message);
       }
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Не удалось создать клиента";
-      setError(message);
+      // Такой клиент уже есть в другом написании («петя куб» = «Петя Куб») —
+      // выбираем его, а не заводим дубль.
+      const existing = takenClient(e);
+      if (existing && existing.id === currentClientId) {
+        setError(`«${existing.name}» — это и есть текущий клиент`);
+      } else if (existing) {
+        setClients((prev) => (prev.some((c) => c.id === existing.id) ? prev : [existing, ...prev]));
+        setSelectedId(existing.id);
+        setSearch(existing.name);
+        toast.info(`«${existing.name}» уже есть в справочнике — выбран он`);
+      } else {
+        setError(e instanceof Error ? e.message : "Не удалось создать клиента");
+      }
     } finally {
       setCreating(false);
     }
@@ -209,8 +258,15 @@ export function ChangeClientModal({
         <div className="eyebrow mb-2">Смена клиента</div>
         <h2 className="mb-1 text-lg font-semibold text-ink">Сменить клиента</h2>
         <p className="mb-4 text-sm text-ink-3">
-          Бронь будет переназначена другому клиенту. Действие будет залогировано в аудит.
+          {isProject
+            ? "Проект перейдёт к другому клиенту. Смена попадёт в историю проекта."
+            : "Бронь перейдёт к другому клиенту. Смена попадёт в журнал брони."}
         </p>
+        {family && (
+          <p className="mb-4 rounded border border-accent-border bg-accent-soft px-3 py-2 text-[13px] text-ink-2">
+            У брони есть продолжения — клиент сменится у всей семьи: у основной брони и продолжений он один.
+          </p>
+        )}
 
         <div className="mb-3 text-sm text-ink-2">
           <span className="text-ink-3">Текущий клиент:</span>{" "}
@@ -275,7 +331,7 @@ export function ChangeClientModal({
           >
             {creating
               ? `Создаю «${trimmedSearch}»…`
-              : `+ Создать нового клиента «${trimmedSearch}» и назначить на бронь`}
+              : `+ Создать нового клиента «${trimmedSearch}» и назначить на ${isProject ? "проект" : "бронь"}`}
           </button>
         )}
 
