@@ -25,6 +25,8 @@ type Props = {
   busy: boolean;
   /** Строка из превью дополнительной сметы (сумма лишних смен). */
   previewLine: ContinuationPreview["lines"][number] | null;
+  /** Скидка брони, % — «со скидкой» пишем, только если она есть. */
+  discountPercent: number;
   previewLoading: boolean;
   conflict: StayConflict | null;
   onQuantity: (next: number) => void;
@@ -48,6 +50,7 @@ export function ReturnStayRow({
   stay,
   busy,
   previewLine,
+  discountPercent,
   previewLoading,
   conflict,
   onQuantity,
@@ -164,7 +167,7 @@ export function ReturnStayRow({
               <span className="whitespace-nowrap text-amber">
                 {" "}
                 · {kept} шт × {previewLine.billedShifts} {shiftsWord(previewLine.billedShifts)} → {formatRub(previewLine.afterDiscount)}
-                {previewLine.negotiated ? ", договорная цена" : " со скидкой"}
+                {previewLine.negotiated ? ", договорная цена" : discountPercent > 0 ? " со скидкой" : ""}
               </span>
             ) : (
               <span className="text-ink-3"> · {previewLoading ? "считаем доплату…" : "сверх оплаченного"}</span>

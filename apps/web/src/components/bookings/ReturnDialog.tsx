@@ -309,6 +309,7 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
                       stay={stay}
                       busy={busy}
                       previewLine={previewLine}
+                      discountPercent={Number(preview?.continuations[0]?.discountPercent ?? 0)}
                       previewLoading={previewLoading}
                       conflict={conflict}
                       onQuantity={(n) => setStays(setStayQuantity(stays, l, n))}
