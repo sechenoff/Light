@@ -31,6 +31,8 @@ export interface BookingHeaderProps {
   onOpenExtend: () => void;
   /** Добор в выданную бронь — модалка на странице (AddonItemsModal). */
   onOpenAddon?: () => void;
+  /** «Часть не вернули» — исправление приёмки в течение 7 дней (ReturnCorrectionDialog). */
+  onPartNotReturned?: () => void;
   onChangeExtendDate: (value: string) => void;
   onSubmitExtend: () => void;
   onCancelExtend: () => void;
@@ -60,6 +62,7 @@ export function BookingHeader({
   onEnterRetroEdit,
   onOpenExtend,
   onOpenAddon,
+  onPartNotReturned,
   onChangeExtendDate,
   onSubmitExtend,
   onCancelExtend,
@@ -130,6 +133,20 @@ export function BookingHeader({
                 title="Довезти клиенту ещё оборудование — отдельной доп-сметой или в основную смету"
               >
                 + Добор
+              </button>
+            )}
+            {/* Бронь приняли целиком, а часть осталась у клиента — продолжение
+                от момента приёмки. Страница передаёт колбэк, только пока
+                исправить можно (7 дней) или ждёт конца инвентаризации. */}
+            {booking.status === "RETURNED" && onPartNotReturned && (
+              <button
+                type="button"
+                disabled={lifecycleBusy}
+                onClick={onPartNotReturned}
+                className={`${ACTION_BTN} rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40`}
+                title="Приняли целиком, а часть осталась у клиента — оформить продолжение брони"
+              >
+                Часть не вернули
               </button>
             )}
             {/* Счёт на оплату контрагенту по этой брони — печатный документ для

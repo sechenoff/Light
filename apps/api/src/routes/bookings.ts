@@ -9,6 +9,7 @@ import {
   hasIssuedDescendant,
 } from "../services/bookingFamily";
 import { getReturnPlan, hasPlannedStays, plannedStayPendingError, previewReturnPartial, returnPartial } from "../services/bookingContinuation";
+import { correctReturn, getCorrectionPlan, previewReturnCorrection } from "../services/returnCorrection";
 import { cancelContinuation } from "../services/continuationCancel";
 import { listBookingRegister } from "../services/bookingRegister";
 import { getBookingIssues } from "../services/bookingIssues";
@@ -1804,6 +1805,57 @@ router.post("/:id/cancel-continuation", rolesGuard(["SUPER_ADMIN"]), async (req,
       reason: body.reason,
       actorUserId: req.adminUser!.userId,
     });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * «Часть не вернули» — исправление приёмки в течение 7 дней
+ * (services/returnCorrection). GET отвечает всегда 200: `blockedBy` говорит,
+ * почему исправить нельзя (срок прошёл, идёт инвентаризация…), — карточка по
+ * нему решает, показывать ли пункт меню.
+ */
+router.get("/:id/return-correction", async (req, res, next) => {
+  try {
+    await assertBookingNotArchived(req.params.id);
+    res.json(await getCorrectionPlan(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/return-correction/preview", async (req, res, next) => {
+  try {
+    const body = returnPartialPreviewSchema.parse(req.body);
+    await assertBookingNotArchived(req.params.id);
+    res.json(await previewReturnCorrection(req.params.id, body.stays));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/return-correction", async (req, res, next) => {
+  try {
+    const body = returnPartialSchema.parse(req.body);
+    await assertBookingNotArchived(req.params.id);
+    // Продолжение и журнал пишутся от имени сотрудника — бот-ключу нельзя.
+    if (!req.adminUser) throw new HttpError(401, "Требуется вход сотрудника", "UNAUTHENTICATED");
+    let result: { continuationIds: string[] };
+    try {
+      result = await correctReturn({
+        bookingId: req.params.id,
+        stays: body.stays,
+        expectedSplitRevision: body.expectedSplitRevision,
+        actorUserId: req.adminUser.userId,
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new HttpError(409, "Номер продолжения только что заняли — повторите", "PARTIAL_RETURN_STALE");
+      }
+      throw err;
+    }
     res.json(result);
   } catch (err) {
     next(err);

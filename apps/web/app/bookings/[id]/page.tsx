@@ -53,6 +53,11 @@ import { CancelWithDepositModal } from "../../../src/components/finance/CancelWi
 import { ReturnDialog } from "../../../src/components/bookings/ReturnDialog";
 import { BookingFamilyBanner, type BookingFamily } from "../../../src/components/bookings/BookingFamilyBanner";
 import { CancelContinuationModal } from "../../../src/components/bookings/CancelContinuationModal";
+import {
+  ReturnCorrectionDialog,
+  correctionOffered,
+  type CorrectionPlan,
+} from "../../../src/components/bookings/ReturnCorrectionDialog";
 import { CreditNoteApplyModal } from "../../../src/components/finance/CreditNoteApplyModal";
 import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
 import { AddonEstimateSection } from "../../../src/components/bookings/AddonEstimateSection";
@@ -231,6 +236,10 @@ export default function BookingDetailPage() {
   const [returnTarget, setReturnTarget] = useState<{ id: string; docNumber: string | null; projectName: string } | null>(null);
   // «Отменить продолжение» — окно с причиной (только руководитель, выданное продолжение).
   const [cancelContinuationOpen, setCancelContinuationOpen] = useState(false);
+  // «Часть не вернули»: план исправления (решает, показывать ли кнопку) и окно.
+  const [correctionPlan, setCorrectionPlan] = useState<CorrectionPlan | null>(null);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correctionNonce, setCorrectionNonce] = useState(0);
   const [actionBusy, setActionBusy] = useState<null | "submit" | "instant">(null);
   // Фаза 4.5: шесть финансовых модалок — один reducer вместо шести useState.
   const [financeModals, dispatchFinanceModal] = useReducer(
@@ -395,6 +404,28 @@ export default function BookingDetailPage() {
   // Бронь в архиве — все мутации заблокированы на бэкенде (BOOKING_ARCHIVED),
   // на фронте показываем read-only баннер и прячем кнопки действий.
   const isArchived = Boolean(booking?.deletedAt);
+
+  // Принятая бронь: можно ли ещё исправить «Часть не вернули». Запрос — только
+  // у принятой брони и для тех, кто принимает возврат; ошибка прячет кнопку.
+  const canCorrectReturn =
+    booking?.status === "RETURNED" && !isArchived && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE");
+  useEffect(() => {
+    if (!canCorrectReturn) {
+      setCorrectionPlan(null);
+      return;
+    }
+    let cancelled = false;
+    apiFetch<CorrectionPlan>(`/api/bookings/${id}/return-correction`)
+      .then((p) => {
+        if (!cancelled) setCorrectionPlan(p);
+      })
+      .catch(() => {
+        if (!cancelled) setCorrectionPlan(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canCorrectReturn, id, correctionNonce]);
 
   // SUPER_ADMIN: ретро-редактирование закрытой (RETURNED) и выданной (ISSUED)
   // брони. Для ISSUED состав позиций read-only (правится после приёмки) —
@@ -582,6 +613,7 @@ export default function BookingDetailPage() {
           onEnterRetroEdit={enterRetroEdit}
           onOpenExtend={openExtend}
           onOpenAddon={() => setAddonOpen(true)}
+          onPartNotReturned={correctionOffered(correctionPlan) ? () => setCorrectionOpen(true) : undefined}
           onChangeExtendDate={setExtendEndDate}
           onSubmitExtend={submitExtend}
           onCancelExtend={cancelExtend}
@@ -639,6 +671,20 @@ export default function BookingDetailPage() {
           docNumber={booking.docNumber ?? null}
           onClose={() => setCancelContinuationOpen(false)}
           onDone={() => {
+            reloadBooking().catch((e) =>
+              toast.error(e instanceof Error ? e.message : "Не удалось обновить бронь"),
+            );
+          }}
+        />
+      )}
+      {booking && correctionOpen && (
+        <ReturnCorrectionDialog
+          open
+          bookingId={booking.id}
+          docNumber={booking.docNumber ?? null}
+          onClose={() => setCorrectionOpen(false)}
+          onDone={() => {
+            setCorrectionNonce((n) => n + 1);
             reloadBooking().catch((e) =>
               toast.error(e instanceof Error ? e.message : "Не удалось обновить бронь"),
             );

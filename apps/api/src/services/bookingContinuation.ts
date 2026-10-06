@@ -51,7 +51,7 @@ export const PARTIAL_RETURN_ERROR_CODES = {
  */
 export const MAX_STAY_AHEAD_MS = 365 * 24 * 60 * 60 * 1000;
 
-type BookingWithItems = Booking & {
+export type BookingWithItems = Booking & {
   items: BookingItem[];
   estimates: Array<Estimate & { lines: EstimateLine[] }>;
 };
@@ -252,7 +252,7 @@ async function nextContinuationDocNumber(tx: Prisma.TransactionClient, rootId: s
 }
 
 /** Приёмка с продолжениями — много записей: таймаут как у завершения приёмки в киоске. */
-const PARTIAL_RETURN_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
+export const PARTIAL_RETURN_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
 
 /** Срок оплаты продолжения — по его сроку «до». Читает настройки, поэтому вне транзакции. */
 export async function stayPaymentDates(stays: ReadonlyArray<StayInput>): Promise<Map<number, Date>> {
@@ -304,6 +304,12 @@ export async function splitOffContinuationsInTx(
     auditExtra?: Record<string, string>;
     /** "collect" — для превью: держатели не останавливают, а возвращаются. */
     conflictMode?: "throw" | "collect";
+    /**
+     * Не раньше какого момента срок «до» (по умолчанию — `now`). Исправление
+     * «Часть не вернули» разделяет от момента приёмки, а срок «до» всё равно
+     * должен быть позже текущего.
+     */
+    untilNotBefore?: Date;
   },
 ): Promise<{ continuationIds: string[]; conflicts: StayConflict[] }> {
   const { booking, now } = args;
@@ -331,10 +337,11 @@ export async function splitOffContinuationsInTx(
     const item = itemById.get(s.bookingItemId);
     if (!item) throw new HttpError(400, "Позиция не из этой брони", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
     const until = new Date(s.until);
-    if (!Number.isFinite(until.getTime()) || until.getTime() <= now.getTime()) {
+    const floor = args.untilNotBefore ?? now;
+    if (!Number.isFinite(until.getTime()) || until.getTime() <= floor.getTime()) {
       throw new HttpError(400, "Срок «до» должен быть позже текущего момента", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
     }
-    if (until.getTime() > now.getTime() + MAX_STAY_AHEAD_MS) {
+    if (until.getTime() > floor.getTime() + MAX_STAY_AHEAD_MS) {
       throw new HttpError(400, "Срок «до» — не дальше чем через год", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
     }
     const total = (keptByItem.get(item.id) ?? 0) + s.quantity;
@@ -612,8 +619,54 @@ export type ContinuationPreview = {
   total: string;
 };
 
-class PreviewRollback extends Error {
-  constructor(readonly result: { continuations: ContinuationPreview[]; conflicts: StayConflict[] }) {
+/**
+ * Продолжения, только что записанные в транзакции, — в вид превью: строки
+ * дополнительной сметы, смены, итог. Общий для приёмки и исправления приёмки.
+ */
+export async function continuationPreviewsInTx(
+  tx: Prisma.TransactionClient,
+  booking: BookingWithItems,
+  continuationIds: string[],
+): Promise<ContinuationPreview[]> {
+  const children = await tx.booking.findMany({
+    where: { id: { in: continuationIds } },
+    include: { estimates: { where: { kind: "MAIN" }, include: { lines: true } } },
+    orderBy: { endDate: "asc" },
+  });
+  const discount = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
+  const itemIdOf = (equipmentId: string | null, name: string) =>
+    booking.items.find((i) => (equipmentId ? i.equipmentId === equipmentId : i.customName === name))?.id ?? null;
+  return children.map((c) => {
+    const est = c.estimates[0];
+    return {
+      until: c.endDate.toISOString(),
+      docNumber: c.docNumber,
+      expectedPaymentDate: c.expectedPaymentDate ? c.expectedPaymentDate.toISOString() : null,
+      lines: (est?.lines ?? []).map((l) => {
+        const negotiated = l.listUnitPrice != null;
+        const sum = new Decimal(l.lineSum.toString());
+        return {
+          bookingItemId: itemIdOf(l.equipmentId, l.nameSnapshot),
+          name: l.nameSnapshot,
+          quantity: l.quantity,
+          billedShifts: l.shifts ?? 0,
+          lineSum: sum.toFixed(2),
+          afterDiscount: (negotiated ? sum : sum.mul(new Decimal(100).sub(discount)).div(100)).toFixed(2),
+          negotiated,
+        };
+      }),
+      discountPercent: discount.toFixed(2),
+      subtotal: est ? est.subtotal.toFixed(2) : "0.00",
+      discountAmount: est ? est.discountAmount.toFixed(2) : "0.00",
+      surchargeAmount: c.surchargeAmount.toFixed(2),
+      total: c.finalAmount.toFixed(2),
+    };
+  });
+}
+
+/** Откат транзакции превью — результат уносится исключением. */
+export class PreviewRollback extends Error {
+  constructor(readonly result: { continuations: ContinuationPreview[]; conflicts: StayConflict[]; extra?: unknown }) {
     super("preview rollback");
   }
 }
@@ -642,43 +695,7 @@ export async function previewReturnPartial(
         paymentDates,
         conflictMode: "collect",
       });
-      const children = await tx.booking.findMany({
-        where: { id: { in: continuationIds } },
-        include: { estimates: { where: { kind: "MAIN" }, include: { lines: true } } },
-        orderBy: { endDate: "asc" },
-      });
-      const discount = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
-      const itemIdOf = (equipmentId: string | null, name: string) =>
-        booking.items.find((i) => (equipmentId ? i.equipmentId === equipmentId : i.customName === name))?.id ?? null;
-      throw new PreviewRollback({
-        conflicts,
-        continuations: children.map((c) => {
-          const est = c.estimates[0];
-          return {
-            until: c.endDate.toISOString(),
-            docNumber: c.docNumber,
-            expectedPaymentDate: c.expectedPaymentDate ? c.expectedPaymentDate.toISOString() : null,
-            lines: (est?.lines ?? []).map((l) => {
-              const negotiated = l.listUnitPrice != null;
-              const sum = new Decimal(l.lineSum.toString());
-              return {
-                bookingItemId: itemIdOf(l.equipmentId, l.nameSnapshot),
-                name: l.nameSnapshot,
-                quantity: l.quantity,
-                billedShifts: l.shifts ?? 0,
-                lineSum: sum.toFixed(2),
-                afterDiscount: (negotiated ? sum : sum.mul(new Decimal(100).sub(discount)).div(100)).toFixed(2),
-                negotiated,
-              };
-            }),
-            discountPercent: discount.toFixed(2),
-            subtotal: est ? est.subtotal.toFixed(2) : "0.00",
-            discountAmount: est ? est.discountAmount.toFixed(2) : "0.00",
-            surchargeAmount: c.surchargeAmount.toFixed(2),
-            total: c.finalAmount.toFixed(2),
-          };
-        }),
-      });
+      throw new PreviewRollback({ conflicts, continuations: await continuationPreviewsInTx(tx, booking, continuationIds) });
     }, PARTIAL_RETURN_TX_OPTIONS);
   } catch (err) {
     if (err instanceof PreviewRollback) return { ...err.result, parentNegotiatedTotal };

@@ -33,6 +33,10 @@ type Props = {
   onToggleUnit: (unitId: string) => void;
   onChoice: (choice: StayChoice, customUntil?: string) => void;
   onAcknowledge: (ack: boolean) => void;
+  /** Подпись степпера: «остаётся у клиента» (приёмка) или «не вернули» (исправление). */
+  quantityLabel?: string;
+  /** Почему не больше — «Не больше 3: было 4, одна уже в «Потеряшках»». */
+  capNote?: string | null;
 };
 
 const shiftsWord = (n: number) => pluralize(n, "смена", "смены", "смен");
@@ -58,6 +62,8 @@ export function ReturnStayRow({
   onToggleUnit,
   onChoice,
   onAcknowledge,
+  quantityLabel = "остаётся у клиента",
+  capNote = null,
 }: Props) {
   const kept = stay?.quantity ?? 0;
   const choices = stayChoicesFor(line);
@@ -72,11 +78,11 @@ export function ReturnStayRow({
         </div>
         {line.unitTracked ? (
           <p className="text-xs text-ink-2">
-            остаётся у клиента <span className="mono-num font-semibold text-ink">{kept}</span> из {line.quantity}
+            {quantityLabel} <span className="mono-num font-semibold text-ink">{kept}</span> из {line.quantity}
           </p>
         ) : (
           <div className="flex items-center gap-2 text-xs text-ink-2">
-            остаётся у клиента
+            {quantityLabel}
             <span className={`inline-flex items-center overflow-hidden rounded border ${kept > 0 ? "border-teal-border" : "border-border"}`}>
               <button
                 type="button"
@@ -106,6 +112,8 @@ export function ReturnStayRow({
           </div>
         )}
       </div>
+
+      {capNote && <p className="text-[12px] text-ink-3">{capNote}</p>}
 
       {line.unitTracked && (
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Какие единицы остались у клиента: ${line.name}`}>
