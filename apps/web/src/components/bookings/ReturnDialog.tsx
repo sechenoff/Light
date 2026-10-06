@@ -22,16 +22,21 @@ import { useDialog } from "@/hooks/useDialog";
 import { toast } from "../ToastProvider";
 import {
   anyStayPossible,
-  canStay,
   formatWhen,
   initialStays,
   partialReturnBody,
+  setStayAcknowledged,
+  setStayChoice,
   setStayQuantity,
   summarize,
   toggleStayUnit,
+  unacknowledgedConflicts,
   type ReturnPlan,
   type StayDraft,
 } from "./returnDialogState";
+import { ReturnStayRow } from "./ReturnStayRow";
+import { ContinuationPriceBlock } from "./ContinuationPriceBlock";
+import { useReturnPreview } from "./useReturnPreview";
 import { announceStatusChangeNotes, staleStateMessage, type StatusChangeResponse } from "./useBookingLifecycle";
 
 type Mode = "simple" | "planned" | "partial";
@@ -110,6 +115,13 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
   }, [plan, mode, kioskOverride]);
 
   const summary = useMemo(() => (plan ? summarize(plan, stays) : null), [plan, stays]);
+  // Превью дополнительной сметы и держателей — только в «Вернули не всё»:
+  // по плану всё в пределах оплаченного, считать нечего.
+  const previewStays = useMemo(
+    () => (plan && mode === "partial" && stays.size > 0 ? partialReturnBody(plan, stays).stays : null),
+    [plan, mode, stays],
+  );
+  const { preview, loading: previewLoading, error: previewError } = useReturnPreview(bookingId, previewStays);
   if (!open) return null;
 
   const close = () => !busyRef.current && onClose();
@@ -178,6 +190,7 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
     : [];
   const planned = plan ? plan.lines.filter((l) => stays.has(l.bookingItemId)) : [];
   const kioskGate = Boolean(plan?.kioskSession) && !kioskOverride;
+  const blockingConflicts = mode === "partial" ? unacknowledgedConflicts(preview, stays) : [];
   const primaryLabel =
     stays.size === 0
       ? "Вернули всё"
@@ -286,79 +299,28 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
               <ul className="divide-y divide-border rounded border border-border">
                 {visibleLines.map((l) => {
                   const stay = stays.get(l.bookingItemId);
-                  const kept = stay?.quantity ?? 0;
-                  const possible = canStay(l);
+                  const previewLine =
+                    preview?.continuations.flatMap((c) => c.lines).find((pl) => pl.bookingItemId === l.bookingItemId) ?? null;
+                  const conflict = preview?.conflicts.find((c) => c.bookingItemId === l.bookingItemId) ?? null;
                   return (
-                    <li key={l.bookingItemId} className="px-3 py-3" data-testid="return-line">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-ink">{l.name}</p>
-                          {l.plannedStayUntil && <p className="text-xs text-indigo">по плану до {formatWhen(l.plannedStayUntil)}</p>}
-                        </div>
-                        {l.unitTracked ? (
-                          <p className="text-xs text-ink-2">
-                            остаётся у клиента <span className="mono-num font-semibold text-ink">{kept}</span> из {l.quantity}
-                          </p>
-                        ) : (
-                          <div className="flex items-center gap-2 text-xs text-ink-2">
-                            остаётся у клиента
-                            <span className="inline-flex items-center overflow-hidden rounded border border-border">
-                              <button
-                                type="button"
-                                aria-label={`Меньше: ${l.name}`}
-                                disabled={!possible || kept === 0 || busy}
-                                className="flex h-11 w-11 items-center justify-center text-ink-2 hover:bg-surface-subtle disabled:opacity-40 sm:h-9 sm:w-9"
-                                onClick={() => setStays(setStayQuantity(stays, l, kept - 1))}
-                              >
-                                −
-                              </button>
-                              <span className="mono-num flex h-11 w-9 items-center justify-center border-x border-border font-semibold text-ink sm:h-9">{kept}</span>
-                              <button
-                                type="button"
-                                aria-label={`Больше: ${l.name}`}
-                                disabled={!possible || kept >= l.quantity || busy}
-                                className="flex h-11 w-11 items-center justify-center text-ink-2 hover:bg-surface-subtle disabled:opacity-40 sm:h-9 sm:w-9"
-                                onClick={() => setStays(setStayQuantity(stays, l, kept + 1))}
-                              >
-                                +
-                              </button>
-                            </span>
-                            из {l.quantity}
-                          </div>
-                        )}
-                      </div>
-                      {l.unitTracked && possible && (
-                        <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label={`Какие единицы остались у клиента: ${l.name}`}>
-                          {l.units.map((u, i) => {
-                            const on = stay?.unitIds.includes(u.id) ?? false;
-                            return (
-                              <button
-                                key={u.id}
-                                type="button"
-                                aria-pressed={on}
-                                disabled={busy}
-                                className={`min-h-11 rounded border px-3 text-xs sm:min-h-9 ${on ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-ink-2 hover:bg-surface-subtle"}`}
-                                onClick={() => setStays(toggleStayUnit(stays, l, u.id))}
-                              >
-                                {u.label ?? `Единица ${i + 1}`}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                      <p className="mt-1.5 text-xs text-ink-3">
-                        {!possible
-                          ? `Оплачено до ${formatWhen(l.paidThrough)} — оставить дольше можно будет с дополнительной сметой`
-                          : kept > 0
-                            ? `Вернут ${formatWhen(stay!.until)} · без доплаты`
-                            : l.unitTracked
-                              ? `Отметьте единицы, которые остались у клиента · оплачено до ${formatWhen(l.paidThrough)}`
-                              : `Можно оставить до ${formatWhen(l.paidThrough)} — уже оплачено`}
-                      </p>
-                    </li>
+                    <ReturnStayRow
+                      key={l.bookingItemId}
+                      line={l}
+                      stay={stay}
+                      busy={busy}
+                      previewLine={previewLine}
+                      previewLoading={previewLoading}
+                      conflict={conflict}
+                      onQuantity={(n) => setStays(setStayQuantity(stays, l, n))}
+                      onToggleUnit={(unitId) => setStays(toggleStayUnit(stays, l, unitId))}
+                      onChoice={(choice, customUntil) => setStays(setStayChoice(stays, l, choice, customUntil))}
+                      onAcknowledge={(ack) => setStays(setStayAcknowledged(stays, l, ack))}
+                    />
                   );
                 })}
               </ul>
+              {preview && <div className="mt-3"><ContinuationPriceBlock preview={preview} loading={previewLoading} /></div>}
+              {previewError && <p className="mt-3 text-xs text-amber">{previewError}</p>}
             </>
           )}
         </div>
@@ -395,10 +357,17 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
             <>
               <div className="min-w-0 flex-1 text-xs text-ink-2">
                 {mode === "partial" && summary.keptUnits > 0 ? (
-                  <>
-                    Принимаем <span className="font-semibold text-ink">{positionsAcc(summary.acceptedLines)}</span>, у клиента остаётся{" "}
-                    <span className="font-semibold text-ink">{summary.keptUnits} шт</span> → продолжение брони
-                  </>
+                  blockingConflicts.length > 0 ? (
+                    <span className="text-amber">
+                      Оставленное нужно другой брони — оставьте под ответственность или сократите срок
+                    </span>
+                  ) : (
+                    <>
+                      Принимаем <span className="font-semibold text-ink">{positionsAcc(summary.acceptedLines)}</span>, у клиента остаётся{" "}
+                      <span className="font-semibold text-ink">{summary.keptUnits} шт</span> → продолжение
+                      {preview?.continuations[0]?.docNumber ? ` ${preview.continuations[0].docNumber}` : " брони"}
+                    </>
+                  )
                 ) : mode !== "partial" && anyStayPossible(plan) ? (
                   <button
                     type="button"
@@ -420,7 +389,14 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
                     Отмена
                   </button>
                 )}
-                <button ref={primaryRef} type="button" disabled={busy} className={BTN_PRIMARY} onClick={submitSelection}>
+                <button
+                  ref={primaryRef}
+                  type="button"
+                  disabled={busy || (mode === "partial" && blockingConflicts.length > 0)}
+                  title={blockingConflicts.length > 0 ? "Решите по позициям, нужным другим броням" : undefined}
+                  className={BTN_PRIMARY}
+                  onClick={submitSelection}
+                >
                   {busy ? "Принимаем…" : primaryLabel}
                 </button>
               </div>

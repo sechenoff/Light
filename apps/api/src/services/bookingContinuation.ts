@@ -554,7 +554,19 @@ export type ContinuationPreview = {
   until: string;
   docNumber: string | null;
   expectedPaymentDate: string | null;
-  lines: Array<{ name: string; quantity: number; billedShifts: number; lineSum: string; negotiated: boolean }>;
+  lines: Array<{
+    /** Позиция основной брони, из которой строка (для подписи у строки окна). */
+    bookingItemId: string | null;
+    name: string;
+    quantity: number;
+    billedShifts: number;
+    lineSum: string;
+    /** Сумма строки со скидкой брони (договорная цена — без скидки). */
+    afterDiscount: string;
+    negotiated: boolean;
+  }>;
+  /** Скидка брони, % — та же, что в основной смете. */
+  discountPercent: string;
   subtotal: string;
   discountAmount: string;
   surchargeAmount: string;
@@ -597,6 +609,9 @@ export async function previewReturnPartial(
         include: { estimates: { where: { kind: "MAIN" }, include: { lines: true } } },
         orderBy: { endDate: "asc" },
       });
+      const discount = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
+      const itemIdOf = (equipmentId: string | null, name: string) =>
+        booking.items.find((i) => (equipmentId ? i.equipmentId === equipmentId : i.customName === name))?.id ?? null;
       throw new PreviewRollback({
         conflicts,
         continuations: children.map((c) => {
@@ -605,13 +620,20 @@ export async function previewReturnPartial(
             until: c.endDate.toISOString(),
             docNumber: c.docNumber,
             expectedPaymentDate: c.expectedPaymentDate ? c.expectedPaymentDate.toISOString() : null,
-            lines: (est?.lines ?? []).map((l) => ({
-              name: l.nameSnapshot,
-              quantity: l.quantity,
-              billedShifts: l.shifts ?? 0,
-              lineSum: l.lineSum.toFixed(2),
-              negotiated: l.listUnitPrice != null,
-            })),
+            lines: (est?.lines ?? []).map((l) => {
+              const negotiated = l.listUnitPrice != null;
+              const sum = new Decimal(l.lineSum.toString());
+              return {
+                bookingItemId: itemIdOf(l.equipmentId, l.nameSnapshot),
+                name: l.nameSnapshot,
+                quantity: l.quantity,
+                billedShifts: l.shifts ?? 0,
+                lineSum: sum.toFixed(2),
+                afterDiscount: (negotiated ? sum : sum.mul(new Decimal(100).sub(discount)).div(100)).toFixed(2),
+                negotiated,
+              };
+            }),
+            discountPercent: discount.toFixed(2),
             subtotal: est ? est.subtotal.toFixed(2) : "0.00",
             discountAmount: est ? est.discountAmount.toFixed(2) : "0.00",
             surchargeAmount: c.surchargeAmount.toFixed(2),
