@@ -303,7 +303,7 @@ describe("киоск «В работе» и счёт", () => {
     expect(res.status).toBe(200);
     const row = res.body.bookings.find((b: any) => b.bookingId === child.id);
     expect(row.issuedAt).toBe(ROOT_START.toISOString());
-    expect(row.continuationOf).toEqual({ docNumber: root.docNumber });
+    expect(row.continuationOf).toEqual({ id: root.id, docNumber: root.docNumber });
   });
 
   it("заготовка счёта по продолжению — по дополнительной смете к основной", async () => {

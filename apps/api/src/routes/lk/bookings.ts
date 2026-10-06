@@ -112,6 +112,12 @@ router.get("/", lkAuth, async (req, res, next) => {
       }),
       prisma.booking.count({ where: countWhere }),
     ]);
+    // Номера броней, из которых перешли продолжения (своего клиента).
+    const parentIds = Array.from(new Set(items.map((b) => b.parentBookingId).filter((v): v is string => v != null)));
+    const parents = parentIds.length
+      ? await prisma.booking.findMany({ where: { id: { in: parentIds }, clientId }, select: { id: true, docNumber: true } })
+      : [];
+    const parentDoc = new Map(parents.map((p) => [p.id, p.docNumber]));
 
     const hasMore = items.length > q.limit;
     const slice = hasMore ? items.slice(0, q.limit) : items;
@@ -133,7 +139,7 @@ router.get("/", lkAuth, async (req, res, next) => {
         itemCount: b.project?._count.lots ?? b._count.items,
         // Продолжение брони: часть оборудования осталась после приёмки основной —
         // кабинет показывает его под основной бронью.
-        continuationOf: b.parentBookingId,
+        continuationOf: b.parentBookingId ? { id: b.parentBookingId, docNumber: parentDoc.get(b.parentBookingId) ?? null } : null,
       })),
       nextCursor,
       totalCount,
@@ -166,6 +172,8 @@ router.get("/:id", lkAuth, async (req, res, next) => {
         comment: true,
         estimateOptionalNote: true,
         projectName: true,
+        parentBookingId: true,
+        rootBookingId: true,
         // Последний невоидный счёт — для кнопки «Счёт PDF» в ЛК.
         invoices: {
           where: { status: { not: "VOID" } },
@@ -258,7 +266,8 @@ router.get("/:id", lkAuth, async (req, res, next) => {
       comment: booking.comment ?? null,
       optionalNote: booking.estimateOptionalNote ?? null,
       hasConfirmedEstimate,
-      hasAct: booking.status === "RETURNED",
+      // Акт — когда всё вернули: и основную, и продолжения ниже по цепочке.
+      hasAct: booking.status === "RETURNED" && !(await hasIssuedDescendant(prisma, booking)),
       hasInvoice: booking.invoices.length > 0,
       invoiceNumber: booking.invoices[0]?.number ?? null,
     });

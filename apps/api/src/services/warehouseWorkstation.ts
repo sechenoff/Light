@@ -227,6 +227,9 @@ export async function computeShift(workerName: string): Promise<ShiftSummary> {
           ...HAS_EQUIPMENT_FILTER,
           startDate: { gte: todayStart, lt: tomorrowStart },
           status: { in: ["CONFIRMED", "ISSUED", "RETURNED"] },
+          // Продолжение брони рождается выданным в момент приёмки основной —
+          // это не выдача: со склада в этот день ничего не уехало.
+          parentBookingId: null,
         },
         include: {
           client: { select: { name: true, phone: true } },

@@ -15,6 +15,7 @@
  *    оборудование — новая бронь), архивировать пока оно у клиента. Продление
  *    продолжения появится вместе с дополнительной сметой сверх оплаченного.
  */
+import Decimal from "decimal.js";
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "../prisma";
@@ -280,7 +281,12 @@ export async function bookingFamilySummary(
   }
   const members = await loadFamily(client, booking);
   const byId = new Map(members.map((m) => [m.id, m]));
-  const below = descendantsOf(members, booking.id).filter((m) => m.status !== "CANCELLED" && m.deletedAt == null);
+  const order = new Map(members.map((m, i) => [m.id, i]));
+  const below = descendantsOf(members, booking.id)
+    .filter((m) => m.status !== "CANCELLED" && m.deletedAt == null)
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  // Только отменённые продолжения — семьи для карточки нет.
+  if (!booking.parentBookingId && below.length === 0) return null;
   const money = below.length
     ? await client.booking.findMany({
         where: { id: { in: [booking.id, ...below.map((m) => m.id)] } },
@@ -295,7 +301,7 @@ export async function bookingFamilySummary(
     : [];
   const moneyById = new Map(money.map((m) => [m.id, m]));
   const sum = (field: "finalAmount" | "amountPaid" | "amountOutstanding") =>
-    money.reduce((s, m) => s + Number(m[field].toString()), 0).toFixed(2);
+    money.reduce((s, m) => s.add(m[field].toString()), new Decimal(0)).toFixed(2);
   const parent = booking.parentBookingId ? byId.get(booking.parentBookingId) : undefined;
   const rootId = booking.rootBookingId ?? null;
   const root = rootId ? byId.get(rootId) : undefined;
@@ -311,8 +317,8 @@ export async function bookingFamilySummary(
         startDate: m.startDate.toISOString(),
         endDate: m.endDate.toISOString(),
         quantity: mm ? mm.items.reduce((s, i) => s + i.quantity, 0) : 0,
-        finalAmount: mm ? Number(mm.finalAmount.toString()).toFixed(2) : "0.00",
-        amountOutstanding: mm ? Number(mm.amountOutstanding.toString()).toFixed(2) : "0.00",
+        finalAmount: mm ? new Decimal(mm.finalAmount.toString()).toFixed(2) : "0.00",
+        amountOutstanding: mm ? new Decimal(mm.amountOutstanding.toString()).toFixed(2) : "0.00",
       };
     }),
     partiallyReturned: booking.status === "RETURNED" && below.some((m) => m.status === "ISSUED"),

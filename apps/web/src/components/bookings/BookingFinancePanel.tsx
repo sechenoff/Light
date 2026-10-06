@@ -35,6 +35,8 @@ function paymentMethodLabel(method: string | null): string {
 export type FinanceBooking = {
   /** Доп-смета (доборы поверх согласованной) — отдельная строка в разбивке суммы. */
   addonEstimate?: { totalAfterDiscount: string } | null;
+  /** Семья броней: часть оборудования ещё у клиента по продолжению — акт ждёт приёмки остатка. */
+  family?: { partiallyReturned: boolean } | null;
   id: string;
   status: string;
   paymentStatus?: string | null;
@@ -303,8 +305,12 @@ export function BookingFinancePanel({
 
           {/* Акт PDF */}
           {(() => {
-            const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
-            const actHint = "Акт доступен после возврата оборудования и закрытия долга";
+            const continuationOut = booking.family?.partiallyReturned === true;
+            const canAct =
+              booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0 && !continuationOut;
+            const actHint = continuationOut
+              ? "Акт будет после приёмки остатка: часть оборудования ещё у клиента по продолжению"
+              : "Акт доступен после возврата оборудования и закрытия долга";
             return (
               <button
                 className={`rounded border px-3 py-2 text-sm transition-colors ${

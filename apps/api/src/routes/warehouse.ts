@@ -1184,6 +1184,13 @@ warehouseScanRouter.post(
   },
 );
 
+/** «Взято»: у продолжения брони — когда выдали основную, иначе — своя выдача. */
+async function takenAtOf(b: { rootBookingId: string | null; issuedAt: Date | null; confirmedAt: Date | null }) {
+  if (!b.rootBookingId) return b.issuedAt ?? b.confirmedAt;
+  const root = await prisma.booking.findUnique({ where: { id: b.rootBookingId }, select: { issuedAt: true, confirmedAt: true } });
+  return root ? root.issuedAt ?? root.confirmedAt : b.issuedAt ?? b.confirmedAt;
+}
+
 warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
   try {
     const bookings = await prisma.booking.findMany({
@@ -1208,6 +1215,13 @@ warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
         })
       : [];
     const rootById = new Map(roots.map((r) => [r.id, r]));
+    const parentIds = Array.from(new Set(bookings.map((b) => b.parentBookingId).filter((v): v is string => v != null)));
+    const parentById = new Map(
+      (parentIds.length
+        ? await prisma.booking.findMany({ where: { id: { in: parentIds } }, select: { id: true, docNumber: true } })
+        : []
+      ).map((p) => [p.id, p.docNumber]),
+    );
 
     const now = Date.now();
     const out = bookings.map((b) => {
@@ -1224,7 +1238,7 @@ warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
         // Prefer the real physical-issuance moment (set by completeSession ISSUE);
         // fall back to confirmedAt for legacy bookings predating Booking.issuedAt.
         issuedAt: takenAt?.toISOString() ?? null,
-        continuationOf: b.rootBookingId ? { docNumber: root?.docNumber ?? null } : null,
+        continuationOf: b.parentBookingId ? { id: b.parentBookingId, docNumber: parentById.get(b.parentBookingId) ?? null } : null,
         expectedReturnAt: b.endDate.toISOString(),
         itemsCount: b._count.items,
         finalAmount: b.finalAmount.toString(),
@@ -1297,7 +1311,8 @@ warehouseScanRouter.get("/in-work/:bookingId/details", warehouseAuth, async (req
       clientName: booking.client?.name ?? "",
       clientPhone: booking.client?.phone ?? null,
       // Prefer the real physical-issuance moment; fall back to confirmedAt.
-      issuedAt: booking.issuedAt?.toISOString() ?? booking.confirmedAt?.toISOString() ?? null,
+      // У продолжения — когда выдали основную бронь, как и в списке.
+      issuedAt: (await takenAtOf(booking))?.toISOString() ?? null,
       expectedReturnAt: booking.endDate.toISOString(),
       items,
       finance: {
