@@ -67,7 +67,7 @@ export function BookingFamilyBanner({ family, onAcceptRest }: Props) {
             </Link>
             <button
               type="button"
-              className="min-h-9 rounded border border-accent bg-accent px-3 text-xs font-semibold text-surface hover:bg-accent-bright"
+              className="min-h-11 rounded border border-teal bg-teal px-3 text-sm font-semibold text-surface hover:opacity-90 sm:min-h-10"
               onClick={() => onAcceptRest(c)}
             >
               Принять остаток

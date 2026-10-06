@@ -632,7 +632,9 @@ export default function BookingDetailPage() {
           projectName={returnTarget.projectName}
           onClose={() => setReturnTarget(null)}
           onDone={() => {
-            void reloadBooking();
+            reloadBooking().catch((e) =>
+              toast.error(e instanceof Error ? e.message : "Не удалось обновить бронь"),
+            );
           }}
         />
       )}

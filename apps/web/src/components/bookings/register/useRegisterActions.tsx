@@ -37,7 +37,7 @@ export function useRegisterActions(
   const [deposit, setDeposit] = useState<Row | null>(null);
   const [confirm, setConfirm] = useState<{
     row: Row;
-    action: "issue" | "return" | "cancel" | "archive";
+    action: "issue" | "cancel" | "archive";
     force?: boolean;
     message?: string;
   } | null>(null);
@@ -200,15 +200,12 @@ export function useRegisterActions(
   const messages = {
     issue:
       "Оборудование будет выдано по текущему составу брони. Проверьте комплект перед подтверждением.",
-    return:
-      "Весь состав вернётся на склад. Если есть недостача или повреждения, проведите возврат через сканирование на складе. Статус возврата финальный.",
     cancel: "Бронь будет отменена, резервы сняты. Отмена — финальный статус.",
     archive:
       "Бронь уйдёт в архив, резервы будут сняты. Данные сохранятся; восстановление доступно в архиве. Для выданного оборудования сначала оформите возврат.",
   };
   const labels = {
     issue: "Выдать",
-    return: "Принять возврат",
     cancel: "Отменить бронь",
     archive: "В архив",
   };

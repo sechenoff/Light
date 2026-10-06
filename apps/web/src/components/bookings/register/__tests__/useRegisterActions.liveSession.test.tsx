@@ -134,7 +134,7 @@ describe("реестр: главная кнопка и киоск", () => {
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(apiFetchMock).toHaveBeenCalledWith(
       "/api/bookings/b1/status",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ action: "return", allReturned: true }) }),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ action: "return" }) }),
     );
     expect(toastMock.info).toHaveBeenCalledWith(
       "Пробег машин не записан — внесите его в карточке машины",

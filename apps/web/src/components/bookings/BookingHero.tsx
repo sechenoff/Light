@@ -41,7 +41,7 @@ export type HeroBooking = {
 /** «Возвращена частично» — часть оборудования ещё у клиента по продолжению (мокап M5). */
 function heroStatus(booking: HeroBooking): { label: string; variant: ReturnType<typeof statusVariant> } {
   if (booking.status === "RETURNED" && booking.family?.partiallyReturned) {
-    return { label: "Возвращена частично", variant: "warn" };
+    return { label: "Возвращена частично", variant: "ok" };
   }
   return { label: statusText(booking.status), variant: statusVariant(booking.status) };
 }

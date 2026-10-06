@@ -46,11 +46,13 @@ export function initialStays(plan: ReturnPlan): Map<string, StayDraft> {
   const stays = new Map<string, StayDraft>();
   for (const l of plan.lines) {
     if (!l.plannedStayUntil) continue;
-    stays.set(l.bookingItemId, {
-      quantity: l.quantity,
-      until: l.plannedStayUntil,
-      unitIds: l.unitTracked ? l.units.slice(0, l.quantity).map((u) => u.id) : [],
-    });
+    // У штучной позиции оставляем ровно те единицы, что на руках: сервер
+    // требует, чтобы их число совпало с количеством, а живых единиц бывает
+    // меньше, чем штук в строке.
+    const unitIds = l.unitTracked ? l.units.slice(0, l.quantity).map((u) => u.id) : [];
+    const quantity = l.unitTracked ? unitIds.length : l.quantity;
+    if (quantity === 0) continue;
+    stays.set(l.bookingItemId, { quantity, until: l.plannedStayUntil, unitIds });
   }
   return stays;
 }
