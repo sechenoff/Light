@@ -623,6 +623,13 @@ model BookingItem {
   /// финальная (см. quoteEstimate).
   negotiatedRatePerShift Decimal?
 
+  /// Своё число смен позиции, «не меньше N» (только каталожная позиция).
+  /// null — как у брони. Действующее = max(shifts, смены брони) — см.
+  /// effectiveLineShifts в packages/shared. Хранится как ввели: продление
+  /// брони его не обнуляет. Позицию ждут обратно на лишние смены позже конца
+  /// брони, и склад держит её до этого срока.
+  shifts Int?
+
   booking Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   equipment Equipment? @relation(fields: [equipmentId], references: [id])
 
@@ -697,6 +704,11 @@ model EstimateLine {
   /// названием печатается «персональная скидка · цена до скидки N ₽».
   /// null — цена и есть прайсовая, печатать нечего.
   listUnitPrice Decimal?
+
+  /// На сколько смен посчитана строка (снимок). null — как Estimate.shifts:
+  /// так записаны все сметы до смен по позициям. Нужно документам: колонка
+  /// «цена/смена» — это unitPrice, делённое на смены строки.
+  shifts Int?
 
   estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
 

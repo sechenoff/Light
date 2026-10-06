@@ -8,6 +8,12 @@ export type Reservation = {
   quantity: number;
   bookingId: string;
   lotId?: string;
+  /**
+   * Плановый срок возврата позиции обычной брони (без хвоста «до сейчас» у
+   * просроченной выданной). Карточка держателя пишет по нему «освободится …».
+   * У лотов проекта не заполняется.
+   */
+  dueAt?: number;
 };
 export async function projectReservations(
   args: {

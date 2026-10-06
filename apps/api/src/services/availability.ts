@@ -1,6 +1,8 @@
 import type { Equipment, BookingStatus } from "@prisma/client";
+import { lineDueAt, MAX_LINE_SHIFTS, RENTAL_SHIFT_MS } from "@light-rental/shared";
 
 import { prisma } from "../prisma";
+import { billableShifts24h } from "../utils/dates";
 import { projectReservations, peakOccupancy, reservationOverlaps, type Reservation } from "./projectReservations";
 import { getMergedCategoryOrder } from "./categoryOrder";
 import { compareEquipmentTransportLast } from "../utils/equipmentSort";
@@ -209,11 +211,42 @@ export function bookingOccupancyInterval(
 }
 
 /**
+ * Интервал, в который ПОЗИЦИЯ брони занимает склад. Как у брони
+ * (`bookingOccupancyInterval`), но конец — срок возврата позиции: позиция со
+ * своим числом смен сверх брони (BookingItem.shifts) держит склад дольше —
+ * до `lineDueAt`. Без своих смен интервал совпадает с интервалом брони.
+ *
+ * `dueAt` — плановый срок возврата позиции без хвоста «до сейчас»: по нему
+ * карточка держателя пишет «освободится …» и «просрочено».
+ */
+export function lineOccupancyInterval(
+  b: { status: BookingStatus; startDate: Date; endDate: Date; issuedAt: Date | null; skipPartialDay: boolean },
+  lineShifts: number | null | undefined,
+  now: number = Date.now(),
+): { start: number; end: number; dueAt: number } {
+  const base = bookingOccupancyInterval(b, now);
+  const endMs = b.endDate.getTime();
+  const dueAt =
+    lineShifts == null
+      ? endMs
+      : lineDueAt(endMs, billableShifts24h(b.startDate, b.endDate, b.skipPartialDay), lineShifts);
+  if (dueAt === endMs) return { ...base, dueAt };
+  return { start: base.start, end: b.status === "ISSUED" ? Math.max(dueAt, now + 1) : dueAt, dueAt };
+}
+
+/**
+ * Насколько раньше окна могла кончиться бронь, чья длинная позиция всё ещё
+ * задевает окно: позиция не длиннее MAX_LINE_SHIFTS смен.
+ */
+export const LONG_LINE_LOOKBACK_MS = MAX_LINE_SHIFTS * RENTAL_SHIFT_MS;
+
+/**
  * Резервы обычных (не проектных) броней на позиции в окне — ровно те, что
  * занимают склад в getAvailability: блокирующие статусы, без архива, только
  * mode = STANDARD (у проектов свои лоты, см. projectReservations). Интервал
- * брони — `bookingOccupancyInterval`; в ответ попадают только резервы, которые
- * задевают окно (`reservationOverlaps`).
+ * позиции — `lineOccupancyInterval` (интервал брони, у длинной позиции — до её
+ * срока); в ответ попадают только резервы, которые задевают окно
+ * (`reservationOverlaps`).
  *
  * Экспортируется, чтобы «кто держит позицию» (addonAvailability) выбирал
  * держателей из того же списка, по которому посчитана занятость: иначе
@@ -233,9 +266,16 @@ export async function standardReservations(
       deletedAt: null,
       // Плановые даты задевают окно — или бронь выдана: у выданной интервал
       // фактический (ранняя выдача, просрочка), по плановым датам её не найти.
+      // Третья ветка — бронь кончилась раньше окна, но её длинная позиция
+      // (свои смены сверх брони) ещё может его задевать.
       OR: [
         { startDate: { lte: args.end }, endDate: { gte: args.start } },
         { status: "ISSUED" },
+        {
+          startDate: { lte: args.end },
+          endDate: { gte: new Date(args.start.getTime() - LONG_LINE_LOOKBACK_MS) },
+          items: { some: { shifts: { not: null } } },
+        },
       ],
       ...(args.excludeBookingId ? { id: { not: args.excludeBookingId } } : {}),
       ...(args.equipmentIds ? { items: { some: itemFilter } } : {}),
@@ -246,28 +286,32 @@ export async function standardReservations(
       startDate: true,
       endDate: true,
       issuedAt: true,
+      skipPartialDay: true,
       items: {
         where: itemFilter,
-        select: { equipmentId: true, quantity: true, unitReservations: { select: { id: true } } },
+        select: { equipmentId: true, quantity: true, shifts: true, unitReservations: { select: { id: true } } },
       },
     },
   });
   const now = Date.now();
   const windowStart = args.start.getTime();
   const windowEnd = args.end.getTime();
-  return ordinary.flatMap((b) => {
-    const interval = bookingOccupancyInterval(b, now);
-    return b.items
+  return ordinary.flatMap((b) =>
+    b.items
       .filter((i) => i.equipmentId)
-      .map((i) => ({
-        bookingId: b.id,
-        equipmentId: i.equipmentId!,
-        start: interval.start,
-        end: interval.end,
-        quantity: Math.max(i.quantity, i.unitReservations.length),
-      }))
-      .filter((r) => reservationOverlaps(r, windowStart, windowEnd));
-  });
+      .map((i) => {
+        const interval = lineOccupancyInterval(b, i.shifts, now);
+        return {
+          bookingId: b.id,
+          equipmentId: i.equipmentId!,
+          start: interval.start,
+          end: interval.end,
+          dueAt: interval.dueAt,
+          quantity: Math.max(i.quantity, i.unitReservations.length),
+        };
+      })
+      .filter((r) => reservationOverlaps(r, windowStart, windowEnd)),
+  );
 }
 
 /**
