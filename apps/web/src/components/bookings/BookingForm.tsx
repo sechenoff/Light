@@ -1252,7 +1252,10 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     setSelected((prev) => {
       const next = new Map(prev);
       const clamped = Math.max(1, Math.min(quantity, equipment.availableQuantity));
+      // Позиция уже в составе: подтверждение AI меняет количество, но не
+      // стирает договорную цену и прочие настройки строки.
       next.set(equipment.equipmentId, {
+        ...prev.get(equipment.equipmentId),
         equipmentId: equipment.equipmentId,
         name: equipment.name,
         category: equipment.category,

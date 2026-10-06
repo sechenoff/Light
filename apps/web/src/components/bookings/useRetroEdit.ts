@@ -296,8 +296,11 @@ export function useRetroEdit(args: {
           toast.error("Нельзя оставить бронь без позиций — отмените удаление хотя бы одной.");
           return;
         }
+        // Договорную цену позиции не шлём: сервер оставляет её как была
+        // (поле не передано = не трогать). У произвольной позиции equipmentId
+        // не передаём вовсе — null раньше не проходил проверку и правка падала.
         body.items = filtered.map((i) => ({
-          equipmentId: i.equipmentId,
+          equipmentId: i.equipmentId ?? undefined,
           quantity: i.quantity,
           customName: i.customName ?? undefined,
           customUnitPrice: i.customUnitPrice ?? undefined,
