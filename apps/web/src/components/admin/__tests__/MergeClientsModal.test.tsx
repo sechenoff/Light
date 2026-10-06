@@ -18,7 +18,7 @@ function preview(source: MergeCandidate, target: MergeCandidate): MergePreview {
     target: { ...target, hasPortal: false },
     moves: { bookings: source.bookingCount, bills: 1, creditNotes: 0, tasks: 0 },
     contact: { phone: source.phone && !target.phone ? "fill" : "keep", email: "keep", comment: "keep", requisites: "keep" },
-    portal: { outcome: "none", keptEmail: null, droppedEmail: null },
+    portal: { outcome: "none", keptEmail: null, droppedEmail: null, keptFrom: null, keptStatus: null, droppedStatus: null },
   };
 }
 
@@ -88,15 +88,18 @@ describe("mergeSummary", () => {
     const p: MergePreview = {
       ...preview(DUP, { ...MAIN, phone: "+7 999 000-00-00" }),
       moves: { bookings: 0, bills: 0, creditNotes: 2, tasks: 1 },
-      contact: { phone: "conflict", email: "keep", comment: "append", requisites: "fill" },
-      portal: { outcome: "drop", keptEmail: "a@example.com", droppedEmail: "b@example.com" },
+      contact: { phone: "conflict", email: "keep", comment: "append", requisites: "complete" },
+      portal: {
+        outcome: "drop", keptEmail: "a@example.com", droppedEmail: "b@example.com",
+        keptFrom: "source", keptStatus: "ACTIVE", droppedStatus: "PENDING",
+      },
     };
     const s = mergeSummary(p);
     expect(s.moves).toEqual(["2 кредит-ноты", "1 задача"]);
     expect(s.contacts).toEqual([
       "Телефон +7 900 111-22-33 сохранится в комментарии — у карточки свой +7 999 000-00-00",
-      "Реквизиты для счёта перенесутся",
+      "Пустые реквизиты для счёта дополнятся из второй карточки, заполненные останутся",
     ]);
-    expect(s.portal).toBe("Останется кабинет «Петя Куб» (a@example.com), кабинет «петя куб» (b@example.com) закроется");
+    expect(s.portal).toBe("Останется доступ a@example.com (активен), доступ b@example.com (приглашение не принято) закроется");
   });
 });

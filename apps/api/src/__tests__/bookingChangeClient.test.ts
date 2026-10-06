@@ -246,6 +246,8 @@ describe("смена клиента у семьи броней и у длинн�
       .set(AUTH_SA())
       .send({ clientId: f.clientB.id });
     expect(res.status).toBe(200);
+    // Окно правки в «Платежах» говорит, что клиент сменился не у одной брони.
+    expect(res.body.changedBookings).toBe(2);
     expect((await prisma.booking.findUnique({ where: { id: f.root.id } })).clientId).toBe(f.clientB.id);
     expect((await prisma.booking.findUnique({ where: { id: f.child.id } })).clientId).toBe(f.clientB.id);
   });

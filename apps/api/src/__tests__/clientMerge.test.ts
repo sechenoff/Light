@@ -148,6 +148,16 @@ describe("защита от новых дублей", () => {
     expect(own.body.client.name).toBe(`петя ${s.toLowerCase()}`);
   });
 
+  it("у уже заведённых «близнецов» можно править контакты, не трогая имя", async () => {
+    const s = surname();
+    const a = await mkClient(`Петя ${s}`);
+    await mkClient(`петя ${s.toLowerCase()}`);
+    // Форма редактирования шлёт имя всегда — неизменное имя не проверяется.
+    const res = await request(app).patch(`/api/clients/${a.id}`).set(AUTH()).send({ name: `Петя ${s}`, phone: "+7 900 000-00-07" });
+    expect(res.status).toBe(200);
+    expect(res.body.client.phone).toBe("+7 900 000-00-07");
+  });
+
   it("бронь с именем в другом написании прикрепляется к существующему клиенту", async () => {
     const s = surname();
     const existing = await mkClient(`Петя ${s}`, { phone: "+7 900 000-00-01" });
@@ -281,6 +291,17 @@ describe("объединение клиентов", () => {
     expect(merged.comment).toContain("b@example.com");
     expect(merged.comment).toContain("ИНН 500100732259");
 
+    // Тот же ИНН — один плательщик: пустые поля основной дополняются.
+    const s3 = surname();
+    const partial = await mkClient(`Коля ${s3}`, { inn: "7701234567" });
+    const full = await mkClient(`коля ${s3.toLowerCase()}`, { inn: "7701234567", bankName: "Т-Банк", bankBik: "044525974" });
+    const p3 = await request(app).get(`/api/clients/${full.id}/merge-preview?into=${partial.id}`).set(AUTH());
+    expect(p3.body.contact.requisites).toBe("complete");
+    expect((await merge(full.id, partial.id)).status).toBe(200);
+    expect(await prisma.client.findUnique({ where: { id: partial.id } })).toMatchObject({
+      inn: "7701234567", bankName: "Т-Банк", bankBik: "044525974", comment: null,
+    });
+
     const s2 = surname();
     const bare = await mkClient(`Вася ${s2}`);
     const withLegal = await mkClient(`вася ${s2.toLowerCase()}`, { legalName: "ИП Васильев", inn: "500100732259", bankBik: "044525974" });
@@ -332,10 +353,28 @@ describe("объединение клиентов", () => {
     const kept = await prisma.clientPortalAccount.create({ data: { clientId: target.id, email: `kept-${seq}@example.com`, status: "ACTIVE" } });
     const dropped = await prisma.clientPortalAccount.create({ data: { clientId: source.id, email: `dropped-${seq}@example.com`, status: "PENDING" } });
     const preview = await request(app).get(`/api/clients/${source.id}/merge-preview?into=${target.id}`).set(AUTH());
-    expect(preview.body.portal).toEqual({ outcome: "drop", keptEmail: kept.email, droppedEmail: dropped.email });
+    expect(preview.body.portal).toEqual({
+      outcome: "drop", keptEmail: kept.email, droppedEmail: dropped.email,
+      keptFrom: "target", keptStatus: "ACTIVE", droppedStatus: "PENDING",
+    });
     expect((await merge(source.id, target.id)).status).toBe(200);
     expect(await prisma.clientPortalAccount.findUnique({ where: { id: dropped.id } })).toBeNull();
     expect((await prisma.clientPortalAccount.findUnique({ where: { id: kept.id } })).clientId).toBe(target.id);
+  });
+
+  it("кабинет у обоих, но пользуются кабинетом дубля — остаётся он, приглашение основной закрывается", async () => {
+    const s = surname();
+    const target = await mkClient(`Петя ${s}`);
+    const source = await mkClient(`петя ${s.toLowerCase()}`);
+    const pending = await prisma.clientPortalAccount.create({ data: { clientId: target.id, email: `pending-${seq}@example.com`, status: "PENDING" } });
+    const active = await prisma.clientPortalAccount.create({
+      data: { clientId: source.id, email: `active-${seq}@example.com`, status: "ACTIVE", lastLoginAt: new Date() },
+    });
+    const preview = await request(app).get(`/api/clients/${source.id}/merge-preview?into=${target.id}`).set(AUTH());
+    expect(preview.body.portal).toMatchObject({ outcome: "drop", keptEmail: active.email, droppedEmail: pending.email, keptFrom: "source" });
+    expect((await merge(source.id, target.id)).status).toBe(200);
+    expect(await prisma.clientPortalAccount.findUnique({ where: { id: pending.id } })).toBeNull();
+    expect(await prisma.clientPortalAccount.findUnique({ where: { id: active.id } })).toMatchObject({ clientId: target.id, status: "ACTIVE" });
   });
 
   it("отказы: с самим собой — 400, несуществующий — 404, кладовщику — 403", async () => {

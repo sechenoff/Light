@@ -8,9 +8,14 @@
  *
  * Контакты не теряются: пустые поля основной дозаполняются из дубля, а
  * расходящиеся телефон, почта, ИНН и комментарий дубля дописываются в
- * комментарий основной. Реквизиты для счёта переносятся только набором и
- * только если у основной их нет совсем — смешивать два набора нельзя: вышел бы
- * ИНН одной фирмы с банком другой.
+ * комментарий основной. Реквизиты для счёта: нет у основной — переносятся
+ * набором; тот же ИНН (или он не указан) — дополняются пустые поля; разные
+ * ИНН — у основной остаются свои, а ИНН дубля уходит в комментарий: смешивать
+ * наборы разных плательщиков нельзя, вышел бы ИНН одной фирмы с банком другой.
+ *
+ * Кабинет: если он есть у обеих карточек, остаётся тот, которым пользуются
+ * (активный важнее ожидающего, ожидающий — отключённого), при равенстве — у
+ * основной; второй закрывается.
  *
  * Выписанные счета на оплату задним числом не меняются: плательщик в них —
  * снимок на момент выставления. Предпросмотр и само объединение считают план
@@ -56,7 +61,7 @@ const mergeClientSelect = {
   bankBik: true,
   rschet: true,
   kschet: true,
-  portalAccount: { select: { id: true, email: true } },
+  portalAccount: { select: { id: true, email: true, status: true } },
   _count: { select: { bookings: true } },
 } as const;
 
@@ -64,6 +69,9 @@ export type MergeClient = Prisma.ClientGetPayload<{ select: typeof mergeClientSe
 
 /** Что станет с полем основной: остаётся своё, дозаполняется, расходится. */
 export type ContactOutcome = "keep" | "fill" | "conflict";
+/** Реквизиты: «complete» — тот же плательщик, пустые поля дополнятся из дубля. */
+export type RequisitesOutcome = ContactOutcome | "complete";
+type PortalStatus = "PENDING" | "ACTIVE" | "DISABLED";
 
 export type ClientMergePlan = {
   /** Поля основной карточки, которые запишет объединение. */
@@ -73,18 +81,25 @@ export type ClientMergePlan = {
     email: ContactOutcome;
     /** «append» — в комментарий основной допишется строка «Из «дубль»: …». */
     comment: "keep" | "fill" | "append";
-    requisites: ContactOutcome;
+    requisites: RequisitesOutcome;
   };
   portal: {
     /**
      * none — кабинета нет ни у кого; keep — он только у основной;
-     * move — только у дубля, переезжает; drop — у обоих, кабинет дубля закроется.
+     * move — только у дубля, переезжает; drop — у обеих, один закроется.
      */
     outcome: "none" | "keep" | "move" | "drop";
     keptEmail: string | null;
     droppedEmail: string | null;
+    /** Чей кабинет остаётся (при «drop» — тот, которым пользуются). */
+    keptFrom: "source" | "target" | null;
+    keptStatus: PortalStatus | null;
+    droppedStatus: PortalStatus | null;
   };
 };
+
+/** Каким кабинетом пользуются: активный важнее ожидающего, ожидающий — отключённого. */
+const PORTAL_RANK: Record<string, number> = { ACTIVE: 2, PENDING: 1, DISABLED: 0 };
 
 const blank = (v: string | null | undefined): boolean => !v || !v.trim();
 const digits = (v: string) => v.replace(/\D/g, "");
@@ -103,20 +118,26 @@ export function planClientMerge(source: MergeClient, target: MergeClient): Clien
   const legalOf = (c: MergeClient) => CLIENT_LEGAL_KEYS.filter((k) => !blank(c[k]));
   const sourceLegal = legalOf(source);
   const targetLegal = legalOf(target);
-  const requisites: ContactOutcome =
+  // Пустые поля основной, которые есть у дубля: заполняются набором (у
+  // основной реквизитов нет) или дополняются (тот же плательщик).
+  const blanks = sourceLegal.filter((k) => blank(target[k]));
+  const innDiffers = !blank(source.inn) && !blank(target.inn) && source.inn!.trim() !== target.inn!.trim();
+  const requisites: RequisitesOutcome =
     sourceLegal.length === 0
       ? "keep"
       : targetLegal.length === 0
         ? "fill"
-        : sourceLegal.every((k) => (source[k] ?? "").trim() === (target[k] ?? "").trim())
-          ? "keep"
-          : "conflict";
+        : innDiffers
+          ? "conflict"
+          : blanks.length > 0
+            ? "complete"
+            : "keep";
 
   const data: Prisma.ClientUpdateInput = {};
   if (phone === "fill") data.phone = source.phone!.trim();
   if (email === "fill") data.email = source.email!.trim();
-  if (requisites === "fill") {
-    for (const k of sourceLegal) (data as Record<LegalKey, string | null>)[k] = source[k];
+  if (requisites === "fill" || requisites === "complete") {
+    for (const k of blanks) (data as Record<LegalKey, string | null>)[k] = source[k];
   }
   if (source.lastReminderAt && (!target.lastReminderAt || source.lastReminderAt > target.lastReminderAt)) {
     data.lastReminderAt = source.lastReminderAt;
@@ -129,9 +150,7 @@ export function planClientMerge(source: MergeClient, target: MergeClient): Clien
     sourceComment && sourceComment !== targetComment ? sourceComment : null,
     phone === "conflict" ? `тел. ${source.phone!.trim()}` : null,
     email === "conflict" ? `почта ${source.email!.trim()}` : null,
-    requisites === "conflict" && !blank(source.inn) && source.inn!.trim() !== (target.inn ?? "").trim()
-      ? `ИНН ${source.inn!.trim()}`
-      : null,
+    requisites === "conflict" ? `ИНН ${source.inn!.trim()}` : null,
   ].filter((p): p is string => Boolean(p));
   let comment: ClientMergePlan["contact"]["comment"] = "keep";
   if (parts.length > 0) {
@@ -146,13 +165,28 @@ export function planClientMerge(source: MergeClient, target: MergeClient): Clien
     }
   }
 
-  const portal: ClientMergePlan["portal"] = source.portalAccount
-    ? target.portalAccount
-      ? { outcome: "drop", keptEmail: target.portalAccount.email, droppedEmail: source.portalAccount.email }
-      : { outcome: "move", keptEmail: source.portalAccount.email, droppedEmail: null }
-    : target.portalAccount
-      ? { outcome: "keep", keptEmail: target.portalAccount.email, droppedEmail: null }
-      : { outcome: "none", keptEmail: null, droppedEmail: null };
+  const s = source.portalAccount;
+  const t = target.portalAccount;
+  const status = (a: { status: string } | null) => (a ? (a.status as PortalStatus) : null);
+  let portal: ClientMergePlan["portal"];
+  if (s && t) {
+    const keepSource = (PORTAL_RANK[s.status] ?? 0) > (PORTAL_RANK[t.status] ?? 0);
+    const [kept, dropped] = keepSource ? [s, t] : [t, s];
+    portal = {
+      outcome: "drop",
+      keptEmail: kept.email,
+      droppedEmail: dropped.email,
+      keptFrom: keepSource ? "source" : "target",
+      keptStatus: status(kept),
+      droppedStatus: status(dropped),
+    };
+  } else if (s) {
+    portal = { outcome: "move", keptEmail: s.email, droppedEmail: null, keptFrom: "source", keptStatus: status(s), droppedStatus: null };
+  } else if (t) {
+    portal = { outcome: "keep", keptEmail: t.email, droppedEmail: null, keptFrom: "target", keptStatus: status(t), droppedStatus: null };
+  } else {
+    portal = { outcome: "none", keptEmail: null, droppedEmail: null, keptFrom: null, keptStatus: null, droppedStatus: null };
+  }
 
   return { data, contact: { phone, email, comment, requisites }, portal };
 }
@@ -250,10 +284,14 @@ export async function mergeClients(args: { sourceId: string; targetId: string; u
     });
     const tasks = await tx.task.updateMany({ where: { relatedClientId: source.id }, data: { relatedClientId: target.id } });
     // Кабинет — до удаления дубля: иначе каскад унёс бы его вместе с карточкой.
-    if (plan.portal.outcome === "move") {
+    // У карточки кабинет один, поэтому лишний закрывается до переезда.
+    if (plan.portal.outcome === "drop") {
+      await tx.clientPortalAccount.delete({
+        where: { clientId: plan.portal.keptFrom === "source" ? target.id : source.id },
+      });
+    }
+    if (plan.portal.keptFrom === "source") {
       await tx.clientPortalAccount.update({ where: { clientId: source.id }, data: { clientId: target.id } });
-    } else if (plan.portal.outcome === "drop") {
-      await tx.clientPortalAccount.delete({ where: { clientId: source.id } });
     }
     await tx.client.delete({ where: { id: source.id } });
     const client = await tx.client.update({ where: { id: target.id }, data: plan.data, select: clientCardSelect });

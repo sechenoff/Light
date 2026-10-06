@@ -22,6 +22,13 @@ export type MergeCandidate = {
 };
 
 type ContactOutcome = "keep" | "fill" | "conflict";
+type PortalStatus = "PENDING" | "ACTIVE" | "DISABLED";
+
+const PORTAL_STATUS_TEXT: Record<PortalStatus, string> = {
+  ACTIVE: "активен",
+  PENDING: "приглашение не принято",
+  DISABLED: "отключён",
+};
 
 export type MergePreview = {
   source: MergeCandidate & { hasPortal: boolean };
@@ -31,12 +38,17 @@ export type MergePreview = {
     phone: ContactOutcome;
     email: ContactOutcome;
     comment: "keep" | "fill" | "append";
-    requisites: ContactOutcome;
+    /** «complete» — тот же плательщик: пустые реквизиты дополнятся из второй карточки. */
+    requisites: ContactOutcome | "complete";
   };
   portal: {
     outcome: "none" | "keep" | "move" | "drop";
     keptEmail: string | null;
     droppedEmail: string | null;
+    /** Чей кабинет остаётся: при двух — тот, которым пользуются. */
+    keptFrom: "source" | "target" | null;
+    keptStatus: PortalStatus | null;
+    droppedStatus: PortalStatus | null;
   };
 };
 
@@ -81,16 +93,20 @@ export function mergeSummary(p: MergePreview): { moves: string[]; contacts: stri
   if (contact.email === "conflict")
     contacts.push(`Почта ${source.email} сохранится в комментарии — у карточки своя ${target.email}`);
   if (contact.requisites === "fill") contacts.push("Реквизиты для счёта перенесутся");
-  if (contact.requisites === "conflict") contacts.push("Реквизиты для счёта останутся свои, ИНН второй карточки — в комментарии");
+  if (contact.requisites === "complete")
+    contacts.push("Пустые реквизиты для счёта дополнятся из второй карточки, заполненные останутся");
+  if (contact.requisites === "conflict")
+    contacts.push("ИНН разные — реквизиты для счёта останутся свои, ИНН второй карточки сохранится в комментарии");
   if (contact.comment === "fill") contacts.push("Комментарий перенесётся");
   if (contact.comment === "append" && contact.phone !== "conflict" && contact.email !== "conflict" && contact.requisites !== "conflict")
     contacts.push("Комментарий допишется к комментарию карточки");
 
+  const status = (s: PortalStatus | null) => (s ? ` (${PORTAL_STATUS_TEXT[s]})` : "");
   const portal =
     p.portal.outcome === "move"
       ? `Доступ в личный кабинет (${p.portal.keptEmail}) перейдёт к «${target.name}»`
       : p.portal.outcome === "drop"
-        ? `Останется кабинет «${target.name}» (${p.portal.keptEmail}), кабинет «${source.name}» (${p.portal.droppedEmail}) закроется`
+        ? `Останется доступ ${p.portal.keptEmail}${status(p.portal.keptStatus)}, доступ ${p.portal.droppedEmail}${status(p.portal.droppedStatus)} закроется`
         : null;
 
   return { moves: moveLines, contacts, portal };
@@ -192,6 +208,21 @@ export function MergeClientsModal({ client, onClose, onMerged }: Props) {
     }
   }, []);
 
+  // Повтор предпросмотра: ответ, пришедший после смены направления или
+  // закрытия, не должен перетереть свежий.
+  const retryRef = useRef<{ cancelled: boolean } | null>(null);
+  const retrySignal = () => {
+    if (retryRef.current) retryRef.current.cancelled = true;
+    retryRef.current = { cancelled: false };
+    return retryRef.current;
+  };
+  useEffect(
+    () => () => {
+      if (retryRef.current) retryRef.current.cancelled = true;
+    },
+    [keep, drop],
+  );
+
   useEffect(() => {
     if (!keep || !drop) return;
     const signal = { cancelled: false };
@@ -236,6 +267,8 @@ export function MergeClientsModal({ client, onClose, onMerged }: Props) {
     // Остаётся карточка, у которой больше броней: обычно это и есть «настоящая».
     setKeepId(c.bookingCount > client.bookingCount ? c.id : client.bookingCount > c.bookingCount ? client.id : c.id);
     setError(null);
+    // Кнопка, на которой стоял фокус, исчезла вместе с шагом — фокус на выбор имени.
+    window.setTimeout(() => dialogRef.current?.querySelector<HTMLInputElement>('input[name="merge-keep"]:checked')?.focus(), 0);
   };
 
   const back = () => {
@@ -399,7 +432,7 @@ export function MergeClientsModal({ client, onClose, onMerged }: Props) {
                   {previewError}{" "}
                   <button
                     type="button"
-                    onClick={() => keep && drop && void loadPreview(drop.id, keep.id)}
+                    onClick={() => keep && drop && void loadPreview(drop.id, keep.id, retrySignal())}
                     className="underline underline-offset-2"
                   >
                     Повторить

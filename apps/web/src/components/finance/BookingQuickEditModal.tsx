@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../../lib/api";
-import { formatRub } from "../../lib/format";
+import { formatRub, pluralize } from "../../lib/format";
 import { toast } from "../ToastProvider";
 
 interface ClientOption {
@@ -105,11 +105,14 @@ export function BookingQuickEditModal({ booking, onClose, onSaved }: Props) {
 
     setSaving(true);
     try {
-      await apiFetch(`/api/bookings/${booking.id}/finance-corrections`, {
+      const res = await apiFetch<{ changedBookings?: number }>(`/api/bookings/${booking.id}/finance-corrections`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
-      toast.success("Бронь обновлена");
+      // У брони с продолжениями клиент один на всю семью — говорим, что
+      // сменился не только у этой строки.
+      const family = res?.changedBookings ?? 0;
+      toast.success(family > 1 ? `Бронь обновлена — клиент сменён у ${family} ${pluralize(family, "брони", "броней", "броней")} семьи` : "Бронь обновлена");
       onSaved();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Ошибка сохранения");

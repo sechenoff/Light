@@ -280,7 +280,9 @@ router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
           select: clientCardSelect,
         });
         if (!existing) throw new HttpError(404, "Клиент не найден", "CLIENT_NOT_FOUND");
-        if (body.name !== undefined) await assertNameFree(tx, body.name, id);
+        // Только если имя правда меняют: форма шлёт имя всегда, а у двух
+        // уже заведённых «близнецов» иначе нельзя было бы поправить и телефон.
+        if (body.name !== undefined && body.name !== existing.name) await assertNameFree(tx, body.name, id);
         const client = await tx.client.update({
           where: { id },
           data: {

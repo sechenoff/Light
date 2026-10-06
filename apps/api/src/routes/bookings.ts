@@ -2088,22 +2088,13 @@ router.post("/quote/export", async (req, res, next) => {
       throw new HttpError(400, e instanceof Error ? e.message : "Некорректный период аренды");
     }
 
-    const client = await prisma.client.upsert({
-      where: { name: body.client.name.trim() },
-      update: {
-        // Conditional spread: only write fields that were explicitly provided.
-        // Prevents the booking form (which only collects `name`) from wiping
-        // existing phone/email/comment on a Client when autocomplete is used.
-        ...(body.client.phone !== undefined ? { phone: body.client.phone } : {}),
-        ...(body.client.email !== undefined ? { email: body.client.email } : {}),
-        ...(body.client.comment !== undefined ? { comment: body.client.comment } : {}),
-      },
-      create: {
-        name: body.client.name.trim(),
-        phone: body.client.phone ?? null,
-        email: body.client.email ?? null,
-        comment: body.client.comment ?? null,
-      },
+    // Тот же клиент в любом написании; телефон существующему только
+    // дозаполняется — как в /draft.
+    const client = await resolveClientForBooking(prisma, {
+      name: body.client.name,
+      phone: body.client.phone ?? null,
+      email: body.client.email,
+      comment: body.client.comment,
     });
 
     const estimate = await quoteEstimate({
@@ -2635,9 +2626,10 @@ router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req
       });
       // Клиент семьи один: продолжения (или основная бронь) переходят вместе
       // с исправленной бронью. Сама она уже переведена выше и не задваивается.
-      if (body.clientId && body.clientId !== existing.clientId) {
-        await moveBookingFamilyToClient(tx, { booking: existing, client: nextClient, userId });
-      }
+      const familyMoved =
+        body.clientId && body.clientId !== existing.clientId
+          ? await moveBookingFamilyToClient(tx, { booking: existing, client: nextClient, userId })
+          : [];
 
       await writeAuditEntry({
         tx,
@@ -2663,10 +2655,12 @@ router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req
         }),
       });
 
-      return booking;
+      return { booking, changedBookings: body.clientId && body.clientId !== existing.clientId ? 1 + familyMoved.length : 0 };
     });
 
-    res.json({ booking: await serializeBookingOrdered(updated as any) });
+    // changedBookings — у скольких броней сменился клиент (вся семья); окно
+    // правки говорит об этом, если их больше одной.
+    res.json({ booking: await serializeBookingOrdered(updated.booking as any), changedBookings: updated.changedBookings });
   } catch (err) {
     next(err);
   }

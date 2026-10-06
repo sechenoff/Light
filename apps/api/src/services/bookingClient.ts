@@ -11,19 +11,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { writeAuditEntry } from "./audit";
-
-/** Брони семьи — основная и все продолжения; бронь без семьи — она сама. */
-async function familyBookingIds(
-  tx: Prisma.TransactionClient,
-  booking: { id: string; rootBookingId: string | null },
-): Promise<string[]> {
-  const rootId = booking.rootBookingId ?? booking.id;
-  const rows = await tx.booking.findMany({
-    where: { OR: [{ id: rootId }, { rootBookingId: rootId }] },
-    select: { id: true },
-  });
-  return rows.map((r) => r.id);
-}
+import { loadFamily } from "./bookingFamily";
 
 /**
  * Перевести бронь и всю её семью на клиента. Брони, которые уже у него, не
@@ -38,7 +26,8 @@ export async function moveBookingFamilyToClient(
     userId: string;
   },
 ): Promise<string[]> {
-  const ids = await familyBookingIds(tx, args.booking);
+  // Семья — основная и все продолжения; бронь без семьи — она сама.
+  const ids = (await loadFamily(tx, args.booking)).map((m) => m.id);
   const members = await tx.booking.findMany({
     where: { id: { in: ids }, clientId: { not: args.client.id } },
     select: { id: true, client: { select: { id: true, name: true } } },
