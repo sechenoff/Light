@@ -680,7 +680,7 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       continuationIds.length > 0
         ? await prisma.booking.findMany({
             where: { id: { in: continuationIds } },
-            select: { id: true, docNumber: true, endDate: true, items: { select: { quantity: true } } },
+            select: { id: true, docNumber: true, endDate: true, finalAmount: true, items: { select: { quantity: true } } },
             orderBy: { endDate: "asc" },
           })
         : [];
@@ -729,6 +729,8 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
         docNumber: c.docNumber,
         endDate: c.endDate.toISOString(),
         quantity: c.items.reduce((sum, i) => sum + i.quantity, 0),
+        // Дополнительная смета: 0 — всё в пределах оплаченного.
+        finalAmount: new Decimal(c.finalAmount.toString()).toFixed(2),
       })),
     });
   } catch (err) {

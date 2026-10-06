@@ -349,6 +349,23 @@ describe("ReturnChecklist: «Остаётся у клиента» у обычн�
     ]);
   });
 
+  it("итог: продолжение с дополнительной сметой называет доплату, а не «уже оплачено»", async () => {
+    completeSpy.mockResolvedValue({
+      ...okResult(),
+      continuations: [{ id: "c1", docNumber: "СМ-2026-0231-1", endDate: new Date(Date.now() + SHIFT).toISOString(), quantity: 1, finalAmount: "400.00" }],
+    });
+    mockState = stateWith([countItem("bi-stand", "Стойка C-Stand", 6)], { linePaidThrough: { "bi-stand": paidPast } });
+    render(<ReturnChecklist sessionId="s1" projectName="ZZ" onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Остаётся у клиента: Стойка C-Stand" }));
+    await waitFor(() => expect(previewSpy).toHaveBeenCalledTimes(1));
+    await wait(30);
+    await finish();
+    const block = await screen.findByTestId("result-continuations");
+    expect(block).toHaveTextContent(/дополнительная смета 400\s₽/);
+    expect(block).toHaveTextContent("оплачивают отдельно");
+    expect(block).not.toHaveTextContent("Уже оплачено в основной смете");
+  });
+
   it("старый сервер без linePaidThrough — ссылки «Остаётся у клиента…» нет", async () => {
     mockState = stateWith([countItem("bi-stand", "Стойка C-Stand", 6)]);
     render(<ReturnChecklist sessionId="s1" projectName="ZZ" onBack={() => {}} />);

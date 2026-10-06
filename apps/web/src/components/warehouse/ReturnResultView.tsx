@@ -38,7 +38,7 @@
 import type { CompleteResult } from "./types";
 import { STICKY_ABOVE_TAB_BAR } from "./WorkstationShell";
 import { formatStayWhen } from "./PlannedStaysBlock";
-import { pluralize } from "../../lib/format";
+import { formatRub, pluralize } from "../../lib/format";
 
 /** «Кто оформил: …» под названием брони в шапке итога. */
 function CompletedByLine({ name }: { name: string }) {
@@ -186,11 +186,17 @@ export function ReturnResultView({
                   <li key={c.id} className="text-[12.5px] leading-snug text-ink-2">
                     <span className="font-medium text-ink">{c.docNumber ?? "Продолжение"}</span> · {c.quantity} ед. · до{" "}
                     {formatStayWhen(c.endDate)} · выдано сразу, без согласования
+                    {Number(c.finalAmount ?? 0) > 0 && (
+                      <span className="text-amber"> · дополнительная смета {formatRub(c.finalAmount!)}</span>
+                    )}
                   </li>
                 ))}
               </ul>
               <p className="mt-2 text-[11.5px] leading-snug text-ink-3">
-                Уже оплачено в основной смете. Продолжение — во вкладке «В работе»: по нему примут остаток одной кнопкой.
+                {continuations.some((c) => Number(c.finalAmount ?? 0) > 0)
+                  ? "Сверх оплаченного — дополнительная смета продолжения, её оплачивают отдельно."
+                  : "Уже оплачено в основной смете."}{" "}
+                Продолжение — во вкладке «В работе»: по нему примут остаток одной кнопкой.
               </p>
             </div>
           )}

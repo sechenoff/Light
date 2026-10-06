@@ -737,7 +737,14 @@ export interface CompleteResult extends SummaryResult {
   /** Сколько доборов сделано в этой сессии (строк, где выдали больше исходного). */
   addonsAddedInSession?: number;
   /** Продолжения брони, куда ушли позиции «по плану у клиента» (приёмка). */
-  continuations?: Array<{ id: string; docNumber: string | null; endDate: string; quantity: number }>;
+  continuations?: Array<{
+    id: string;
+    docNumber: string | null;
+    endDate: string;
+    quantity: number;
+    /** Дополнительная смета продолжения; «0.00» — всё в пределах оплаченного. Нет у старого сервера. */
+    finalAmount?: string;
+  }>;
 }
 
 // ── Mutation results ─────────────────────────────────────────────────────────
