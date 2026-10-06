@@ -621,6 +621,7 @@ const completeSessionBodySchema = z.object({
         quantity: z.number().int().positive(),
         until: z.string().datetime(),
         equipmentUnitIds: z.array(z.string().min(1)).max(500).optional(),
+        acknowledgedConflict: z.boolean().optional(),
       }),
     )
     .max(200)
