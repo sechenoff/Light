@@ -5,6 +5,7 @@ import { apiFetch } from "../../lib/api";
 import { formatRub } from "../../lib/format";
 import { toast } from "../ToastProvider";
 import { toMoscowDateString } from "../../lib/moscowDate";
+import { FamilySpreadPanel, defaultSpreadOn, type FamilyPreviewInfo } from "./FamilySpreadPanel";
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: "Наличные",
@@ -105,6 +106,15 @@ export function RecordPaymentModal({
   const [invoiceId, setInvoiceId] = useState<string>("");
   const [invoicesLoading, setInvoicesLoading] = useState(false);
 
+  // «Разнести по продолжениям»: панель узнаёт по превью, есть ли у брони
+  // семья; включать ли по умолчанию — решает окно (defaultSpreadOn), пока
+  // человек сам не трогал переключатель.
+  const [spread, setSpread] = useState(false);
+  const [familyInfo, setFamilyInfo] = useState<FamilyPreviewInfo | null>(null);
+  const [spreadTouched, setSpreadTouched] = useState(false);
+  const hasFamily = familyInfo?.hasFamily ?? false;
+  const spreading = spread && hasFamily;
+
   const amountRef = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
   const requestKeyRef = useRef<string>();
@@ -152,6 +162,13 @@ export function RecordPaymentModal({
 
   // D2: Load open invoices for the booking when post-cutoff mode
   const effectiveBookingId = defaultBookingId ?? bookingId;
+
+  // Другая бронь — другая семья: выбор разнесения не переносится.
+  useEffect(() => {
+    setSpread(false);
+    setFamilyInfo(null);
+    setSpreadTouched(false);
+  }, [effectiveBookingId]);
   useEffect(() => {
     // Only fetch invoices for post-cutoff bookings (legacyFinance===false)
     if (!open || legacyFinance !== false || !effectiveBookingId) {
@@ -200,6 +217,9 @@ export function RecordPaymentModal({
       const mm = String(mskNow.getUTCMinutes()).padStart(2, "0");
       setReceivedAt(`${datePart}T${hh}:${mm}`);
       setNote("");
+      setSpread(false);
+      setFamilyInfo(null);
+      setSpreadTouched(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -223,14 +243,18 @@ export function RecordPaymentModal({
         receivedAt: new Date(`${receivedAt}+03:00`).toISOString(),
         note: note.trim() || undefined,
       };
-      if (legacyFinance === false && invoiceId) {
+      if (spreading) {
+        // Платёж по счёту не разносится (сервер ответит 400) — счёт не шлём.
+        payload.spreadAcrossFamily = true;
+      } else if (legacyFinance === false && invoiceId) {
         payload.invoiceId = invoiceId;
       }
-      await apiFetch("/api/payments", {
+      const res = await apiFetch<{ payments?: unknown[] }>("/api/payments", {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      toast.success("Платёж зафиксирован");
+      const parts = res?.payments?.length ?? 1;
+      toast.success(parts > 1 ? `Платёж разнесён по ${parts} броням` : "Платёж зафиксирован");
       onCreated();
     } catch (e: unknown) {
       // Проверяем структурированный код из details.code
@@ -256,20 +280,35 @@ export function RecordPaymentModal({
     }
   };
 
+  // Разнесение по умолчанию — по превью и выбранному счёту, пока человек сам
+  // не нажимал переключатель. Счёт выбран — выключено: платёж по счёту не
+  // разносится, и привязка к нему не должна пропадать молча.
+  const invoiceChosen = legacyFinance === false && Boolean(invoiceId);
+  useEffect(() => {
+    if (spreadTouched) return;
+    setSpread(defaultSpreadOn(familyInfo, Number(amount), invoiceChosen));
+    // Сумму берём на момент ответа превью: оно и приходит на каждую новую сумму.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyInfo, invoiceChosen, spreadTouched]);
+
   if (!open) return null;
 
   // D2: determine if we should show invoice selector
-  const showInvoiceSelector = legacyFinance === false && !!effectiveBookingId;
+  const showInvoiceSelector = legacyFinance === false && !!effectiveBookingId && !spreading;
 
   // Валидность суммы — гейтит кнопку «Записать платёж» (раньше была всегда
   // активна, и пустой/нулевой сабмит только тостил). Переплата (сумма больше
   // остатка) не блокирует — это легитимный кейс, но мягко предупреждаем.
   const amtNum = Number(amount);
+  const invoiceAvailable =
+    legacyFinance === false && invoices.some((inv) => inv.status !== "PAID" && inv.status !== "DRAFT");
   const amountValid = amount.trim() !== "" && Number.isFinite(amtNum) && amtNum > 0;
   const outstandingNum =
     bookingContext?.amountOutstanding != null ? Number(bookingContext.amountOutstanding) : null;
+  // При разнесении по семье переплату объясняет панель: остаток брони тут
+  // не база сравнения — сумма закрывает и долги продолжений.
   const isOverpay =
-    amountValid && outstandingNum != null && Number.isFinite(outstandingNum) && amtNum > outstandingNum;
+    !spreading && amountValid && outstandingNum != null && Number.isFinite(outstandingNum) && amtNum > outstandingNum;
 
   return (
     <div
@@ -394,6 +433,20 @@ export function RecordPaymentModal({
               </p>
             )}
           </div>
+
+          {effectiveBookingId && (
+            <FamilySpreadPanel
+              bookingId={effectiveBookingId}
+              amount={amtNum}
+              enabled={spread}
+              onToggle={(next) => {
+                setSpreadTouched(true);
+                setSpread(next);
+              }}
+              onPreview={setFamilyInfo}
+              invoiceAvailable={invoiceAvailable}
+            />
+          )}
 
           {/* Method */}
           <div>

@@ -1,11 +1,11 @@
 import type { PaymentMethod, Payment, Prisma, BookingStatus, UserRole } from "@prisma/client";
-import { createHash } from "node:crypto";
 import { Decimal } from "decimal.js";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry, diffFields } from "./audit";
 import { recomputeBookingFinance } from "./finance";
 import { recomputeInvoiceStatus } from "./invoiceService";
+import { familyPaymentPartId, singlePaymentId } from "./paymentIdempotency";
 
 /** Методы оплаты, разрешённые для роли WAREHOUSE */
 const WH_ALLOWED_METHODS: PaymentMethod[] = ["CASH", "CARD"];
@@ -84,10 +84,18 @@ export interface CreatePaymentArgs {
 }
 
 export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
-  const paymentId = args.requestKey
-    ? `idem_${createHash("sha256").update(`${args.createdBy}:${args.requestKey}`).digest("hex")}` : undefined;
+  const paymentId = args.requestKey ? singlePaymentId(args.createdBy, args.requestKey) : undefined;
   const replay = async () => {
-    if (!paymentId) return null;
+    if (!paymentId || !args.requestKey) return null;
+    // Тот же ключ уже записан разнесённым по продолжениям — это та же отправка,
+    // только с другим выбором в окне: второй платёж был бы двойной оплатой.
+    const spread = await prisma.payment.findUnique({
+      where: { id: familyPaymentPartId(args.createdBy, args.requestKey, 0) },
+      select: { id: true },
+    });
+    if (spread) {
+      throw new HttpError(409, "Этот платёж уже записан разнесённым по продолжениям. Проверьте журнал платежей.", "PAYMENT_REQUEST_CONFLICT");
+    }
     const previous = await prisma.payment.findUnique({ where: { id: paymentId } });
     if (!previous) return null;
     if (previous.bookingId !== args.bookingId || previous.createdBy !== args.createdBy ||
