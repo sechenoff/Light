@@ -1,5 +1,13 @@
 import { setBookingIssuedOrReturnedManually } from "../services/bookingManualStatus";
-import { actWaitsForContinuationError, assertFamilyAllowsEdit, bookingFamilySummary, continuationOrigin, hasIssuedDescendant } from "../services/bookingFamily";
+import {
+  actWaitsForContinuationError,
+  assertFamilyAllowsClientChange,
+  assertFamilyAllowsEdit,
+  assertUnchangedSinceRead,
+  bookingFamilySummary,
+  continuationOrigin,
+  hasIssuedDescendant,
+} from "../services/bookingFamily";
 import { getReturnPlan, hasPlannedStays, plannedStayPendingError, returnPartial } from "../services/bookingContinuation";
 import { listBookingRegister } from "../services/bookingRegister";
 import { getBookingIssues } from "../services/bookingIssues";
@@ -320,7 +328,8 @@ const returnPartialSchema = z.object({
         equipmentUnitIds: z.array(z.string().min(1)).optional(),
       }),
     )
-    .min(1, "Отметьте, что осталось у клиента"),
+    .min(1, "Отметьте, что осталось у клиента")
+    .max(100, "Слишком много строк в одной приёмке"),
   expectedSplitRevision: z.number().int().min(0),
 });
 
@@ -1138,6 +1147,9 @@ router.patch("/:id", async (req, res, next) => {
     const booking = await prisma.$transaction(async (tx) => {
       // Повторно внутри транзакции: выдачу могли начать между проверкой и записью.
       if (touchesKioskChecklist) await assertNoIssueInProgress(tx, id);
+      // …а бронь — принять или разделить (частичная приёмка): правка,
+      // проверенная по старому состоянию, сдвинула бы срок продолжения.
+      await assertUnchangedSinceRead(tx, existing);
       const auditBefore = await bookingAuditSnapshot(tx, id);
       if (body.items) {
         // Настройки строк, которых клиент не прислал, берём из текущих позиций —
@@ -1747,6 +1759,10 @@ router.post("/:id/return-partial", async (req, res, next) => {
       warnings.push(financeWarningFromError(financeErr));
       // eslint-disable-next-line no-console
       console.error("Finance side-effects failed after partial return:", financeErr);
+    }
+    // Как у обычного «Вернуть»: пробег при ручной приёмке не вводится.
+    if ((await prisma.bookingVehicle.count({ where: { bookingId: id } })) > 0) {
+      warnings.push(MILEAGE_NOT_RECORDED_WARNING);
     }
     const updated = await prisma.booking.findUniqueOrThrow({
       where: { id },
@@ -2446,6 +2462,7 @@ router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req
 
     let nextClient = existing.client;
     if (body.clientId && body.clientId !== existing.clientId) {
+      await assertFamilyAllowsClientChange(prisma, existing);
       const candidate = await prisma.client.findUnique({ where: { id: body.clientId } });
       if (!candidate) throw new HttpError(404, "Клиент не найден", "CLIENT_NOT_FOUND");
       nextClient = candidate;
@@ -2733,7 +2750,7 @@ router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
 
     const existing = await prisma.booking.findUnique({
       where: { id },
-      select: { id: true, startDate: true, endDate: true, status: true, projectName: true, parentBookingId: true },
+      select: { id: true, startDate: true, endDate: true, status: true, projectName: true, parentBookingId: true, splitRevision: true },
     });
     if (!existing) throw new HttpError(404, "Бронь не найдена");
     await assertFamilyAllowsEdit(prisma, existing, { datesChanged: true, itemsChanged: false, extend: false });
@@ -2744,6 +2761,7 @@ router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
 
     // Обновление и запись аудита в одной транзакции — если audit упадёт, бронь не изменится
     const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await assertUnchangedSinceRead(tx, existing);
       const updatedBooking = await tx.booking.update({
         where: { id },
         data: updateData,
@@ -2816,6 +2834,8 @@ router.post(
       if (existing.clientId === newClientId) {
         throw new HttpError(400, "Бронь уже принадлежит этому клиенту", "NO_CHANGE");
       }
+      // Клиент семьи броней (основная и продолжения) — общий.
+      await assertFamilyAllowsClientChange(prisma, existing);
 
       // 4. Проверяем, что новый клиент существует
       const newClient = await prisma.client.findUnique({

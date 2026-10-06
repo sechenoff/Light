@@ -201,13 +201,25 @@ function listRateForStay(booking: BookingWithItems, item: BookingItem): Decimal 
   return null;
 }
 
-/** Номер продолжения: «<номер основной>-k», k — по счёту в семье. */
+/**
+ * Номер продолжения: «<номер основной>-k», k — следующий после самого
+ * большого уже выданного (а не по числу продолжений: удалённое навсегда
+ * продолжение уменьшило бы счёт, и номер совпал бы с живым).
+ */
 async function nextContinuationDocNumber(tx: Prisma.TransactionClient, rootId: string): Promise<string | null> {
   const root = await tx.booking.findUnique({ where: { id: rootId }, select: { docNumber: true } });
   if (!root?.docNumber) return null;
-  const k = 1 + (await tx.booking.count({ where: { rootBookingId: rootId } }));
-  return `${root.docNumber}-${k}`;
+  const prefix = `${root.docNumber}-`;
+  const taken = await tx.booking.findMany({ where: { docNumber: { startsWith: prefix } }, select: { docNumber: true } });
+  const max = taken.reduce((m, b) => {
+    const k = Number(b.docNumber!.slice(prefix.length));
+    return Number.isInteger(k) && k > m ? k : m;
+  }, 0);
+  return `${prefix}${max + 1}`;
 }
+
+/** Приёмка с продолжениями — много записей: таймаут как у завершения приёмки в киоске. */
+const PARTIAL_RETURN_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
 
 /**
  * «Принять часть — остальное у клиента». Проверки и запись одной
@@ -285,7 +297,21 @@ export async function returnPartial(args: {
       if (item.equipmentId && eqModes.get(item.equipmentId) === "UNIT") {
         const ids = s.equipmentUnitIds ?? [];
         const own = new Set(live.filter((r) => r.bookingItemId === item.id).map((r) => r.equipmentUnitId));
-        if (ids.length !== s.quantity || ids.some((id) => !own.has(id) || keptUnitIds.has(id))) {
+        if (own.size < s.quantity) {
+          throw new HttpError(
+            400,
+            `У клиента по этой позиции отмечено только ${own.size} ед. — оставить больше нельзя`,
+            PARTIAL_RETURN_ERROR_CODES.UNITS_REQUIRED,
+            { bookingItemId: item.id },
+          );
+        }
+        // Одна и та же единица дважды прошла бы проверку: позиция продолжения
+        // получила бы 2 шт, а перешёл бы один резерв — второй прибор ушёл бы на полку.
+        if (
+          ids.length !== s.quantity ||
+          new Set(ids).size !== ids.length ||
+          ids.some((id) => !own.has(id) || keptUnitIds.has(id))
+        ) {
           throw new HttpError(
             400,
             "Отметьте, какие именно единицы остались у клиента",
@@ -413,7 +439,7 @@ export async function returnPartial(args: {
       auditExtra: { via: "status:return-partial", continuationIds: continuationIds.join(", ") },
     });
     return { parentId: booking.id, continuationIds };
-  });
+  }, PARTIAL_RETURN_TX_OPTIONS);
 }
 
 /** 409, если обычное «Вернуть» сдало бы позиции «по плану у клиента» молча. */

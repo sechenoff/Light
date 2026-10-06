@@ -325,3 +325,41 @@ export async function bookingFamilySummary(
     totals: below.length ? { finalAmount: sum("finalAmount"), amountPaid: sum("amountPaid"), amountOutstanding: sum("amountOutstanding") } : null,
   };
 }
+
+/**
+ * Смена клиента: у основной брони, её продолжений и у самого продолжения
+ * клиент общий — долг, акт и кабинет клиента читаются по семье. Сменить
+ * одну бронь значило бы развести их; это делается только вручную по всей
+ * семье, поэтому здесь — 409.
+ */
+export async function assertFamilyAllowsClientChange(
+  client: Db,
+  booking: { id: string; parentBookingId: string | null },
+): Promise<void> {
+  if (isContinuation(booking) || (await countLiveContinuations(client, booking.id)) > 0) {
+    throw new HttpError(
+      409,
+      "У брони есть продолжение — клиента не сменить у одной брони семьи: основная и продолжения принадлежат одному клиенту",
+      FAMILY_ERROR_CODES.HAS_CONTINUATION,
+      { bookingId: booking.id },
+    );
+  }
+}
+
+/**
+ * Перепроверка внутри транзакции правки: между чтением и записью бронь могли
+ * принять или разделить (частичная приёмка) — тогда правка, проверенная по
+ * старому состоянию, сдвинула бы срок, на котором стоит расчёт продолжения.
+ */
+export async function assertUnchangedSinceRead(
+  client: Db,
+  booking: { id: string; status: string; splitRevision: number },
+): Promise<void> {
+  const fresh = await client.booking.findUnique({
+    where: { id: booking.id },
+    select: { status: true, splitRevision: true },
+  });
+  if (!fresh || fresh.status !== booking.status || fresh.splitRevision !== booking.splitRevision) {
+    throw new HttpError(409, "Бронь только что приняли или разделили — обновите карточку", "INVALID_BOOKING_STATE");
+  }
+}

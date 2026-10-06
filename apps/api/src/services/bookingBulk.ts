@@ -165,6 +165,22 @@ async function runOne(
   return { id, ok: true, status: cancelled.status };
 }
 
+/** Выбор, упорядоченный так, что продолжения идут раньше своих основных (глубже — раньше). */
+async function continuationsFirst(ids: string[]): Promise<string[]> {
+  const rows = await prisma.booking.findMany({ where: { id: { in: ids } }, select: { id: true, parentBookingId: true } });
+  const parent = new Map(rows.map((r) => [r.id, r.parentBookingId]));
+  const depth = (id: string): number => {
+    let d = 0;
+    let p = parent.get(id);
+    while (p && parent.has(p) && d < ids.length) {
+      d += 1;
+      p = parent.get(p);
+    }
+    return p ? d + 1 : d;
+  };
+  return [...ids].sort((a, b) => depth(b) - depth(a));
+}
+
 export async function runBulkBookingAction(args: {
   ids: string[];
   action: BulkBookingAction;
@@ -187,14 +203,19 @@ export async function runBulkBookingAction(args: {
     );
   }
 
-  const results: BulkItemResult[] = [];
-  for (const id of ids) {
+  // Архив семьи броней: сначала продолжения, потом основная — иначе основная
+  // с ещё живым продолжением получила бы 409 HAS_CONTINUATION. Ответ — в
+  // исходном порядке выбора.
+  const order = action === "archive" ? await continuationsFirst(ids) : ids;
+  const byId = new Map<string, BulkItemResult>();
+  for (const id of order) {
     try {
-      results.push(await runOne(id, action, userId, role));
+      byId.set(id, await runOne(id, action, userId, role));
     } catch (err) {
-      results.push(toItemFailure(id, err));
+      byId.set(id, toItemFailure(id, err));
     }
   }
+  const results: BulkItemResult[] = ids.map((id) => byId.get(id)!);
 
   const ok = results.filter((r) => r.ok).length;
   return {

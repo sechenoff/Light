@@ -244,6 +244,97 @@ describe("принять часть — остальное у клиента", (
   });
 });
 
+describe("проверки оставленного", () => {
+  it("два срока «до» в одной приёмке — два продолжения «-1» и «-2»", async () => {
+    const b = await issuedBooking({ stormShifts: 3 });
+    const p = await plan(b.id);
+    const storm3 = p.lines.find((l: any) => l.equipmentId === storm);
+    const end = b.endDate.toISOString();
+    const res = await request(app)
+      .post(`/api/bookings/${b.id}/return-partial`)
+      .set(AUTH())
+      .send({
+        stays: [
+          { bookingItemId: storm3.bookingItemId, quantity: 2, until: storm3.plannedStayUntil },
+          { bookingItemId: itemOf(b, stand).id, quantity: 1, until: end },
+        ],
+        expectedSplitRevision: p.splitRevision,
+      });
+    expect(res.status).toBe(200);
+    const children = await prisma.booking.findMany({ where: { parentBookingId: b.id }, orderBy: { endDate: "asc" } });
+    expect(children.map((c: any) => c.docNumber)).toEqual([`${b.docNumber}-1`, `${b.docNumber}-2`]);
+  });
+
+  it("больше, чем в позиции, и срок в прошлом — 400, бронь не тронута", async () => {
+    const b = await issuedBooking({ stormShifts: null, start: N - 4 * HOUR, end: N + 20 * HOUR });
+    const p = await plan(b.id);
+    const tooMany = await request(app)
+      .post(`/api/bookings/${b.id}/return-partial`)
+      .set(AUTH())
+      .send({ stays: [{ bookingItemId: itemOf(b, stand).id, quantity: 7, until: b.endDate.toISOString() }], expectedSplitRevision: p.splitRevision });
+    expect(tooMany.status).toBe(400);
+    const past = await request(app)
+      .post(`/api/bookings/${b.id}/return-partial`)
+      .set(AUTH())
+      .send({ stays: [{ bookingItemId: itemOf(b, stand).id, quantity: 1, until: new Date(N - HOUR).toISOString() }], expectedSplitRevision: p.splitRevision });
+    expect(past.status).toBe(400);
+    expect((await prisma.booking.findUnique({ where: { id: b.id } })).status).toBe("ISSUED");
+  });
+
+  it("своя позиция остаётся у клиента — 0 ₽ в продолжении", async () => {
+    seq += 1;
+    const b = await prisma.booking.create({
+      data: {
+        clientId, projectName: `Своя ${seq}`, docNumber: `СМ-PRT-${seq}`, status: "ISSUED", startDate: new Date(N - 4 * HOUR), endDate: new Date(N + 20 * HOUR), issuedAt: new Date(N - 4 * HOUR),
+        items: { create: [{ customName: "Расходники", customUnitPrice: 1500, customCategory: "Произвольная позиция", quantity: 1 }] },
+      },
+      include: { items: true },
+    });
+    const { rebuildBookingEstimate } = await import("../services/bookings");
+    await rebuildBookingEstimate(b.id);
+    const p = await plan(b.id);
+    const res = await request(app)
+      .post(`/api/bookings/${b.id}/return-partial`)
+      .set(AUTH())
+      .send({ stays: [{ bookingItemId: b.items[0].id, quantity: 1, until: b.endDate.toISOString() }], expectedSplitRevision: p.splitRevision });
+    expect(res.status).toBe(200);
+    const child = await prisma.booking.findUnique({ where: { id: res.body.continuationIds[0] } });
+    expect(Number(child.finalAmount)).toBe(0);
+  });
+});
+
+describe("семья после частичной приёмки", () => {
+  it("клиента не сменить у одной брони семьи", async () => {
+    const b = await issuedBooking();
+    const p = await plan(b.id);
+    const res = await request(app)
+      .post(`/api/bookings/${b.id}/return-partial`)
+      .set(AUTH())
+      .send({ stays: [{ bookingItemId: itemOf(b, storm).id, quantity: 1, until: p.lines.find((l: any) => l.equipmentId === storm).plannedStayUntil }], expectedSplitRevision: p.splitRevision });
+    const other = await prisma.client.create({ data: { name: "Другой клиент" } });
+    for (const id of [b.id, res.body.continuationIds[0]]) {
+      const change = await request(app).post(`/api/bookings/${id}/change-client`).set(AUTH()).send({ clientId: other.id });
+      expect(change.status).toBe(409);
+      expect(change.body.code).toBe("HAS_CONTINUATION");
+    }
+  });
+
+  it("групповой архив законченной семьи — продолжения уходят первыми", async () => {
+    const b = await issuedBooking();
+    const p = await plan(b.id);
+    const res = await request(app)
+      .post(`/api/bookings/${b.id}/return-partial`)
+      .set(AUTH())
+      .send({ stays: [{ bookingItemId: itemOf(b, storm).id, quantity: 1, until: p.lines.find((l: any) => l.equipmentId === storm).plannedStayUntil }], expectedSplitRevision: p.splitRevision });
+    const childId = res.body.continuationIds[0];
+    await request(app).post(`/api/bookings/${childId}/status`).set(AUTH()).send({ action: "return", allReturned: true });
+    const bulk = await request(app).post("/api/bookings/bulk").set(AUTH()).send({ action: "archive", ids: [b.id, childId] });
+    expect(bulk.status).toBe(200);
+    expect(bulk.body.counts.failed).toBe(0);
+    expect(bulk.body.results.map((r: any) => r.id)).toEqual([b.id, childId]);
+  });
+});
+
 describe("штучный учёт", () => {
   it("оставленная единица переходит к продолжению и остаётся «Выдана», остальные — на полку", async () => {
     const lens = await prisma.equipment.create({
@@ -271,6 +362,11 @@ describe("штучный учёт", () => {
       .send({ stays: [{ bookingItemId: b.items[0].id, quantity: 1, until: b.endDate.toISOString() }], expectedSplitRevision: p.splitRevision });
     expect(noUnits.status).toBe(400);
     expect(noUnits.body.code).toBe("PARTIAL_RETURN_UNITS_REQUIRED");
+    const dup = await request(app)
+      .post(`/api/bookings/${b.id}/return-partial`)
+      .set(AUTH())
+      .send({ stays: [{ bookingItemId: b.items[0].id, quantity: 2, until: b.endDate.toISOString(), equipmentUnitIds: [units[0].id, units[0].id] }], expectedSplitRevision: p.splitRevision });
+    expect(dup.status).toBe(400);
     const res = await request(app)
       .post(`/api/bookings/${b.id}/return-partial`)
       .set(AUTH())
