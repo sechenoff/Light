@@ -405,7 +405,12 @@ async function runCompletion(tx: Prisma.TransactionClient, ctx: CompletionCtx): 
         paymentDates: ctx.stayPaymentDates ?? new Map(),
       });
     }
-    await reconcileReturnUnits(tx, ctx, scans, summary);
+    // Единица, которая остаётся у клиента, не «принята», даже если её успели
+    // отметить до того, как вернули строку в «по плану»: иначе прибор встал бы
+    // на полку свободным, а держит его уже продолжение.
+    const stayingUnitIds = new Set(stays.flatMap((st) => st.equipmentUnitIds ?? []));
+    const acceptedScans = stayingUnitIds.size > 0 ? scans.filter((sc) => !stayingUnitIds.has(sc.equipmentUnitId)) : scans;
+    await reconcileReturnUnits(tx, ctx, acceptedScans, summary);
     await tx.booking.update({ where: { id: ctx.bookingId }, data: { status: "RETURNED" } });
     const mileages = ctx.options.vehicleMileages ?? [];
     if (mileages.length > 0) {

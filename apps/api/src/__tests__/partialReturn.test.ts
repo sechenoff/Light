@@ -499,7 +499,33 @@ describe("киоск", () => {
     });
     expect(summary.missing).toEqual([]);
     for (const u of units) expect((await prisma.equipmentUnit.findUnique({ where: { id: u.id } })).status).toBe("ISSUED");
+    const childItem = await prisma.bookingItem.findFirst({ where: { bookingId: summary.continuationIds[0], equipmentId: lens.id } });
+    expect(await prisma.bookingItemUnit.count({ where: { bookingItemId: childItem.id, returnedAt: null } })).toBe(2);
+  });
+
+  it("единицу отметили принятой, а потом оставили по плану — она не встаёт на полку", async () => {
+    const lens = await prisma.equipment.create({
+      data: { importKey: `prt-slens-${++seq}`, name: "Объектив Leica", category: "Оптика", totalQuantity: 1, rentalRatePerShift: 2000, stockTrackingMode: "UNIT" },
+    });
+    const unit = await prisma.equipmentUnit.create({ data: { equipmentId: lens.id, status: "ISSUED", internalInventoryNumber: `LEICA-${seq}` } });
+    const b = await issuedBooking();
+    const lensItem = await prisma.bookingItem.create({ data: { bookingId: b.id, equipmentId: lens.id, quantity: 1, shifts: 2 } });
+    await prisma.bookingItemUnit.create({ data: { bookingItemId: lensItem.id, equipmentUnitId: unit.id } });
+    const { rebuildBookingEstimate } = await import("../services/bookings");
+    await rebuildBookingEstimate(b.id);
+    const session = await returnSession(b.id);
+    await prisma.scanRecord.create({ data: { sessionId: session.id, equipmentUnitId: unit.id, hmacVerified: false } });
+    const until = new Date(b.endDate.getTime() + DAY).toISOString();
+    const { completeSession } = await import("../services/warehouseScan");
+    const summary = await completeSession(session.id, {
+      stays: [
+        { bookingItemId: itemOf(b, storm).id, quantity: 2, until },
+        { bookingItemId: lensItem.id, quantity: 1, until, equipmentUnitIds: [unit.id] },
+      ],
+      expectedSplitRevision: 0,
+    });
+    expect((await prisma.equipmentUnit.findUnique({ where: { id: unit.id } })).status).toBe("ISSUED");
     const childLens = await prisma.bookingItem.findFirst({ where: { bookingId: summary.continuationIds[0], equipmentId: lens.id } });
-    expect(await prisma.bookingItemUnit.count({ where: { bookingItemId: childLens.id, returnedAt: null } })).toBe(2);
+    expect(await prisma.bookingItemUnit.count({ where: { bookingItemId: childLens.id, returnedAt: null } })).toBe(1);
   });
 });
