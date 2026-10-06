@@ -51,6 +51,11 @@ export type QuoteLine = {
   listUnitPrice: Decimal | null;
   /** По этой позиции договорились о своей цене: процент к ней не применяется. */
   isNegotiated: boolean;
+  /**
+   * На сколько смен посчитана строка (EstimateLine.shifts). Не задано — как у
+   * брони: так записаны все сметы до смен по позициям.
+   */
+  shifts?: number | null;
 };
 
 export type QuoteTransportInput = {

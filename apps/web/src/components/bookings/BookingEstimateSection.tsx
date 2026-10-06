@@ -101,7 +101,7 @@ export function BookingEstimateSection({
     <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
       <div className="px-4 py-3 border-b border-border bg-surface-subtle flex items-center justify-between gap-2">
         <p className="eyebrow">Смета (только оборудование)</p>
-        <span className="shrink-0 whitespace-nowrap text-xs text-ink-3">Шифты: {booking.estimate.shifts}</span>
+        <span className="shrink-0 whitespace-nowrap text-xs text-ink-3">Смен по брони: {booking.estimate.shifts}</span>
       </div>
       <div className="px-4 py-3 space-y-3">
         <div className="text-sm flex justify-between">

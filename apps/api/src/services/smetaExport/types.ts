@@ -13,6 +13,11 @@ export type SmetaExportLine = {
    * скидки N ₽»: уступка остаётся видимой, как и общая процентная скидка.
    */
   listPricePerShift?: string | null;
+  /**
+   * На сколько смен посчитана строка. null — своя позиция: её цена — за весь
+   * срок, на смены она не делится и не умножается.
+   */
+  shifts: number | null;
 };
 
 /**
@@ -57,6 +62,11 @@ export type SmetaExportDocument = {
   includeOptionalInExport: boolean;
   /** Смен в периоде — для строки «Смены» в реквизитах документа. */
   shiftsCount: number;
+  /**
+   * У строк разное число смен (позицию взяли дольше брони): PDF печатает
+   * колонку «Смен», XLSX — подпись у названия. Иначе таблица как раньше.
+   */
+  showShiftsColumn: boolean;
   org: SmetaOrgInfo | null;
   lines: SmetaExportLine[];
   subtotal: string;

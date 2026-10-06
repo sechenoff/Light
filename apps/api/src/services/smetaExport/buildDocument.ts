@@ -18,6 +18,34 @@ function cleanField(v: string | null | undefined): string | null {
   return t ? t : null;
 }
 
+/** «смена / смены / смен» для числа. */
+export function pluralShifts(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "смена";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "смены";
+  return "смен";
+}
+
+/**
+ * Подпись строки о её сроке — общая для PDF и XLSX:
+ *  - своя позиция в брони больше чем на смену: «цена за весь срок аренды»
+ *    (колонка «цена / смена» показывает её фиксированную цену);
+ *  - каталожная строка со своим числом смен (только для XLSX: в PDF для этого
+ *    есть колонка «Смен») — «на 2 смены».
+ */
+export function lineShiftsNote(
+  line: { shifts: number | null },
+  doc: { shiftsCount: number; showShiftsColumn: boolean },
+  opts: { withCount: boolean },
+): string | null {
+  if (line.shifts == null) return doc.shiftsCount > 1 ? "цена за весь срок аренды" : null;
+  if (opts.withCount && doc.showShiftsColumn && line.shifts !== Math.max(1, doc.shiftsCount)) {
+    return `на ${line.shifts} ${pluralShifts(line.shifts)}`;
+  }
+  return null;
+}
+
 /**
  * Реквизиты организации для шапки сметы из OrganizationSettings.
  * ENV-фолбэки только для name/phone/address (первичное развёртывание);
@@ -123,26 +151,33 @@ export function buildSmetaExportDocument(args: {
    */
   ordering?: LineOrdering | null;
 }): SmetaExportDocument {
-  const shiftDec = new Decimal(Math.max(1, args.shifts));
+  const docShifts = Math.max(1, args.shifts);
   const sorted = args.ordering ? sortLinesByCatalog(args.lines, estimateLineKey, args.ordering) : args.lines;
   const rows: SmetaExportLine[] = contiguousByCategory(sorted).map((l, i) => {
+    // unitPrice — цена за весь срок строки. Каталожную делим на смены СТРОКИ
+    // (у позиции, взятой дольше брони, их больше), свою позицию не делим
+    // вовсе: её цена фиксированная, и раньше в многосменной брони колонка
+    // «цена / смена» печатала её половину.
+    const lineShifts = l.isCustom ? null : Math.max(1, l.shifts ?? docShifts);
+    const divisor = new Decimal(lineShifts ?? 1);
     const unit = new Decimal(l.unitPrice.toString());
-    const perShift = shiftDec.gt(0) ? unit.div(shiftDec) : unit;
     // Прайсовую цену тоже приводим к «за смену» — обе цифры в одной единице,
     // иначе в документе рядом окажутся цена за смену и цена за период.
     const listPerShift = l.listUnitPrice
-      ? new Decimal(l.listUnitPrice.toString()).div(shiftDec)
+      ? new Decimal(l.listUnitPrice.toString()).div(divisor)
       : null;
     return {
       index: i + 1,
       name: l.nameSnapshot,
       category: l.categorySnapshot,
       quantity: l.quantity,
-      pricePerShift: perShift.toDecimalPlaces(2).toFixed(2),
+      pricePerShift: unit.div(divisor).toDecimalPlaces(2).toFixed(2),
       lineSum: new Decimal(l.lineSum.toString()).toDecimalPlaces(2).toFixed(2),
       listPricePerShift: listPerShift ? listPerShift.toDecimalPlaces(2).toFixed(2) : null,
+      shifts: lineShifts,
     };
   });
+  const showShiftsColumn = rows.some((r) => r.shifts != null && r.shifts !== docShifts);
 
   return {
     documentTitleRu: "Смета аренды оборудования",
@@ -161,6 +196,7 @@ export function buildSmetaExportDocument(args: {
     optionalNote: args.optionalNote,
     includeOptionalInExport: args.includeOptionalInExport,
     shiftsCount: args.shifts,
+    showShiftsColumn,
     org: args.org ?? null,
     lines: rows,
     subtotal: args.subtotal,
@@ -194,6 +230,8 @@ type PersistedLine = {
   unitPrice: MoneyField;
   lineSum: MoneyField;
   listUnitPrice?: MoneyField | null;
+  /** На сколько смен посчитана строка; null — как у сметы (старые снимки). */
+  shifts?: number | null;
 };
 
 /** Смета из БД (Estimate + Booking) для экспорта после подтверждения. */
@@ -235,10 +273,14 @@ export function buildSmetaFromPersistedEstimate(args: {
     quantity: l.quantity,
     unitPrice: new Decimal(l.unitPrice.toString()),
     lineSum: new Decimal(l.lineSum.toString()),
-    pricingMode: "SHIFT",
-    isCustom: false,
+    // Своя позиция в снимке — строка с явным equipmentId: null, её цена за
+    // весь срок. Не переданный equipmentId (undefined) своей позицией не
+    // считаем: строка печатается по-старому, а не без деления на смены.
+    pricingMode: l.equipmentId === null ? "CUSTOM" : "SHIFT",
+    isCustom: l.equipmentId === null,
     listUnitPrice: l.listUnitPrice != null ? new Decimal(l.listUnitPrice.toString()) : null,
     isNegotiated: l.listUnitPrice != null,
+    shifts: l.shifts ?? null,
   }));
 
   const baseDoc = buildSmetaExportDocument({
