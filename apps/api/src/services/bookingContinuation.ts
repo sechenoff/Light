@@ -310,6 +310,13 @@ export async function splitOffContinuationsInTx(
      * должен быть позже текущего.
      */
     untilNotBefore?: Date;
+    /**
+     * С какого момента проверять, не нужна ли оставленная позиция другой
+     * брони. По умолчанию — с конца оплаченного: эти дни бронь и так держала.
+     * Исправление «Часть не вернули» передаёт текущий момент: принятая бронь
+     * склад уже не держит, а прошедшие дни не исправить.
+     */
+    conflictFrom?: Date;
   },
 ): Promise<{ continuationIds: string[]; conflicts: StayConflict[] }> {
   const { booking, now } = args;
@@ -379,7 +386,7 @@ export async function splitOffContinuationsInTx(
   }
 
   // ── сверх оплаченного: не нужна ли позиция другой брони ──────────────────
-  const conflicts = await stayConflicts(tx, booking, args.stays, now);
+  const conflicts = await stayConflicts(tx, booking, args.stays, now, args.conflictFrom);
   // Под ответственность — только если подтвердили каждое оставленное этой
   // позиции, что выходит за начало конфликта (одна галочка не покрывает
   // другой срок той же позиции).
@@ -530,6 +537,7 @@ async function stayConflicts(
   booking: BookingWithItems,
   stays: ReadonlyArray<StayInput>,
   now: Date,
+  conflictFrom?: Date,
 ): Promise<StayConflict[]> {
   const itemById = new Map(booking.items.map((i) => [i.id, i]));
   type Need = { bookingItemId: string; quantity: number; from: Date; until: Date };
@@ -537,10 +545,17 @@ async function stayConflicts(
   for (const s of stays) {
     const item = itemById.get(s.bookingItemId);
     if (!item?.equipmentId) continue;
-    const paidThrough = paidThroughAt(itemCoverage(booking, item), booking.skipPartialDay);
     const until = new Date(s.until);
-    if (until.getTime() <= paidThrough.getTime()) continue;
-    const from = new Date(Math.max(paidThrough.getTime(), now.getTime()));
+    let from: Date;
+    if (conflictFrom) {
+      // Бронь уже принята и склад не держит — проверяется всё, что впереди.
+      if (until.getTime() <= conflictFrom.getTime()) continue;
+      from = conflictFrom;
+    } else {
+      const paidThrough = paidThroughAt(itemCoverage(booking, item), booking.skipPartialDay);
+      if (until.getTime() <= paidThrough.getTime()) continue;
+      from = new Date(Math.max(paidThrough.getTime(), now.getTime()));
+    }
     const list = byEquipment.get(item.equipmentId) ?? [];
     list.push({ bookingItemId: item.id, quantity: s.quantity, from, until });
     byEquipment.set(item.equipmentId, list);
@@ -666,7 +681,7 @@ export async function continuationPreviewsInTx(
 
 /** Откат транзакции превью — результат уносится исключением. */
 export class PreviewRollback extends Error {
-  constructor(readonly result: { continuations: ContinuationPreview[]; conflicts: StayConflict[]; extra?: unknown }) {
+  constructor(readonly result: { continuations: ContinuationPreview[]; conflicts: StayConflict[] }) {
     super("preview rollback");
   }
 }

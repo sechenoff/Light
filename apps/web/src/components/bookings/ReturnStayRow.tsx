@@ -117,7 +117,11 @@ export function ReturnStayRow({
       {capNote && <p className="text-[12px] text-ink-3">{capNote}</p>}
 
       {line.unitTracked && (
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Какие единицы остались у клиента: ${line.name}`}>
+        <div
+          className="flex flex-wrap gap-1.5"
+          role="group"
+          aria-label={`Какие единицы ${quantityLabel === "не вернули" ? "не вернули" : "остались у клиента"}: ${line.name}`}
+        >
           {line.units.map((u, i) => {
             const on = stay?.unitIds.includes(u.id) ?? false;
             return (

@@ -62,7 +62,7 @@ describe("правила окна", () => {
   });
 
   it("почему не больше — как в мокапе", () => {
-    expect(capNoteOf(plan().lines[0])).toBe("Не больше 3: было 4, 1 в «Потеряшках».");
+    expect(capNoteOf(plan().lines[0])).toBe("Не больше 3: было 4, одна уже в «Потеряшках».");
     expect(capNoteOf({ ...plan().lines[0], quantity: 4, inProblems: 0 })).toBeNull();
   });
 });
@@ -96,7 +96,7 @@ describe("окно «Часть не вернули»", () => {
     const onClose = vi.fn();
     open(onDone, onClose);
     expect(await screen.findByText(/исправить можно до/)).toBeInTheDocument();
-    expect(screen.getByText("Не больше 3: было 4, 1 в «Потеряшках».")).toBeInTheDocument();
+    expect(screen.getByText("Не больше 3: было 4, одна уже в «Потеряшках».")).toBeInTheDocument();
     const line = screen.getByTestId("return-line");
     expect(line).toHaveTextContent("не вернули");
     fireEvent.click(within(line).getByRole("button", { name: "Больше: Кабель силовой 25 м" }));
@@ -124,6 +124,75 @@ describe("окно «Часть не вернули»", () => {
     fireEvent.click(within(line).getByRole("button", { name: "Больше: Кабель силовой 25 м" }));
     expect(screen.getByText("Исправить после завершения инвентаризации")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Создать продолжение" })).toBeDisabled();
+  });
+
+  it("свободная, но зарезервированная единица — объяснение с названием брони", () => {
+    const line = {
+      ...plan().lines[0],
+      unitTracked: true,
+      quantity: 1,
+      booked: 2,
+      inProblems: 0,
+      units: [{ id: "u1", label: "C-1" }],
+      reservedUnits: [{ id: "u2", label: "C-2", reservedFor: "Сериал «Маяк»" }],
+    };
+    expect(capNoteOf(line)).toBe("Не больше 1: было 2, одна зарезервирована за «Сериал «Маяк»» — сначала снимите резерв там.");
+  });
+
+  it("срок исправления прошёл (устаревшая карточка) — кнопка серая, объяснение внизу, без «отметить нечего»", async () => {
+    apiFetchMock.mockResolvedValue(plan({ blockedBy: "WINDOW_CLOSED", lines: [] }));
+    open();
+    expect(await screen.findByText("Исправить приёмку можно в течение 7 дней — срок прошёл")).toBeInTheDocument();
+    expect(screen.queryByText(/Отметить нечего/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Создать продолжение" })).toBeDisabled();
+  });
+
+  it("приняли давно — чипы «+N смен» от приёмки, «+N» выставит ровно N смен", async () => {
+    const p = plan({
+      returnedAt: at(-5 * 24 - 2),
+      lines: [{ ...plan().lines[0], paidThrough: at(-6 * 24), billingAnchor: at(-5 * 24 - 2) }],
+    });
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-correction") ? p : { continuations: [], conflicts: [] },
+    );
+    open();
+    const line = await screen.findByTestId("return-line");
+    fireEvent.click(within(line).getByRole("button", { name: "Больше: Кабель силовой 25 м" }));
+    const chips = within(line).getAllByRole("radio");
+    expect(chips.map((c) => c.textContent)).toEqual(["+6 смен", "+7 смен", "+8 смен", "дата…"]);
+    expect(chips[0]).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Создать продолжение" }));
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith("/api/bookings/b1/return-correction", expect.objectContaining({ method: "POST" })),
+    );
+    const [, init] = apiFetchMock.mock.calls.find(
+      ([url, opts]) => url === "/api/bookings/b1/return-correction" && (opts as { method?: string } | undefined)?.method === "POST",
+    ) as [string, { body: string }];
+    const sent = JSON.parse(init.body).stays[0];
+    expect(Date.parse(sent.until) - Date.parse(p.lines[0].billingAnchor!)).toBe(6 * 24 * HOUR);
+  });
+
+  it("409 «нужна другой брони» — превью пересчитано, окно открыто", async () => {
+    const p = plan({ lines: [{ ...plan().lines[0], billingAnchor: at(-3) }] });
+    let calls = 0;
+    apiFetchMock.mockImplementation(async (url: string, opts?: { method?: string }) => {
+      if (url.endsWith("/return-correction") && opts?.method !== "POST") return p;
+      if (url.endsWith("/preview")) {
+        calls += 1;
+        return { continuations: [], conflicts: [] };
+      }
+      throw Object.assign(new Error("Позиция «Кабель силовой 25 м» нужна брони «Клип»"), { code: "CONTINUATION_CONFLICT", status: 409 });
+    });
+    const onClose = vi.fn();
+    open(vi.fn(), onClose);
+    const line = await screen.findByTestId("return-line");
+    fireEvent.click(within(line).getByRole("button", { name: "Больше: Кабель силовой 25 м" }));
+    await waitFor(() => expect(calls).toBe(1));
+    await new Promise((r) => setTimeout(r, 20));
+    fireEvent.click(screen.getByRole("button", { name: "Создать продолжение" }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(expect.stringMatching(/нужна брони/)));
+    await waitFor(() => expect(calls).toBe(2));
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("ничего не отмечено — создавать нечего", async () => {

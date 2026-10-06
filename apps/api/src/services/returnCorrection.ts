@@ -10,6 +10,8 @@
  *    резерв снова открывается и переходит к продолжению, единица — «Выдана»;
  *  - не больше, чем осталось: всего в позиции минус уже в продолжениях, в
  *    ремонте и в «Потеряшках» с этой брони;
+ *  - не нужна ли позиция другой брони, проверяется с текущего момента:
+ *    принятая бронь склад уже не держит, а прошедшие дни не исправить;
  *  - пока идёт инвентаризация, исправление запрещено: оно сдвинуло бы «на
  *    полке должно быть» посреди пересчёта.
  */
@@ -60,7 +62,15 @@ export type CorrectionLine = {
   unitTracked: boolean;
   /** Штучная позиция — единицы, которые по учёту на складе (их и можно отметить). */
   units: Array<{ id: string; label: string | null }>;
+  /** Единицы на полке, но уже зарезервированные за другой бронью: отметить их здесь нельзя. */
+  reservedUnits: Array<{ id: string; label: string | null; reservedFor: string | null }>;
   paidThrough: string;
+  /**
+   * От какого момента считаются лишние смены: конец оплаченного или приёмка,
+   * что позже. Чипы «+N смен» окна отсчитываются от него — тогда «+1»
+   * выставляет ровно одну смену.
+   */
+  billingAnchor: string;
   plannedStayUntil: null;
   /** Из чего потолок: в брони, уже в продолжениях, в ремонте, в «Потеряшках». */
   booked: number;
@@ -127,18 +137,98 @@ function throwBlock(block: CorrectionBlock): never {
   throw new HttpError(status, message, code);
 }
 
+/** Семья брони для исправления: живые продолжения (их штуки уже у клиента) и отменённые. */
+async function loadChildren(client: Db, bookingId: string) {
+  const children = await client.booking.findMany({
+    where: { parentBookingId: bookingId, deletedAt: null },
+    select: { id: true, status: true, items: { select: { equipmentId: true, customName: true, quantity: true } } },
+  });
+  return {
+    familyIds: [bookingId, ...children.map((c) => c.id)],
+    cancelledIds: children.filter((c) => c.status === "CANCELLED").map((c) => c.id),
+    liveItems: children.filter((c) => c.status !== "CANCELLED").flatMap((c) => c.items),
+  };
+}
+
+/** Закрытые резервы единиц этой брони — и её отменённых продолжений (их единицы снова можно отметить). */
+async function loadClosedReserves(client: Db, bookingIds: string[]) {
+  return client.bookingItemUnit.findMany({
+    where: { bookingItem: { bookingId: { in: bookingIds } }, returnedAt: { not: null } },
+    select: {
+      id: true,
+      bookingItemId: true,
+      returnedAt: true,
+      bookingItem: { select: { bookingId: true, equipmentId: true } },
+      equipmentUnit: {
+        select: {
+          id: true,
+          status: true,
+          internalInventoryNumber: true,
+          bookingItemUnits: {
+            select: {
+              returnedAt: true,
+              bookingItem: { select: { bookingId: true, booking: { select: { projectName: true } } } },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+type ClosedReserve = Awaited<ReturnType<typeof loadClosedReserves>>[number];
+
+/**
+ * Единицы штучной позиции, которые клиент мог не вернуть: отмечать можно
+ * только ту, что по учёту на складе («Свободна», без живого резерва) и после
+ * приёмки не побывала в другой брони. Свободная, но зарезервированная за
+ * будущей бронью — показывается отдельно: её сначала снимают с той брони.
+ */
+function unitCandidates(
+  item: BookingWithItems["items"][number],
+  reserves: ClosedReserve[],
+  family: { familyIds: string[]; cancelledIds: string[] },
+  returnedAt: Date | null,
+) {
+  const units: CorrectionLine["units"] = [];
+  const reservedUnits: CorrectionLine["reservedUnits"] = [];
+  const seen = new Set<string>();
+  const own = reserves.filter(
+    (r) =>
+      r.bookingItemId === item.id ||
+      (family.cancelledIds.includes(r.bookingItem.bookingId) && r.bookingItem.equipmentId === item.equipmentId),
+  );
+  for (const r of own) {
+    const u = r.equipmentUnit;
+    if (seen.has(u.id) || u.status !== "AVAILABLE") continue;
+    seen.add(u.id);
+    const live = u.bookingItemUnits.find((x) => x.returnedAt == null);
+    if (live) {
+      reservedUnits.push({ id: u.id, label: u.internalInventoryNumber, reservedFor: live.bookingItem.booking?.projectName ?? null });
+      continue;
+    }
+    const usedElsewhere = u.bookingItemUnits.some(
+      (x) =>
+        x.returnedAt != null &&
+        returnedAt != null &&
+        x.returnedAt.getTime() > returnedAt.getTime() &&
+        !family.familyIds.includes(x.bookingItem.bookingId),
+    );
+    if (usedElsewhere) continue;
+    units.push({ id: u.id, label: u.internalInventoryNumber });
+  }
+  return { units, reservedUnits };
+}
+
 /**
  * Потолок «не вернули» по каждой позиции и единицы на складе. Считается одним
  * набором запросов на всю бронь.
  */
-async function correctionLines(client: Db, booking: BookingWithItems): Promise<CorrectionLine[]> {
+async function correctionLines(client: Db, booking: BookingWithItems, returnedAt: Date | null): Promise<CorrectionLine[]> {
   const equipmentIds = booking.items.map((i) => i.equipmentId).filter((v): v is string => v != null);
-  const [equipment, children, repairs, problems, reserves] = await Promise.all([
+  const family = await loadChildren(client, booking.id);
+  const [equipment, repairs, problems, reserves] = await Promise.all([
     client.equipment.findMany({ where: { id: { in: equipmentIds } }, select: { id: true, name: true, stockTrackingMode: true } }),
-    client.booking.findMany({
-      where: { parentBookingId: booking.id, status: { not: "CANCELLED" }, deletedAt: null },
-      select: { items: { select: { equipmentId: true, customName: true, quantity: true } } },
-    }),
     client.repair.findMany({
       where: { sourceBookingId: booking.id },
       select: { bookingItemId: true, equipmentId: true, quantity: true, unit: { select: { equipmentId: true } } },
@@ -147,50 +237,25 @@ async function correctionLines(client: Db, booking: BookingWithItems): Promise<C
       where: { sourceBookingId: booking.id },
       select: { bookingItemId: true, equipmentId: true, quantity: true, equipmentUnit: { select: { equipmentId: true } } },
     }),
-    client.bookingItemUnit.findMany({
-      where: { bookingItem: { bookingId: booking.id }, returnedAt: { not: null } },
-      select: {
-        bookingItemId: true,
-        equipmentUnit: {
-          select: {
-            id: true,
-            status: true,
-            internalInventoryNumber: true,
-            bookingItemUnits: { where: { returnedAt: null }, select: { id: true } },
-          },
-        },
-      },
-    }),
+    loadClosedReserves(client, [booking.id, ...family.cancelledIds]),
   ]);
   const eqById = new Map(equipment.map((e) => [e.id, e]));
-  const childItems = children.flatMap((c) => c.items);
   return booking.items.map((it): CorrectionLine => {
     const eq = it.equipmentId ? eqById.get(it.equipmentId) : undefined;
     const same = (row: { bookingItemId?: string | null; equipmentId: string | null }, unitEquipmentId?: string | null) =>
       row.bookingItemId === it.id ||
       (it.equipmentId != null && (row.equipmentId === it.equipmentId || unitEquipmentId === it.equipmentId));
-    const inContinuations = childItems
+    const inContinuations = family.liveItems
       .filter((c) => (it.equipmentId ? c.equipmentId === it.equipmentId : c.customName === it.customName))
       .reduce((n, c) => n + c.quantity, 0);
     const inRepair = repairs.filter((r) => same(r, r.unit?.equipmentId)).reduce((n, r) => n + r.quantity, 0);
     const inProblems = problems.filter((p) => same(p, p.equipmentUnit?.equipmentId)).reduce((n, p) => n + p.quantity, 0);
     const unitTracked = eq?.stockTrackingMode === "UNIT";
-    // Отметить можно только единицу, которая по учёту на складе: свободна и
-    // ни у кого не в живом резерве. Выданную с тех пор другой брони клиент
-    // держать не может.
-    const seen = new Set<string>();
-    const units = unitTracked
-      ? reserves
-          .filter((r) => r.bookingItemId === it.id)
-          .map((r) => r.equipmentUnit)
-          .filter((u) => {
-            if (seen.has(u.id) || u.status !== "AVAILABLE" || u.bookingItemUnits.length > 0) return false;
-            seen.add(u.id);
-            return true;
-          })
-          .map((u) => ({ id: u.id, label: u.internalInventoryNumber }))
-      : [];
+    const { units, reservedUnits } = unitTracked
+      ? unitCandidates(it, reserves, family, returnedAt)
+      : { units: [], reservedUnits: [] };
     const left = Math.max(0, it.quantity - inContinuations - inRepair - inProblems);
+    const paidThrough = paidThroughAt(itemCoverage(booking, it), booking.skipPartialDay);
     return {
       bookingItemId: it.id,
       equipmentId: it.equipmentId,
@@ -198,7 +263,9 @@ async function correctionLines(client: Db, booking: BookingWithItems): Promise<C
       quantity: unitTracked ? Math.min(left, units.length) : left,
       unitTracked,
       units,
-      paidThrough: paidThroughAt(itemCoverage(booking, it), booking.skipPartialDay).toISOString(),
+      reservedUnits,
+      paidThrough: paidThrough.toISOString(),
+      billingAnchor: new Date(Math.max(paidThrough.getTime(), returnedAt?.getTime() ?? 0)).toISOString(),
       plannedStayUntil: null,
       booked: it.quantity,
       inContinuations,
@@ -213,7 +280,8 @@ export async function getCorrectionPlan(bookingId: string, now = new Date()): Pr
   const booking = await loadReturned(prisma, bookingId);
   const returnedAt = await returnMoment(prisma, bookingId);
   const blockedBy = await correctionBlock(prisma, booking, returnedAt, now);
-  const lines = blockedBy === "NOT_RETURNED" || blockedBy === "NO_RETURN_RECORD" ? [] : await correctionLines(prisma, booking);
+  const lines =
+    blockedBy === "NOT_RETURNED" || blockedBy === "NO_RETURN_RECORD" ? [] : await correctionLines(prisma, booking, returnedAt);
   return {
     bookingId,
     docNumber: booking.docNumber,
@@ -221,31 +289,12 @@ export async function getCorrectionPlan(bookingId: string, now = new Date()): Pr
     returnedAt: returnedAt ? returnedAt.toISOString() : null,
     correctableUntil: returnedAt ? new Date(returnedAt.getTime() + RETURN_CORRECTION_WINDOW_MS).toISOString() : null,
     blockedBy,
-    lines: lines.filter((l) => l.quantity > 0),
+    lines: lines.filter((l) => l.quantity > 0 || l.reservedUnits.length > 0),
   };
 }
 
-/**
- * Проверки и подготовка внутри транзакции: исправлять можно, количество в
- * пределах потолка, у штучной позиции единицы — на складе. Резервы
- * отмеченных единиц снова открываются, единицы — «Выдана»: дальше общее
- * разделение переносит их к продолжению.
- */
-async function prepareCorrectionInTx(
-  tx: Prisma.TransactionClient,
-  bookingId: string,
-  stays: ReadonlyArray<StayInput>,
-  now: Date,
-): Promise<{ booking: BookingWithItems; returnedAt: Date }> {
-  if (stays.length === 0) {
-    throw new HttpError(400, "Отметьте, что не вернули", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
-  }
-  const booking = await loadReturned(tx, bookingId);
-  const returnedAt = await returnMoment(tx, bookingId);
-  const block = await correctionBlock(tx, booking, returnedAt, now);
-  if (block) throwBlock(block);
-  const lines = await correctionLines(tx, booking);
-  const lineById = new Map(lines.map((l) => [l.bookingItemId, l]));
+/** Количество по строкам в пределах потолка — иначе 400 с понятной причиной. */
+function assertWithinCaps(stays: ReadonlyArray<StayInput>, lineById: Map<string, CorrectionLine>): void {
   const wanted = new Map<string, number>();
   for (const s of stays) wanted.set(s.bookingItemId, (wanted.get(s.bookingItemId) ?? 0) + s.quantity);
   for (const [itemId, qty] of wanted) {
@@ -260,36 +309,85 @@ async function prepareCorrectionInTx(
       );
     }
   }
+}
+
+/**
+ * Снова открыть закрытый резерв единицы: её не вернули. Сначала — резерв
+ * этой позиции; если единица ушла в отменённое продолжение, его резерв
+ * возвращается к позиции брони. Дальше общее разделение переносит открытый
+ * резерв к новому продолжению. Возвращает, когда резерв был закрыт.
+ */
+async function reopenUnitReserve(
+  tx: Prisma.TransactionClient,
+  item: BookingWithItems["items"][number],
+  unitId: string,
+  cancelledIds: string[],
+  lineName: string,
+): Promise<Date | null> {
+  const candidates = await tx.bookingItemUnit.findMany({
+    where: {
+      equipmentUnitId: unitId,
+      returnedAt: { not: null },
+      OR: [{ bookingItemId: item.id }, { bookingItem: { bookingId: { in: cancelledIds }, equipmentId: item.equipmentId } }],
+    },
+    orderBy: { returnedAt: "desc" },
+    select: { id: true, bookingItemId: true, returnedAt: true },
+  });
+  const reserve = candidates.find((c) => c.bookingItemId === item.id) ?? candidates[0];
+  const flipped = await tx.equipmentUnit.updateMany({ where: { id: unitId, status: "AVAILABLE" }, data: { status: "ISSUED" } });
+  if (!reserve || flipped.count === 0) {
+    throw new HttpError(409, `«${lineName}»: единицу только что выдали — обновите окно`, RETURN_CORRECTION_CODES.UNIT_NOT_ON_SHELF);
+  }
+  await tx.bookingItemUnit.update({ where: { id: reserve.id }, data: { returnedAt: null, bookingItemId: item.id } });
+  return reserve.returnedAt;
+}
+
+/**
+ * Проверки и подготовка внутри транзакции: исправлять можно, количество в
+ * пределах потолка, у штучной позиции единицы — на складе и без повторов.
+ * Резервы отмеченных единиц снова открываются, единицы — «Выдана».
+ */
+async function prepareCorrectionInTx(
+  tx: Prisma.TransactionClient,
+  bookingId: string,
+  stays: ReadonlyArray<StayInput>,
+  now: Date,
+): Promise<{ booking: BookingWithItems; returnedAt: Date; unitLabels: string[] }> {
+  if (stays.length === 0) {
+    throw new HttpError(400, "Отметьте, что не вернули", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
+  }
+  const booking = await loadReturned(tx, bookingId);
+  const returnedAt = await returnMoment(tx, bookingId);
+  const block = await correctionBlock(tx, booking, returnedAt, now);
+  if (block) throwBlock(block);
+  const lines = await correctionLines(tx, booking, returnedAt);
+  const lineById = new Map(lines.map((l) => [l.bookingItemId, l]));
+  assertWithinCaps(stays, lineById);
+  const { cancelledIds } = await loadChildren(tx, booking.id);
+  const picked = new Set<string>();
+  const unitLabels: string[] = [];
   for (const s of stays) {
     const line = lineById.get(s.bookingItemId)!;
     if (!line.unitTracked) continue;
     const ids = s.equipmentUnitIds ?? [];
     const onShelf = new Set(line.units.map((u) => u.id));
-    if (ids.length !== s.quantity || new Set(ids).size !== ids.length || ids.some((id) => !onShelf.has(id))) {
+    if (ids.length !== s.quantity || ids.some((id) => !onShelf.has(id) || picked.has(id)) || new Set(ids).size !== ids.length) {
       throw new HttpError(
         400,
-        `«${line.name}»: отметьте, какие именно единицы не вернули — из тех, что по учёту на складе`,
+        `«${line.name}»: отметьте, какие именно единицы не вернули — каждую один раз и из тех, что по учёту на складе`,
         RETURN_CORRECTION_CODES.UNIT_NOT_ON_SHELF,
         { bookingItemId: s.bookingItemId },
       );
     }
+    const item = booking.items.find((i) => i.id === s.bookingItemId)!;
     for (const unitId of ids) {
-      const last = await tx.bookingItemUnit.findFirst({
-        where: { bookingItemId: s.bookingItemId, equipmentUnitId: unitId, returnedAt: { not: null } },
-        orderBy: { returnedAt: "desc" },
-        select: { id: true },
-      });
-      const flipped = await tx.equipmentUnit.updateMany({
-        where: { id: unitId, status: "AVAILABLE" },
-        data: { status: "ISSUED" },
-      });
-      if (!last || flipped.count === 0) {
-        throw new HttpError(409, `«${line.name}»: единицу только что выдали — обновите окно`, RETURN_CORRECTION_CODES.UNIT_NOT_ON_SHELF);
-      }
-      await tx.bookingItemUnit.update({ where: { id: last.id }, data: { returnedAt: null } });
+      picked.add(unitId);
+      const closedAt = await reopenUnitReserve(tx, item, unitId, cancelledIds, line.name);
+      const label = line.units.find((u) => u.id === unitId)?.label ?? "без инв. номера";
+      unitLabels.push(closedAt ? `${label} (принят ${closedAt.toISOString()})` : label);
     }
   }
-  return { booking, returnedAt: returnedAt! };
+  return { booking, returnedAt: returnedAt!, unitLabels };
 }
 
 /** Превью: дополнительная смета и держатели — в откатываемой транзакции. */
@@ -307,6 +405,7 @@ export async function previewReturnCorrection(
         stays,
         now: returnedAt,
         untilNotBefore: now,
+        conflictFrom: now,
         actorUserId: null,
         paymentDates,
         conflictMode: "collect",
@@ -321,9 +420,9 @@ export async function previewReturnCorrection(
 }
 
 /**
- * «Создать продолжение»: одной транзакцией — захват брони по ревизии
- * разделения, проверки, открытые заново резервы, продолжение от момента
- * приёмки, запись в журнал основной брони.
+ * «Создать продолжение»: одной транзакцией — проверка, что исправлять можно,
+ * захват брони по ревизии разделения, открытые заново резервы, продолжение от
+ * момента приёмки, запись в журнал основной брони.
  */
 export async function correctReturn(args: {
   bookingId: string;
@@ -335,6 +434,11 @@ export async function correctReturn(args: {
   const now = args.now ?? new Date();
   const paymentDates = await stayPaymentDates(args.stays);
   return prisma.$transaction(async (tx) => {
+    // Сначала — почему нельзя (бронь не принята, срок прошёл…): иначе захват
+    // по ревизии ответил бы «бронь изменили» на то, что изменить нельзя вовсе.
+    const current = await loadReturned(tx, args.bookingId);
+    const block = await correctionBlock(tx, current, await returnMoment(tx, args.bookingId), now);
+    if (block) throwBlock(block);
     const claimed = await tx.booking.updateMany({
       where: { id: args.bookingId, status: "RETURNED", splitRevision: args.expectedSplitRevision },
       data: { splitRevision: { increment: 1 } },
@@ -342,12 +446,13 @@ export async function correctReturn(args: {
     if (claimed.count === 0) {
       throw new HttpError(409, "Бронь только что изменили — обновите окно", PARTIAL_RETURN_ERROR_CODES.STALE);
     }
-    const { booking, returnedAt } = await prepareCorrectionInTx(tx, args.bookingId, args.stays, now);
+    const { booking, returnedAt, unitLabels } = await prepareCorrectionInTx(tx, args.bookingId, args.stays, now);
     const { continuationIds } = await splitOffContinuationsInTx(tx, {
       booking,
       stays: args.stays,
       now: returnedAt,
       untilNotBefore: now,
+      conflictFrom: now,
       actorUserId: args.actorUserId,
       paymentDates,
       auditExtra: { via: "return-correction" },
@@ -364,6 +469,8 @@ export async function correctReturn(args: {
         returnedAt: returnedAt.toISOString(),
         continuationIds: continuationIds.join(", "),
         quantity: args.stays.reduce((n, s) => n + s.quantity, 0),
+        // Журнал хранит плоские поля: какие единицы снова «Выданы» и когда их принимали.
+        ...(unitLabels.length > 0 ? { equipmentUnits: unitLabels.join("; ") } : {}),
       },
     });
     return { continuationIds };

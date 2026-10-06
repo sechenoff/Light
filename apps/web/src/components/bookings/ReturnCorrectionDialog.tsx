@@ -15,11 +15,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useDialog } from "@/hooks/useDialog";
 import { toast } from "../ToastProvider";
+import { quoteName } from "../inventory/format";
 import { ContinuationPriceBlock } from "./ContinuationPriceBlock";
 import { ReturnStayRow } from "./ReturnStayRow";
 import {
   anyBeyondPaid,
   formatWhen,
+  fromWhen,
   partialReturnBody,
   setStayAcknowledged,
   setStayChoice,
@@ -34,6 +36,8 @@ import { useReturnPreview } from "./useReturnPreview";
 
 /** Строка исправления — ответ GET /api/bookings/:id/return-correction. */
 export type CorrectionLine = ReturnPlanLine & {
+  /** Свободные, но зарезервированные за другой бронью единицы — отметить их здесь нельзя. */
+  reservedUnits?: Array<{ id: string; label: string | null; reservedFor: string | null }>;
   booked: number;
   inContinuations: number;
   inRepair: number;
@@ -57,17 +61,33 @@ export function correctionOffered(plan: CorrectionPlan | null): boolean {
   return plan != null && plan.lines.length > 0 && (plan.blockedBy == null || plan.blockedBy === "STOCK_COUNT_OPEN");
 }
 
+/** «одна» вместо «1» — как в мокапе («одна уже в «Потеряшках»»). */
+const count = (n: number) => (n === 1 ? "одна" : String(n));
+
 /** «Не больше 3: было 4, одна уже в «Потеряшках»». */
 export function capNoteOf(line: CorrectionLine): string | null {
   if (line.quantity >= line.booked) return null;
   const parts: string[] = [];
-  if (line.inContinuations > 0) parts.push(`${line.inContinuations} уже в продолжении`);
-  if (line.inRepair > 0) parts.push(`${line.inRepair} в ремонте`);
-  if (line.inProblems > 0) parts.push(`${line.inProblems} в «Потеряшках»`);
-  const accounted = line.inContinuations + line.inRepair + line.inProblems;
-  if (line.unitTracked && line.booked - accounted > line.quantity) parts.push("остальные по учёту не на складе");
+  if (line.inContinuations > 0) parts.push(`${count(line.inContinuations)} уже в продолжении`);
+  if (line.inRepair > 0) parts.push(`${count(line.inRepair)} в ремонте`);
+  if (line.inProblems > 0) parts.push(`${count(line.inProblems)} уже в «Потеряшках»`);
+  const reserved = line.reservedUnits ?? [];
+  if (reserved.length > 0) {
+    const names = Array.from(new Set(reserved.map((u) => u.reservedFor).filter((n): n is string => Boolean(n))));
+    parts.push(`${count(reserved.length)} зарезервирован${reserved.length === 1 ? "а" : "ы"} за ${names.length > 0 ? names.map((n) => quoteName(n)).join(", ") : "другой бронью"} — сначала снимите резерв там`);
+  }
+  const accounted = line.inContinuations + line.inRepair + line.inProblems + reserved.length;
+  if (line.unitTracked && line.booked - accounted > line.quantity) parts.push("остальные с приёмки уже побывали в других бронях или не на складе");
   return `Не больше ${line.quantity}: было ${line.booked}${parts.length > 0 ? `, ${parts.join(", ")}` : ""}.`;
 }
+
+/** Почему исправить нельзя — подпись внизу окна. */
+const BLOCK_NOTE: Record<CorrectionBlock, string> = {
+  STOCK_COUNT_OPEN: "Исправить после завершения инвентаризации",
+  WINDOW_CLOSED: "Исправить приёмку можно в течение 7 дней — срок прошёл",
+  NOT_RETURNED: "Бронь уже не «Возвращена» — обновите карточку",
+  NO_RETURN_RECORD: "В журнале нет приёмки этой брони — исправить её нельзя",
+};
 
 /** «вт 13 окт.» — дата без времени. */
 const dayOf = (iso: string) => formatWhen(iso).split(", ")[0];
@@ -134,7 +154,7 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
   if (!open) return null;
 
   const close = () => !busyRef.current && onClose();
-  const blockedByCount = plan?.blockedBy === "STOCK_COUNT_OPEN";
+  const blockedBy = plan?.blockedBy ?? null;
   const kept = Array.from(stays.values()).reduce((n, s) => n + s.quantity, 0);
   const blockingConflicts = unacknowledgedConflicts(preview, stays);
   const visibleLines = plan
@@ -208,7 +228,7 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
           {loadError && <p className="text-sm text-rose">{loadError}</p>}
           {!plan && !loadError && <p className="text-sm text-ink-3">Загружаем позиции…</p>}
-          {plan && plan.lines.length === 0 && (
+          {plan && plan.lines.length === 0 && !blockedBy && (
             <p className="text-sm text-ink-2">Отметить нечего: всё, что было в брони, уже в продолжениях, ремонте или «Потеряшках».</p>
           )}
           {plan && plan.lines.length > 0 && (
@@ -247,8 +267,8 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
               {previewError && <p className="text-xs text-amber">{previewError}</p>}
               {kept > 0 && plan.returnedAt && (
                 <p className="text-[12.5px] text-ink-2">
-                  Создастся продолжение {preview?.continuations[0]?.docNumber ?? "брони"} с {formatWhen(plan.returnedAt)}. Оставленное
-                  ({kept} шт) склад снова считает занятым.
+                  Создастся продолжение {preview?.continuations[0]?.docNumber ?? "брони"} {fromWhen(plan.returnedAt)}. Оставленное
+                  ({kept} шт) склад снова считает занятым. Акт основной брони станет доступен, когда примут продолжение.
                 </p>
               )}
             </>
@@ -257,8 +277,8 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
 
         <footer className="flex flex-col gap-3 border-t border-border bg-surface-subtle px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="min-w-0 flex-1 text-xs text-ink-2">
-            {blockedByCount ? (
-              <span className="text-amber">Исправить после завершения инвентаризации</span>
+            {blockedBy ? (
+              <span className="text-amber">{BLOCK_NOTE[blockedBy]}</span>
             ) : blockingConflicts.length > 0 ? (
               <span className="text-amber">
                 Нужно другой брони: {blockingConflicts.map((c) => `«${c.name}»`).join(", ")} — оставьте под ответственность или сократите срок
@@ -271,7 +291,7 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
             </button>
             <button
               type="button"
-              disabled={busy || !plan || stays.size === 0 || blockedByCount || blockingConflicts.length > 0}
+              disabled={busy || !plan || stays.size === 0 || blockedBy != null || blockingConflicts.length > 0}
               className={BTN_PRIMARY}
               onClick={submit}
             >
