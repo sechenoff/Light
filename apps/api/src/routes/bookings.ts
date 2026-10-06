@@ -21,7 +21,8 @@ import {
   isSessionLive,
   scanSessionActiveError,
 } from "../services/scanSessionPolicy";
-import { notEnoughUnitsError } from "../services/stockCap";
+import { listFreeUnitIdsOnWindow, notEnoughUnitsError } from "../services/stockCap";
+import { linePlannedEnd } from "../services/availability";
 import { BULK_ACTIONS, BULK_MAX_IDS, runBulkBookingAction } from "../services/bookingBulk";
 import { HttpError } from "../utils/errors";
 import {
@@ -1127,50 +1128,38 @@ router.patch("/:id", async (req, res, next) => {
               id: true,
               equipmentId: true,
               quantity: true,
+              shifts: true,
               equipment: { select: { stockTrackingMode: true, name: true } },
             },
           });
           const unitItems = freshItems.filter((it) => it.equipment?.stockTrackingMode === "UNIT");
-          if (unitItems.length > 0) {
-            // Юниты, занятые ЖИВЫМИ резервами других пересекающихся броней.
-            const overlapping = await tx.bookingItemUnit.findMany({
-              where: {
-                returnedAt: null,
-                bookingItem: {
-                  booking: {
-                    id: { not: id },
-                    status: { in: ["CONFIRMED", "ISSUED"] },
-                    deletedAt: null,
-                    startDate: { lte: end },
-                    endDate: { gte: start },
-                  },
-                },
-              },
-              select: { equipmentUnitId: true },
+          // Даты брони в базе ещё старые (запись ниже), поэтому окно позиции
+          // считаем от новых: до конца брони, у длинной позиции — до её срока.
+          // Подбор — общий с подтверждением и добором (stockCap).
+          const newPeriod = {
+            startDate: start,
+            endDate: end,
+            skipPartialDay: body.skipPartialDay ?? existing.skipPartialDay ?? false,
+          };
+          for (const it of unitItems) {
+            const free = await listFreeUnitIdsOnWindow(tx, {
+              bookingId: id,
+              bookingItemId: it.id,
+              equipmentId: it.equipmentId!,
+              start,
+              end: linePlannedEnd(newPeriod, it.shifts),
             });
-            const takenByOthers = new Set(overlapping.map((r) => r.equipmentUnitId));
-            for (const it of unitItems) {
-              const availableUnits = await tx.equipmentUnit.findMany({
-                where: { equipmentId: it.equipmentId!, status: "AVAILABLE" },
-                select: { id: true },
-                orderBy: { id: "asc" },
-              });
-              const allFreeUnitIds = availableUnits
-                .map((u) => u.id)
-                .filter((uid) => !takenByOthers.has(uid));
-              const freeUnitIds = allFreeUnitIds.slice(0, it.quantity);
-              if (freeUnitIds.length < it.quantity) {
-                throw notEnoughUnitsError({
-                  equipmentId: it.equipmentId!,
-                  name: it.equipment?.name ?? it.equipmentId!,
-                  available: allFreeUnitIds.length,
-                  requested: it.quantity,
-                });
-              }
-              await tx.bookingItemUnit.createMany({
-                data: freeUnitIds.map((unitId) => ({ bookingItemId: it.id, equipmentUnitId: unitId })),
+            if (free.length < it.quantity) {
+              throw notEnoughUnitsError({
+                equipmentId: it.equipmentId!,
+                name: it.equipment?.name ?? it.equipmentId!,
+                available: free.length,
+                requested: it.quantity,
               });
             }
+            await tx.bookingItemUnit.createMany({
+              data: free.slice(0, it.quantity).map((unitId) => ({ bookingItemId: it.id, equipmentUnitId: unitId })),
+            });
           }
         }
       }

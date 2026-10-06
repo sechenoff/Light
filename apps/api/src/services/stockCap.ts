@@ -296,12 +296,24 @@ export async function listFreeUnitIds(
     ? await client.bookingItem.findUnique({ where: { id: a.bookingItemId }, select: { equipmentId: true, shifts: true } })
     : null;
   const lineEnd = item ? (await lineWindowEnds(client, a.bookingId, { start: a.start, end: a.end }, [item])).get(a.equipmentId) : undefined;
+  return listFreeUnitIdsOnWindow(client, { ...a, end: lineEnd != null ? new Date(lineEnd) : a.end });
+}
+
+/**
+ * То же, что listFreeUnitIds, но окно уже посчитано вызывающим — вместе со
+ * сроком длинной позиции (`linePlannedEnd`). Нужно там, где даты брони в базе
+ * ещё старые: правка брони перерезервирует единицы до записи новых дат.
+ */
+export async function listFreeUnitIdsOnWindow(
+  client: Db,
+  a: { bookingId: string; bookingItemId: string | null; equipmentId: string; start: Date; end: Date },
+): Promise<string[]> {
   const byEquipment = await freeUnitIdsByEquipment(client, {
     bookingId: a.bookingId,
     equipmentIds: [a.equipmentId],
     ownBookingItemIds: a.bookingItemId ? [a.bookingItemId] : [],
     start: a.start,
-    end: lineEnd != null ? new Date(lineEnd) : a.end,
+    end: a.end,
   });
   return byEquipment.get(a.equipmentId) ?? [];
 }

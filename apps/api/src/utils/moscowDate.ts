@@ -48,3 +48,17 @@ export function moscowTodayStart(): Date {
 export function addDays(d: Date, n: number): Date {
   return new Date(d.getTime() + n * 24 * 60 * 60 * 1000);
 }
+
+/** «24.09 08:42» по Москве — день, месяц и время. */
+export function formatMoscowDayTime(d: Date): string {
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("day")}.${get("month")} ${get("hour")}:${get("minute")}`;
+}
