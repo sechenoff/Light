@@ -148,9 +148,14 @@ async function loadHolders(
     });
   }
   const nearest = new Map<string, Holding>();
+  // «Освободится» — когда бронь отпустит позицию в окне: партии проекта идут
+  // одна за другой, и конец ближайшей — ещё не свобода.
+  const releaseByBooking = new Map<string, number>();
   for (const h of holdings.values()) {
     const current = nearest.get(h.equipmentId);
     if (!current || compareHoldings(h, current) < 0) nearest.set(h.equipmentId, h);
+    const key = `${h.equipmentId}|${h.bookingId}`;
+    releaseByBooking.set(key, Math.max(releaseByBooking.get(key) ?? h.due, h.due));
   }
 
   const lotIds = Array.from(nearest.values()).flatMap((h) => (h.lotId ? [h.lotId] : []));
@@ -173,8 +178,9 @@ async function loadHolders(
       ? lot?.status === "ISSUED" ? "ISSUED" : "CONFIRMED"
       : asHolderStatus(b.status);
     const issuedAt = holderStatus === "ISSUED" ? (h.lotId ? lot?.issuedAt : b.issuedAt) ?? null : null;
+    // Просрочена — срок самого держания (его и называет «возврат не отмечен»).
     const overdue = holderStatus === "ISSUED" && h.due < nowMs;
-    const due = new Date(h.due).toISOString();
+    const due = new Date(overdue ? h.due : releaseByBooking.get(`${h.equipmentId}|${h.bookingId}`)!).toISOString();
     holders.set(h.equipmentId, {
       bookingId: b.id,
       bookingNo: bookingNo(b.id),

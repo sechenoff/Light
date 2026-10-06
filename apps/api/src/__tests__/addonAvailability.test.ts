@@ -360,6 +360,23 @@ describe("держатель — партия проекта", () => {
     });
   });
 
+  it("партии проекта одна за другой — «освободится» после последней в окне", async () => {
+    const eq = await mkEq("Две партии подряд", 1);
+    const first = moscowDay(NOW + 302 * DAY);
+    const project = await mkProjectLot(eq.id, first, moscowDay(NOW + 303 * DAY));
+    await prisma.projectLot.create({
+      data: {
+        bookingId: project.id, equipmentId: eq.id, nameSnapshot: "Партия", quantity: 1, ratePerShift: 1000,
+        fromDate: moscowDay(NOW + 304 * DAY), throughDate: moscowDay(NOW + 305 * DAY),
+      },
+    });
+    const target = await mkBooking("Ц-партии", "CONFIRMED", at(301), at(307), []);
+    const { findAddonConflict } = await import("../services/addonAvailability");
+    const c = await findAddonConflict(eq.id, target.startDate, target.endDate, target.id);
+    const end = moscowMidnight(moscowDay(NOW + 306 * DAY)).toISOString();
+    expect(c).toMatchObject({ bookingId: project.id, from: moscowMidnight(first).toISOString(), to: end, freeFrom: end });
+  });
+
   it("обычная бронь внутри окна важнее проекта, чья партия начинается позже", async () => {
     const eq = await mkEq("Проект раньше, партия позже", 2);
     await mkProjectLot(eq.id, moscowDay(NOW + 205 * DAY), moscowDay(NOW + 206 * DAY));
