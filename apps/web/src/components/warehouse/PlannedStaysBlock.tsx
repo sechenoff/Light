@@ -53,7 +53,9 @@ export function PlannedStaysBlock({ stays, items, returnNow, onToggle, disabled 
   const nameOf = (id: string) => items.find((i) => i.bookingItemId === id)?.equipmentName ?? "Позиция";
   const staying = stays.filter((s) => !returnNow.has(s.bookingItemId));
   const units = staying.reduce((sum, s) => sum + s.quantity, 0);
-  const latest = stays.reduce((max, s) => (s.until > max ? s.until : max), stays[0].until);
+  // Срок в заголовке — по тому, что остаётся; всё «вернули сейчас» — по всем.
+  const shown = staying.length > 0 ? staying : stays;
+  const latest = shown.reduce((max, s) => (s.until > max ? s.until : max), shown[0].until);
 
   return (
     <section
@@ -81,6 +83,7 @@ export function PlannedStaysBlock({ stays, items, returnNow, onToggle, disabled 
                 </div>
                 <button
                   type="button"
+                  aria-label={`Вернули сейчас: ${nameOf(s.bookingItemId)}`}
                   aria-pressed={back}
                   disabled={disabled}
                   onClick={() => onToggle(s.bookingItemId)}

@@ -285,6 +285,24 @@ async function assertReturnSplit(bookingId: string, options: CompleteSessionOpti
     if ("bookingItemId" in p && p.bookingItemId) bump(p.bookingItemId, "problem", p.quantity);
   }
   for (const st of options.stays ?? []) bump(st.bookingItemId, "stay", st.quantity);
+  if ((options.stays?.length ?? 0) > 0 && options.expectedSplitRevision === undefined) {
+    // Без ревизии приёмка с отделением продолжения не узнала бы, что бронь
+    // уже разделили на карточке.
+    throw new HttpError(400, "Экран приёмки устарел — обновите его", "INVALID_SPLIT");
+  }
+  // Одна единица не может одновременно остаться у клиента и уйти в ремонт или
+  // «Потеряшки»: резерв уехал бы к продолжению, а прибор — в мастерскую.
+  const stayingUnits = new Set((options.stays ?? []).flatMap((st) => st.equipmentUnitIds ?? []));
+  const flaggedUnits = [
+    ...(options.repairUnits ?? []).flatMap((r) => ("equipmentUnitId" in r && r.equipmentUnitId ? [r.equipmentUnitId] : [])),
+    ...(options.problemUnits ?? []).flatMap((p) => ("equipmentUnitId" in p && p.equipmentUnitId ? [p.equipmentUnitId] : [])),
+  ];
+  const overlap = flaggedUnits.find((id) => stayingUnits.has(id));
+  if (overlap) {
+    throw new HttpError(400, "Единица не может одновременно остаться у клиента и уйти в ремонт", "INVALID_SPLIT", {
+      equipmentUnitId: overlap,
+    });
+  }
   if (byItem.size === 0) return;
 
   const bis = await prisma.bookingItem.findMany({
@@ -367,10 +385,18 @@ async function runCompletion(tx: Prisma.TransactionClient, ctx: CompletionCtx): 
   });
   const mainOriginalAfterDiscount = main ? main.totalAfterDiscount.toString() : "0";
 
-  const scans = await tx.scanRecord.findMany({
+  const allScans = await tx.scanRecord.findMany({
     where: { sessionId: ctx.sessionId },
     include: { equipmentUnit: true },
   });
+  // Единица, которая остаётся у клиента, не «принята», даже если её успели
+  // отметить до того, как вернули строку в «по плану»: иначе прибор встал бы
+  // на полку свободным, а держит его уже продолжение. И в счётчиках её нет.
+  const stayingUnitIds = new Set((ctx.options.stays ?? []).flatMap((st) => st.equipmentUnitIds ?? []));
+  const scans =
+    ctx.operation === "RETURN" && stayingUnitIds.size > 0
+      ? allScans.filter((sc) => !stayingUnitIds.has(sc.equipmentUnitId))
+      : allScans;
   const summary = emptySummary();
   summary.scanned = new Set(scans.map((s) => s.equipmentUnitId)).size;
   summary.completedBy = ctx.completedBy;
@@ -396,21 +422,17 @@ async function runCompletion(tx: Prisma.TransactionClient, ctx: CompletionCtx): 
     const stays = ctx.options.stays ?? [];
     if (stays.length > 0) {
       const issued = await loadIssued(tx, ctx.bookingId);
-      await claimSplit(tx, ctx.bookingId, ctx.options.expectedSplitRevision ?? issued.splitRevision);
+      await claimSplit(tx, ctx.bookingId, ctx.options.expectedSplitRevision!);
       summary.continuationIds = await splitOffContinuationsInTx(tx, {
         booking: issued,
         stays,
         now: new Date(),
         actorUserId: auditUserId,
         paymentDates: ctx.stayPaymentDates ?? new Map(),
+        auditExtra: { via: "kiosk", sessionId: ctx.sessionId, workerName: ctx.completedBy },
       });
     }
-    // Единица, которая остаётся у клиента, не «принята», даже если её успели
-    // отметить до того, как вернули строку в «по плану»: иначе прибор встал бы
-    // на полку свободным, а держит его уже продолжение.
-    const stayingUnitIds = new Set(stays.flatMap((st) => st.equipmentUnitIds ?? []));
-    const acceptedScans = stayingUnitIds.size > 0 ? scans.filter((sc) => !stayingUnitIds.has(sc.equipmentUnitId)) : scans;
-    await reconcileReturnUnits(tx, ctx, acceptedScans, summary);
+    await reconcileReturnUnits(tx, ctx, scans, summary);
     await tx.booking.update({ where: { id: ctx.bookingId }, data: { status: "RETURNED" } });
     const mileages = ctx.options.vehicleMileages ?? [];
     if (mileages.length > 0) {

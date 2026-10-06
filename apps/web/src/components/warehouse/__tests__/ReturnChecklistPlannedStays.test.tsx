@@ -131,10 +131,11 @@ describe("ReturnChecklist: позиции «по плану у клиента»"
   it("«Вернули сейчас» — строка в чек-листе, stays пустой", async () => {
     mockState = plannedState();
     render(<ReturnChecklist sessionId="s1" projectName="ZZ" onBack={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "✓ Вернули сейчас" }));
-    expect(screen.getByRole("button", { name: "✓ Вернули сейчас" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули сейчас: Aputure STORM 400x" }));
+    expect(screen.getByRole("button", { name: "Вернули сейчас: Aputure STORM 400x" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /«Aputure STORM 400x» без замечаний/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Принять всё, кроме оставленного/ }));
+    // Ничего не остаётся у клиента — обычное «Принять всё разом».
+    fireEvent.click(screen.getByRole("button", { name: /Принять всё разом/ }));
     await settle();
     fireEvent.click(screen.getByRole("button", { name: /Завершить приёмку/ }));
     await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
@@ -180,5 +181,38 @@ describe("ReturnChecklist: позиции «по плану у клиента»"
     const block = await screen.findByTestId("result-continuations");
     expect(block).toHaveTextContent("СМ-2026-0231-1 · 2 ед.");
     expect(block).toHaveTextContent("выдано сразу, без согласования");
+  });
+
+  it("вернули строку обратно в «по плану» — серверная отметка «принято» снимается", async () => {
+    mockState = {
+      ...stateWith([
+        {
+          bookingItemId: "bi-lens",
+          equipmentId: "eq-lens",
+          equipmentName: "Объектив Cooke",
+          category: "Оптика",
+          quantity: 1,
+          checkedQty: 1,
+          trackingMode: "UNIT" as const,
+          isExtra: false,
+          rentalRatePerShift: "0",
+          originalQuantity: 1,
+          addCap: 0,
+          units: [{ unitId: "u1", barcode: null, checked: true, problemType: null }],
+        },
+      ]),
+      plannedStays: [{ bookingItemId: "bi-lens", until, quantity: 1, unitIds: ["u1"] }],
+      splitRevision: 0,
+    };
+    render(<ReturnChecklist sessionId="s1" projectName="ZZ" onBack={() => {}} />);
+    // Единица уже отмечена на сервере — строка начата и стоит в чек-листе.
+    const toggle = await screen.findByRole("button", { name: "Вернули сейчас: Объектив Cooke" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(screen.getByRole("button", { name: /Завершить приёмку/ }));
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    const [, payload] = completeSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.stays).toEqual([{ bookingItemId: "bi-lens", quantity: 1, until, equipmentUnitIds: ["u1"] }]);
   });
 });

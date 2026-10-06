@@ -204,12 +204,14 @@ function plannedStaysOf(booking: LoadedSession["booking"], rows: LoadedItem[]): 
   for (const bi of rows) {
     const due = plannedStayDueAt(booking, bi, now);
     if (!due) continue;
-    out.push({
-      bookingItemId: bi.id,
-      until: due.toISOString(),
-      quantity: bi.quantity,
-      unitIds: bi.unitReservations.filter((r) => r.returnedAt == null).map((r) => r.equipmentUnitId),
-    });
+    const unitIds = bi.unitReservations.filter((r) => r.returnedAt == null).map((r) => r.equipmentUnitId);
+    // Штучная позиция остаётся ровно теми единицами, что на руках: сервер
+    // сверяет количество с отмеченными единицами, а живых резервов бывает
+    // меньше, чем штук в строке (старые брони, перевод в штучный учёт).
+    const unitTracked = bi.equipment?.stockTrackingMode === "UNIT";
+    const quantity = unitTracked ? unitIds.length : bi.quantity;
+    if (quantity === 0) continue;
+    out.push({ bookingItemId: bi.id, until: due.toISOString(), quantity, unitIds: unitTracked ? unitIds : [] });
   }
   return out;
 }

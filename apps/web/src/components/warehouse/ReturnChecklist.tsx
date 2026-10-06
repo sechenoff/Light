@@ -81,6 +81,7 @@ import {
 import type {
   ChecklistDraftV1,
   ChecklistSessionProps,
+  ChecklistState,
   CompleteResult,
   DraftOutdatedDetails,
   ProblemDraft,
@@ -111,6 +112,20 @@ const CHECKLIST_OUTDATED_NOTICE =
 interface PendingRebase {
   draft: ChecklistDraftV1;
   fromVersion: string | undefined;
+}
+
+/**
+ * Строки «по плану», по которым уже есть отметки (черновик, другой планшет или
+ * сервер): их начали принимать — место им в чек-листе, а не в продолжении.
+ */
+function markedPlannedIds(state: { plannedStays?: { bookingItemId: string }[]; items: ChecklistState["items"] }, h: HydratedReturn): string[] {
+  return (state.plannedStays ?? [])
+    .filter((p) => {
+      if (h.unitGrids.has(p.bookingItemId)) return true;
+      const item = state.items.find((i) => i.bookingItemId === p.bookingItemId);
+      return (item?.units ?? []).some((u) => u.checked || h.outcomes[u.unitId] != null);
+    })
+    .map((p) => p.bookingItemId);
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -190,6 +205,12 @@ export function ReturnChecklist({
 
   const applyHydration = useCallback(
     (h: HydratedReturn, opts: { markDirty: boolean }) => {
+      // Отмеченные строки «по плану» — в чек-лист; иначе чужие отметки ушли бы
+      // в продолжение, а принятые приборы — к клиенту.
+      if (state) {
+        const marked = markedPlannedIds(state, h);
+        if (marked.length > 0) setReturnNow((prev) => new Set([...prev, ...marked]));
+      }
       setOutcomes(h.outcomes);
       setUnitGrids(h.unitGrids);
       setResetRows(new Set(h.resetRowIds));
@@ -200,7 +221,7 @@ export function ReturnChecklist({
       for (const id of h.toCheck) void check(id).catch(() => undefined);
       for (const id of h.toUncheck) void uncheck(id).catch(() => undefined);
     },
-    [check, uncheck],
+    [check, uncheck, state],
   );
 
   // Другое устройство сохранило черновик позже: показываем его версию.
@@ -244,14 +265,7 @@ export function ReturnChecklist({
     if (hydratedFor.current === state.sessionId) return;
     hydratedFor.current = state.sessionId;
     const h = hydrateReturnDraft(state.items, state.draft ?? null);
-    // Строку «по плану», по которой уже есть отметки (черновик или сервер), —
-    // её начали принимать: возвращаем её в чек-лист, а не в продолжение.
-    const marked = (state.plannedStays ?? []).filter((p) => {
-      if (h.unitGrids.has(p.bookingItemId)) return true;
-      const item = state.items.find((i) => i.bookingItemId === p.bookingItemId);
-      return (item?.units ?? []).some((u) => u.checked || h.outcomes[u.unitId] != null);
-    });
-    setReturnNow(new Set(marked.map((p) => p.bookingItemId)));
+    setReturnNow(new Set(markedPlannedIds(state, h)));
     setRestoreInfo({
       restored: h.restoredAny,
       partial: h.resetRowIds.length > 0 || h.unmatchedGrids > 0,
@@ -677,6 +691,7 @@ export function ReturnChecklist({
   if (!state) return null;
 
   const interactionsDisabled = bulkBusy || submitting;
+  const anyStaying = planned.some((p) => !returnNow.has(p.bookingItemId));
   const draftOffline = draft.status === "offline" || draft.status === "failed";
   // Плашка «Продолжена приёмка»: страница передаёт ответ createSession только
   // для продолженной сессии; честно пишем, восстановлено ли что-то.
@@ -741,13 +756,13 @@ export function ReturnChecklist({
             onClick={acceptAll}
             disabled={interactionsDisabled}
             aria-label={
-              planned.length > 0
+              anyStaying
                 ? "Принять всё, кроме оставленного у клиента, — отметить остальные позиции принятыми"
                 : "Принять всё разом — отметить все позиции принятыми"
             }
             className="mb-3 block w-full rounded-lg bg-accent-bright px-4 py-3 text-center text-sm font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60"
           >
-            {planned.length > 0 ? "✓ Принять всё, кроме оставленного" : "✓ Принять всё разом"}
+            {anyStaying ? "✓ Принять всё, кроме оставленного" : "✓ Принять всё разом"}
           </button>
         )}
 

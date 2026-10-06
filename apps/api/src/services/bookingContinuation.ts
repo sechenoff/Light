@@ -268,6 +268,8 @@ export async function splitOffContinuationsInTx(
     now: Date;
     actorUserId: string | null;
     paymentDates: ReadonlyMap<number, Date>;
+    /** Откуда приёмка — в запись журнала о продолжении (киоск: кто и в какой сессии). */
+    auditExtra?: Record<string, string>;
   },
 ): Promise<string[]> {
   const { booking, now } = args;
@@ -439,6 +441,7 @@ export async function splitOffContinuationsInTx(
           docNumber,
           until: new Date(untilMs).toISOString(),
           quantity: stays.reduce((sum, s) => sum + s.quantity, 0),
+          ...(args.auditExtra ?? { via: "card" }),
         },
       });
     }
