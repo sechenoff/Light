@@ -287,6 +287,8 @@ describe("POST /api/warehouse/sessions/:id/complete", () => {
       expectedCount: 5,
       missingItems: [],
       substitutedItems: [],
+      // Продолжения брони из приёмки «по плану» — пусто у выдачи.
+      continuations: [],
     });
     expect(mockCompleteSession).toHaveBeenCalledWith("sess-1", expect.objectContaining({}));
   });

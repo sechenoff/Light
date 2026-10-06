@@ -53,6 +53,7 @@ import { SessionClosedNotice } from "./SessionClosedNotice";
 import { AbortSessionButton } from "./AbortSessionButton";
 import { ResumedSessionBanner } from "./ResumedSessionBanner";
 import { useChecklistDraft } from "./useChecklistDraft";
+import { PlannedStaysBlock, staysPayload } from "./PlannedStaysBlock";
 import {
   buildReturnCompletePayload,
   computeAcceptedCount,
@@ -80,6 +81,7 @@ import {
 import type {
   ChecklistDraftV1,
   ChecklistSessionProps,
+  ChecklistState,
   CompleteResult,
   DraftOutdatedDetails,
   ProblemDraft,
@@ -110,6 +112,20 @@ const CHECKLIST_OUTDATED_NOTICE =
 interface PendingRebase {
   draft: ChecklistDraftV1;
   fromVersion: string | undefined;
+}
+
+/**
+ * Строки «по плану», по которым уже есть отметки (черновик, другой планшет или
+ * сервер): их начали принимать — место им в чек-листе, а не в продолжении.
+ */
+function markedPlannedIds(state: { plannedStays?: { bookingItemId: string }[]; items: ChecklistState["items"] }, h: HydratedReturn): string[] {
+  return (state.plannedStays ?? [])
+    .filter((p) => {
+      if (h.unitGrids.has(p.bookingItemId)) return true;
+      const item = state.items.find((i) => i.bookingItemId === p.bookingItemId);
+      return (item?.units ?? []).some((u) => u.checked || h.outcomes[u.unitId] != null);
+    })
+    .map((p) => p.bookingItemId);
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -160,6 +176,9 @@ export function ReturnChecklist({
     null,
   );
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  // Позиции «по плану у клиента», которые всё-таки привезли сейчас: они уходят
+  // в обычный чек-лист, остальные «по плану» — в продолжение по «Завершить».
+  const [returnNow, setReturnNow] = useState<ReadonlySet<string>>(new Set());
 
   // Пробег машин: entries из VehicleMileagePanel + валидность. Пока панель
   // не загрузила машины (`mileagesReported`), черновик несёт восстановленный
@@ -175,10 +194,23 @@ export function ReturnChecklist({
   const dirtyRef = useRef(false);
   const pendingRebase = useRef<PendingRebase | null>(null);
 
-  const items = useMemo(() => (state ? returnableItems(state.items) : []), [state]);
+  const planned = useMemo(() => state?.plannedStays ?? [], [state]);
+  const items = useMemo(() => {
+    if (!state) return [];
+    const plannedIds = new Set(planned.map((p) => p.bookingItemId));
+    return returnableItems(state.items).filter(
+      (i) => !plannedIds.has(i.bookingItemId) || returnNow.has(i.bookingItemId),
+    );
+  }, [state, planned, returnNow]);
 
   const applyHydration = useCallback(
     (h: HydratedReturn, opts: { markDirty: boolean }) => {
+      // Отмеченные строки «по плану» — в чек-лист; иначе чужие отметки ушли бы
+      // в продолжение, а принятые приборы — к клиенту.
+      if (state) {
+        const marked = markedPlannedIds(state, h);
+        if (marked.length > 0) setReturnNow((prev) => new Set([...prev, ...marked]));
+      }
       setOutcomes(h.outcomes);
       setUnitGrids(h.unitGrids);
       setResetRows(new Set(h.resetRowIds));
@@ -189,7 +221,7 @@ export function ReturnChecklist({
       for (const id of h.toCheck) void check(id).catch(() => undefined);
       for (const id of h.toUncheck) void uncheck(id).catch(() => undefined);
     },
-    [check, uncheck],
+    [check, uncheck, state],
   );
 
   // Другое устройство сохранило черновик позже: показываем его версию.
@@ -233,6 +265,7 @@ export function ReturnChecklist({
     if (hydratedFor.current === state.sessionId) return;
     hydratedFor.current = state.sessionId;
     const h = hydrateReturnDraft(state.items, state.draft ?? null);
+    setReturnNow(new Set(markedPlannedIds(state, h)));
     setRestoreInfo({
       restored: h.restoredAny,
       partial: h.resetRowIds.length > 0 || h.unmatchedGrids > 0,
@@ -386,6 +419,38 @@ export function ReturnChecklist({
       ),
   };
 
+  /** «Вернули сейчас» ⇄ «остаётся по плану». Обратно — отметки строки снимаются. */
+  function toggleReturnNow(bookingItemId: string) {
+    dirtyRef.current = true;
+    if (!returnNow.has(bookingItemId)) {
+      setReturnNow((prev) => new Set(prev).add(bookingItemId));
+      return;
+    }
+    const item = state?.items.find((i) => i.bookingItemId === bookingItemId);
+    const unitIdsOfLine = (item?.units ?? []).map((u) => u.unitId);
+    // Отметка «принято» на сервере осталась бы — снимаем её: единица уходит
+    // в продолжение, на полку её ставить нельзя.
+    for (const u of item?.units ?? []) {
+      if (u.checked || outcomes[u.unitId]?.outcome === "ACCEPTED") void uncheck(u.unitId).catch(() => undefined);
+    }
+    setOutcomes((prev) => {
+      const next = { ...prev };
+      for (const id of unitIdsOfLine) delete next[id];
+      return next;
+    });
+    setUnitGrids((prev) => {
+      if (!prev.has(bookingItemId)) return prev;
+      const next = new Map(prev);
+      next.delete(bookingItemId);
+      return next;
+    });
+    setReturnNow((prev) => {
+      const next = new Set(prev);
+      next.delete(bookingItemId);
+      return next;
+    });
+  }
+
   // «Принять всё разом»: every UNIT unit ACCEPTED (hook guard dedupes) and
   // every COUNT slot ACCEPTED. Строки ×0 не трогаем — их в приёмке нет.
   async function acceptAll() {
@@ -534,6 +599,12 @@ export function ReturnChecklist({
       });
       if (state?.itemsVersion) payload.itemsVersion = state.itemsVersion;
       if (pre.draftRevision !== undefined) payload.draftRevision = pre.draftRevision;
+      // Новый сервер знает позиции «по плану»: что не вернули сейчас — в
+      // продолжение (пустой список — «вернули всё»). Старый поля не шлёт.
+      if (state?.plannedStays) {
+        payload.stays = staysPayload(state.plannedStays, returnNow);
+        if (typeof state.splitRevision === "number") payload.expectedSplitRevision = state.splitRevision;
+      }
       const res = await scanApi.complete(sessionId, payload);
       draft.discard();
       setResult(res);
@@ -603,7 +674,7 @@ export function ReturnChecklist({
     );
   }
 
-  if (state && items.length === 0) {
+  if (state && items.length === 0 && planned.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-16 text-center">
         <p className="text-sm text-ink-3">В этой брони нет позиций для приёмки</p>
@@ -620,6 +691,7 @@ export function ReturnChecklist({
   if (!state) return null;
 
   const interactionsDisabled = bulkBusy || submitting;
+  const anyStaying = planned.some((p) => !returnNow.has(p.bookingItemId));
   const draftOffline = draft.status === "offline" || draft.status === "failed";
   // Плашка «Продолжена приёмка»: страница передаёт ответ createSession только
   // для продолженной сессии; честно пишем, восстановлено ли что-то.
@@ -668,16 +740,31 @@ export function ReturnChecklist({
           </div>
         </div>
 
-        {/* «Принять всё разом» — primary bar (mockup .ph-acceptall). */}
-        <button
-          type="button"
-          onClick={acceptAll}
+        <PlannedStaysBlock
+          stays={planned}
+          items={state.items}
+          returnNow={returnNow}
+          onToggle={toggleReturnNow}
           disabled={interactionsDisabled}
-          aria-label="Принять всё разом — отметить все позиции принятыми"
-          className="mb-3 block w-full rounded-lg bg-accent-bright px-4 py-3 text-center text-sm font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60"
-        >
-          ✓ Принять всё разом
-        </button>
+        />
+
+        {/* «Принять всё разом» — primary bar (mockup .ph-acceptall). */}
+        {/* Всё осталось у клиента по плану — принимать в чек-листе нечего. */}
+        {items.length > 0 && (
+          <button
+            type="button"
+            onClick={acceptAll}
+            disabled={interactionsDisabled}
+            aria-label={
+              anyStaying
+                ? "Принять всё, кроме оставленного у клиента, — отметить остальные позиции принятыми"
+                : "Принять всё разом — отметить все позиции принятыми"
+            }
+            className="mb-3 block w-full rounded-lg bg-accent-bright px-4 py-3 text-center text-sm font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60"
+          >
+            {anyStaying ? "✓ Принять всё, кроме оставленного" : "✓ Принять всё разом"}
+          </button>
+        )}
 
         {groups.map((group) => (
           <section key={group.category} className="mb-1">

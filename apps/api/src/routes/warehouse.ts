@@ -613,6 +613,19 @@ const completeSessionBodySchema = z.object({
   // которых построен чек-лист. Обе необязательны — старый JS на планшетах их не шлёт.
   itemsVersion: z.string().min(1).max(64).optional(),
   draftRevision: z.number().int().min(0).optional(),
+  // Приёмка: позиции «по плану», которые остаются у клиента, — в продолжение.
+  stays: z
+    .array(
+      z.object({
+        bookingItemId: z.string().min(1),
+        quantity: z.number().int().positive(),
+        until: z.string().datetime(),
+        equipmentUnitIds: z.array(z.string().min(1)).max(500).optional(),
+      }),
+    )
+    .max(200)
+    .optional(),
+  expectedSplitRevision: z.number().int().min(0).optional(),
 }).optional();
 
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
@@ -634,6 +647,8 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       force: body?.force,
       itemsVersion: body?.itemsVersion,
       draftRevision: body?.draftRevision,
+      stays: body?.stays,
+      expectedSplitRevision: body?.expectedSplitRevision,
     });
 
     // Enrich unit ID arrays with name and barcode data
@@ -657,6 +672,16 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       where: { id },
       select: { id: true, operation: true },
     });
+    // Продолжения, в которые ушли позиции «по плану у клиента» — для экрана итога.
+    const continuationIds = summary.continuationIds ?? [];
+    const continuations =
+      continuationIds.length > 0
+        ? await prisma.booking.findMany({
+            where: { id: { in: continuationIds } },
+            select: { id: true, docNumber: true, endDate: true, items: { select: { quantity: true } } },
+            orderBy: { endDate: "asc" },
+          })
+        : [];
 
     res.json({
       sessionId: session?.id ?? id,
@@ -697,6 +722,12 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       completedBy: summary.completedBy,
       manualFinalAmount: summary.manualFinalAmount,
       addonsAddedInSession: summary.addonsAddedInSession,
+      continuations: continuations.map((c) => ({
+        id: c.id,
+        docNumber: c.docNumber,
+        endDate: c.endDate.toISOString(),
+        quantity: c.items.reduce((sum, i) => sum + i.quantity, 0),
+      })),
     });
   } catch (err) {
     next(err);

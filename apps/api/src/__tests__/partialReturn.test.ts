@@ -388,4 +388,205 @@ describe("киоск", () => {
     const { completeSession } = await import("../services/warehouseScan");
     await expect(completeSession(session.id)).rejects.toMatchObject({ status: 409, code: "PLANNED_STAY_ON_CARD" });
   });
+
+  const returnSession = (bookingId: string) =>
+    prisma.scanSession.create({ data: { bookingId, workerName: "Иван", operation: "RETURN", status: "ACTIVE" } });
+
+  it("чек-лист приёмки знает позиции «по плану»: срок, количество, ревизия разделения", async () => {
+    const b = await issuedBooking();
+    const session = await returnSession(b.id);
+    const { getChecklistState } = await import("../services/checklistService");
+    const state = await getChecklistState(session.id);
+    expect(state.plannedStays).toEqual([
+      { bookingItemId: itemOf(b, storm).id, until: new Date(b.endDate.getTime() + DAY).toISOString(), quantity: 2, unitIds: [] },
+    ]);
+    expect(state.splitRevision).toBe(0);
+  });
+
+  it("«Готово» с позицией «по плану» — основная возвращена, позиция ушла в продолжение за 0 ₽", async () => {
+    const b = await issuedBooking();
+    const session = await returnSession(b.id);
+    const { completeSession } = await import("../services/warehouseScan");
+    const until = new Date(b.endDate.getTime() + DAY).toISOString();
+    const summary = await completeSession(session.id, {
+      stays: [{ bookingItemId: itemOf(b, storm).id, quantity: 2, until }],
+      expectedSplitRevision: 0,
+    });
+    expect(summary.continuationIds).toHaveLength(1);
+    expect((await prisma.booking.findUnique({ where: { id: b.id } })).status).toBe("RETURNED");
+    const child = await prisma.booking.findUnique({ where: { id: summary.continuationIds[0] }, include: { items: true } });
+    expect(child).toMatchObject({ status: "ISSUED", parentBookingId: b.id, docNumber: `${b.docNumber}-1` });
+    expect(child.endDate.toISOString()).toBe(until);
+    expect(child.items).toEqual([expect.objectContaining({ equipmentId: storm, quantity: 2 })]);
+    expect(Number(child.finalAmount)).toBe(0);
+    // Журнал приёмки называет продолжение.
+    const audit = await prisma.auditEntry.findFirst({ where: { entityId: b.id, action: "BOOKING_RETURNED" }, orderBy: { createdAt: "desc" } });
+    const after = typeof audit.after === "string" ? JSON.parse(audit.after) : audit.after;
+    expect(after).toMatchObject({ via: "kiosk", continuationIds: child.id });
+  });
+
+  it("«Вернули сейчас» — пустой список: всё принято, продолжения нет", async () => {
+    const b = await issuedBooking();
+    const session = await returnSession(b.id);
+    const { completeSession } = await import("../services/warehouseScan");
+    const summary = await completeSession(session.id, { stays: [] });
+    expect(summary.continuationIds).toEqual([]);
+    expect((await prisma.booking.findUnique({ where: { id: b.id } })).status).toBe("RETURNED");
+    expect(await prisma.booking.count({ where: { parentBookingId: b.id } })).toBe(0);
+  });
+
+  it("дольше оплаченного — отказ, приёмка не записана, сессия жива", async () => {
+    const b = await issuedBooking();
+    const session = await returnSession(b.id);
+    const { completeSession } = await import("../services/warehouseScan");
+    const tooLate = new Date(b.endDate.getTime() + 3 * DAY).toISOString();
+    await expect(
+      completeSession(session.id, { stays: [{ bookingItemId: itemOf(b, storm).id, quantity: 2, until: tooLate }], expectedSplitRevision: 0 }),
+    ).rejects.toMatchObject({ status: 409, code: "CONTINUATION_BEYOND_PAID_NOT_YET" });
+    expect((await prisma.booking.findUnique({ where: { id: b.id } })).status).toBe("ISSUED");
+    expect((await prisma.scanSession.findUnique({ where: { id: session.id } })).status).toBe("ACTIVE");
+  });
+
+  it("бронь уже разделили с карточки — устаревший экран киоска получает 409", async () => {
+    const b = await issuedBooking();
+    const session = await returnSession(b.id);
+    await prisma.booking.update({ where: { id: b.id }, data: { splitRevision: 1 } });
+    const { completeSession } = await import("../services/warehouseScan");
+    const until = new Date(b.endDate.getTime() + DAY).toISOString();
+    await expect(
+      completeSession(session.id, { stays: [{ bookingItemId: itemOf(b, storm).id, quantity: 2, until }], expectedSplitRevision: 0 }),
+    ).rejects.toMatchObject({ status: 409, code: "PARTIAL_RETURN_STALE" });
+  });
+
+  it("ремонт, проблема и «остаётся» вместе не больше количества строки", async () => {
+    const b = await issuedBooking();
+    const session = await returnSession(b.id);
+    const { completeSession } = await import("../services/warehouseScan");
+    const until = new Date(b.endDate.getTime() + DAY).toISOString();
+    await expect(
+      completeSession(session.id, {
+        stays: [{ bookingItemId: itemOf(b, storm).id, quantity: 2, until }],
+        repairUnits: [{ bookingItemId: itemOf(b, storm).id, quantity: 1, reason: "Не включается" } as never],
+        expectedSplitRevision: 0,
+      }),
+    ).rejects.toMatchObject({ status: 400, code: "INVALID_SPLIT" });
+  });
+
+  it("штучная позиция «по плану»: резерв к продолжению, единица не становится «не найдено»", async () => {
+    const lens = await prisma.equipment.create({
+      data: { importKey: `prt-klens-${++seq}`, name: "Объектив Cooke", category: "Оптика", totalQuantity: 2, rentalRatePerShift: 2000, stockTrackingMode: "UNIT" },
+    });
+    const units = [];
+    for (let i = 0; i < 2; i++) {
+      units.push(await prisma.equipmentUnit.create({ data: { equipmentId: lens.id, status: "ISSUED", internalInventoryNumber: `COOKE-${seq}-${i}` } }));
+    }
+    const b = await issuedBooking();
+    const lensItem = await prisma.bookingItem.create({ data: { bookingId: b.id, equipmentId: lens.id, quantity: 2, shifts: 2 } });
+    for (const u of units) await prisma.bookingItemUnit.create({ data: { bookingItemId: lensItem.id, equipmentUnitId: u.id } });
+    const { rebuildBookingEstimate } = await import("../services/bookings");
+    await rebuildBookingEstimate(b.id);
+    const session = await returnSession(b.id);
+    const { getChecklistState } = await import("../services/checklistService");
+    const planned = (await getChecklistState(session.id)).plannedStays.find((p) => p.bookingItemId === lensItem.id)!;
+    expect(planned.unitIds.sort()).toEqual(units.map((u) => u.id).sort());
+    const { completeSession } = await import("../services/warehouseScan");
+    const summary = await completeSession(session.id, {
+      stays: [
+        { bookingItemId: itemOf(b, storm).id, quantity: 2, until: planned.until },
+        { bookingItemId: lensItem.id, quantity: 2, until: planned.until, equipmentUnitIds: planned.unitIds },
+      ],
+      expectedSplitRevision: 0,
+    });
+    expect(summary.missing).toEqual([]);
+    for (const u of units) expect((await prisma.equipmentUnit.findUnique({ where: { id: u.id } })).status).toBe("ISSUED");
+    const childItem = await prisma.bookingItem.findFirst({ where: { bookingId: summary.continuationIds[0], equipmentId: lens.id } });
+    expect(await prisma.bookingItemUnit.count({ where: { bookingItemId: childItem.id, returnedAt: null } })).toBe(2);
+  });
+
+  it("stays без ревизии разделения — 400, приёмка не записана", async () => {
+    const b = await issuedBooking();
+    const session = await returnSession(b.id);
+    const { completeSession } = await import("../services/warehouseScan");
+    const until = new Date(b.endDate.getTime() + DAY).toISOString();
+    await expect(
+      completeSession(session.id, { stays: [{ bookingItemId: itemOf(b, storm).id, quantity: 2, until }] }),
+    ).rejects.toMatchObject({ status: 400, code: "INVALID_SPLIT" });
+    expect((await prisma.booking.findUnique({ where: { id: b.id } })).status).toBe("ISSUED");
+  });
+
+  it("штучная позиция: живых резервов меньше, чем штук, — киоск оставляет столько, сколько на руках", async () => {
+    const lens = await prisma.equipment.create({
+      data: { importKey: `prt-mlens-${++seq}`, name: "Объектив Sigma", category: "Оптика", totalQuantity: 3, rentalRatePerShift: 2000, stockTrackingMode: "UNIT" },
+    });
+    const units = [];
+    for (let i = 0; i < 2; i++) {
+      units.push(await prisma.equipmentUnit.create({ data: { equipmentId: lens.id, status: "ISSUED", internalInventoryNumber: `SIGMA-${seq}-${i}` } }));
+    }
+    const b = await issuedBooking();
+    const lensItem = await prisma.bookingItem.create({ data: { bookingId: b.id, equipmentId: lens.id, quantity: 3, shifts: 2 } });
+    for (const u of units) await prisma.bookingItemUnit.create({ data: { bookingItemId: lensItem.id, equipmentUnitId: u.id } });
+    const session = await returnSession(b.id);
+    const { getChecklistState } = await import("../services/checklistService");
+    const planned = (await getChecklistState(session.id)).plannedStays.find((p) => p.bookingItemId === lensItem.id)!;
+    expect(planned.quantity).toBe(2);
+    const { completeSession } = await import("../services/warehouseScan");
+    const summary = await completeSession(session.id, {
+      stays: [
+        { bookingItemId: itemOf(b, storm).id, quantity: 2, until: planned.until },
+        { bookingItemId: lensItem.id, quantity: planned.quantity, until: planned.until, equipmentUnitIds: planned.unitIds },
+      ],
+      expectedSplitRevision: 0,
+    });
+    expect(summary.continuationIds).toHaveLength(1);
+    // Журнал о продолжении знает, что приняли в киоске и кто.
+    const audit = await prisma.auditEntry.findFirst({ where: { entityId: summary.continuationIds[0], action: "BOOKING_CONTINUATION_CREATED" } });
+    const after = typeof audit.after === "string" ? JSON.parse(audit.after) : audit.after;
+    expect(after).toMatchObject({ via: "kiosk", sessionId: session.id, workerName: "Иван" });
+  });
+
+  it("единица не может и остаться у клиента, и уйти в ремонт — 400", async () => {
+    const lens = await prisma.equipment.create({
+      data: { importKey: `prt-olens-${++seq}`, name: "Объектив Angenieux", category: "Оптика", totalQuantity: 1, rentalRatePerShift: 2000, stockTrackingMode: "UNIT" },
+    });
+    const unit = await prisma.equipmentUnit.create({ data: { equipmentId: lens.id, status: "ISSUED", internalInventoryNumber: `ANG-${seq}` } });
+    const b = await issuedBooking();
+    const lensItem = await prisma.bookingItem.create({ data: { bookingId: b.id, equipmentId: lens.id, quantity: 1, shifts: 2 } });
+    await prisma.bookingItemUnit.create({ data: { bookingItemId: lensItem.id, equipmentUnitId: unit.id } });
+    const session = await returnSession(b.id);
+    const until = new Date(b.endDate.getTime() + DAY).toISOString();
+    const { completeSession } = await import("../services/warehouseScan");
+    await expect(
+      completeSession(session.id, {
+        stays: [{ bookingItemId: lensItem.id, quantity: 1, until, equipmentUnitIds: [unit.id] }],
+        repairUnits: [{ equipmentUnitId: unit.id, comment: "Царапина" } as never],
+        expectedSplitRevision: 0,
+      }),
+    ).rejects.toMatchObject({ status: 400, code: "INVALID_SPLIT" });
+  });
+
+  it("единицу отметили принятой, а потом оставили по плану — она не встаёт на полку", async () => {
+    const lens = await prisma.equipment.create({
+      data: { importKey: `prt-slens-${++seq}`, name: "Объектив Leica", category: "Оптика", totalQuantity: 1, rentalRatePerShift: 2000, stockTrackingMode: "UNIT" },
+    });
+    const unit = await prisma.equipmentUnit.create({ data: { equipmentId: lens.id, status: "ISSUED", internalInventoryNumber: `LEICA-${seq}` } });
+    const b = await issuedBooking();
+    const lensItem = await prisma.bookingItem.create({ data: { bookingId: b.id, equipmentId: lens.id, quantity: 1, shifts: 2 } });
+    await prisma.bookingItemUnit.create({ data: { bookingItemId: lensItem.id, equipmentUnitId: unit.id } });
+    const { rebuildBookingEstimate } = await import("../services/bookings");
+    await rebuildBookingEstimate(b.id);
+    const session = await returnSession(b.id);
+    await prisma.scanRecord.create({ data: { sessionId: session.id, equipmentUnitId: unit.id, hmacVerified: false } });
+    const until = new Date(b.endDate.getTime() + DAY).toISOString();
+    const { completeSession } = await import("../services/warehouseScan");
+    const summary = await completeSession(session.id, {
+      stays: [
+        { bookingItemId: itemOf(b, storm).id, quantity: 2, until },
+        { bookingItemId: lensItem.id, quantity: 1, until, equipmentUnitIds: [unit.id] },
+      ],
+      expectedSplitRevision: 0,
+    });
+    expect((await prisma.equipmentUnit.findUnique({ where: { id: unit.id } })).status).toBe("ISSUED");
+    const childLens = await prisma.bookingItem.findFirst({ where: { bookingId: summary.continuationIds[0], equipmentId: lens.id } });
+    expect(await prisma.bookingItemUnit.count({ where: { bookingItemId: childLens.id, returnedAt: null } })).toBe(1);
+  });
 });
