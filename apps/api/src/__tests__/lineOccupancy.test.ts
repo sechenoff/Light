@@ -240,3 +240,109 @@ describe("штучный учёт", () => {
     expect(later.sort()).toEqual([...units].sort());
   });
 });
+
+describe("выданная бронь с длинной позицией (по текущему моменту)", () => {
+  // Окно «сейчас»: просроченная выданная держит склад, пока в окне текущий момент.
+  const N = Math.floor(Date.now() / HOUR) * HOUR;
+  const nowWindow = () => ({ start: new Date(Date.now()), end: new Date(Date.now() + HOUR) });
+
+  it("срок брони прошёл, а позиции — ещё нет: не просрочено, освободится в срок позиции", async () => {
+    const eq = await mkEq("Aputure 1200d", 1);
+    // Бронь на 1 смену закончилась вчера, позиция взята на 3 смены — ждём её завтра.
+    await mkBooking("ISSUED", new Date(N - 2 * DAY), new Date(N - DAY), [{ equipmentId: eq, quantity: 1, shifts: 3 }]);
+    const w = nowWindow();
+    expect(await occupied(eq, w.start, w.end)).toBe(1);
+    const asker = await mkBooking("CONFIRMED", w.start, w.end, []);
+    const conflict = await findAddonConflict(eq, w.start, w.end, asker, { requested: 1 });
+    expect(conflict?.holderStatus).toBe("ISSUED");
+    expect(conflict?.overdue).toBe(false);
+    expect(conflict?.freeFrom).toBe(new Date(N + DAY).toISOString());
+  });
+
+  it("срок позиции тоже прошёл: просрочено, держит склад до приёмки", async () => {
+    const eq = await mkEq("Godox M600d", 1);
+    await mkBooking("ISSUED", new Date(N - 3 * DAY), new Date(N - 2 * DAY), [{ equipmentId: eq, quantity: 1, shifts: 2 }]);
+    const w = nowWindow();
+    expect(await occupied(eq, w.start, w.end)).toBe(1);
+    const asker = await mkBooking("CONFIRMED", w.start, w.end, []);
+    const conflict = await findAddonConflict(eq, w.start, w.end, asker, { requested: 1 });
+    expect(conflict?.overdue).toBe(true);
+    expect(conflict?.freeFrom).toBeNull();
+    expect(conflict?.to).toBe(new Date(N - DAY).toISOString());
+  });
+
+  it("выданная раньше начала: длинная позиция занята с момента выдачи", async () => {
+    const eq = await mkEq("Kino Flo Celeb", 1);
+    // Начало брони — завтра, но выдали уже сейчас.
+    await mkBooking("ISSUED", new Date(N + DAY), new Date(N + 2 * DAY), [{ equipmentId: eq, quantity: 1, shifts: 2 }], {
+      issuedAt: new Date(N - HOUR),
+    });
+    const w = nowWindow();
+    expect(await occupied(eq, w.start, w.end)).toBe(1);
+    expect(await occupied(eq, new Date(N + 2 * DAY + HOUR), new Date(N + 2 * DAY + 2 * HOUR))).toBe(1);
+    expect(await occupied(eq, new Date(N + 3 * DAY), new Date(N + 3 * DAY + HOUR))).toBe(0);
+  });
+});
+
+describe("разные сроки строк и «не считать вторые сутки» через выборку", () => {
+  it("две длинные позиции одной брони — каждая на своём окне", async () => {
+    const eqA = await mkEq("Прибор на 2 смены", 1);
+    const eqB = await mkEq("Прибор на 3 смены", 1);
+    const eqC = await mkEq("Обычная позиция", 1);
+    const mine = await mkBooking("CONFIRMED", at(0), at(DAY), [
+      { equipmentId: eqA, quantity: 1, shifts: 2 },
+      { equipmentId: eqB, quantity: 1, shifts: 3 },
+      { equipmentId: eqC, quantity: 1 },
+    ]);
+    // Вторые сутки: соседи берут A и C. Третьи сутки: сосед берёт B.
+    const day2 = await mkBooking("CONFIRMED", at(DAY), at(2 * DAY), [
+      { equipmentId: eqA, quantity: 1 },
+      { equipmentId: eqC, quantity: 1 },
+    ]);
+    const day3 = await mkBooking("CONFIRMED", at(2 * DAY), at(3 * DAY), [{ equipmentId: eqB, quantity: 1 }]);
+    const caps = await computeAddCaps(prisma, {
+      bookingId: mine,
+      equipmentIds: [eqA, eqB, eqC],
+      window: { start: at(0), end: at(DAY) },
+    });
+    expect(caps.get(eqA)!.occupiedByOthers).toBe(1);
+    expect(caps.get(eqB)!.occupiedByOthers).toBe(1);
+    expect(caps.get(eqC)!.occupiedByOthers).toBe(0);
+    const batch = await findHoldersBatch(prisma, {
+      equipmentIds: [eqA, eqB, eqC],
+      start: at(0),
+      end: at(DAY),
+      excludeBookingId: mine,
+    });
+    expect(batch.get(eqA)?.bookingId).toBe(day2);
+    expect(batch.get(eqB)?.bookingId).toBe(day3);
+    expect(batch.has(eqC)).toBe(false);
+  });
+
+  it("«не считать вторые сутки» у брони сдвигает срок длинной позиции", async () => {
+    const forgiven = await mkEq("Прощённый хвост", 1);
+    const counted = await mkEq("Хвост считается", 1);
+    // Сутки + 3 ч. С прощением хвоста это 1 смена, позиция на 2 смены ждёт до 2 сут + 3 ч.
+    await mkBooking("CONFIRMED", at(0), at(DAY + 3 * HOUR), [{ equipmentId: forgiven, quantity: 1, shifts: 2 }], {
+      skipPartialDay: true,
+    });
+    // Без прощения это уже 2 смены: позиция на 2 смены идёт со всей бронью.
+    await mkBooking("CONFIRMED", at(0), at(DAY + 3 * HOUR), [{ equipmentId: counted, quantity: 1, shifts: 2 }]);
+    expect(await occupied(forgiven, at(2 * DAY + HOUR), at(2 * DAY + 2 * HOUR))).toBe(1);
+    expect(await occupied(forgiven, at(2 * DAY + 3 * HOUR), at(2 * DAY + 4 * HOUR))).toBe(0);
+    expect(await occupied(counted, at(2 * DAY + HOUR), at(2 * DAY + 2 * HOUR))).toBe(0);
+  });
+
+  it("предел своих смен: дальний хвост виден в выборке, сверх предела — обрезан", async () => {
+    const atLimit = await mkEq("Позиция на предел", 1);
+    const overLimit = await mkEq("Позиция сверх предела", 1);
+    await mkBooking("CONFIRMED", at(0), at(DAY), [{ equipmentId: atLimit, quantity: 1, shifts: 60 }]);
+    await mkBooking("CONFIRMED", at(0), at(DAY), [{ equipmentId: overLimit, quantity: 1, shifts: 100 }]);
+    // Срок обеих — 60-е сутки: бронь кончилась за 58 суток до окна, а выборка её находит.
+    expect(await occupied(atLimit, at(59 * DAY), at(59 * DAY + HOUR))).toBe(1);
+    expect(await occupied(overLimit, at(59 * DAY), at(59 * DAY + HOUR))).toBe(1);
+    expect(await occupied(atLimit, at(60 * DAY), at(60 * DAY + HOUR))).toBe(0);
+    // Без обрезки 100 смен держали бы позицию до 100-х суток: на 61-х выборка её ещё находит.
+    expect(await occupied(overLimit, at(61 * DAY), at(61 * DAY + HOUR))).toBe(0);
+  });
+});

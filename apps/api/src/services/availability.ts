@@ -274,7 +274,7 @@ export async function standardReservations(
         {
           startDate: { lte: args.end },
           endDate: { gte: new Date(args.start.getTime() - LONG_LINE_LOOKBACK_MS) },
-          items: { some: { shifts: { not: null } } },
+          items: { some: { ...itemFilter, shifts: { not: null } } },
         },
       ],
       ...(args.excludeBookingId ? { id: { not: args.excludeBookingId } } : {}),

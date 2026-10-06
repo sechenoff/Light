@@ -24,9 +24,14 @@ export const RENTAL_SHIFT_MS = 24 * 60 * 60 * 1000;
  */
 export const MAX_LINE_SHIFTS = 60;
 
-/** Действующее число смен строки: своё «не меньше N» или смены брони. */
+/**
+ * Действующее число смен строки: своё «не меньше N» или смены брони. Своё
+ * значение больше MAX_LINE_SHIFTS обрезается: дальше предела выборки
+ * занятости не смотрят, и такая строка пропала бы из них целиком.
+ */
 export function effectiveLineShifts(bookingShifts: number, lineShifts: number | null | undefined): number {
-  return lineShifts != null && lineShifts > bookingShifts ? lineShifts : bookingShifts;
+  const own = lineShifts == null ? 0 : Math.min(lineShifts, MAX_LINE_SHIFTS);
+  return own > bookingShifts ? own : bookingShifts;
 }
 
 /**
