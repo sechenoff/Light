@@ -49,9 +49,14 @@ export function planFamilyPayment(
     .map((m) => ({ bookingId: m.id, docNumber: m.docNumber, amount: parts.get(m.id)!.toDecimalPlaces(2).toFixed(2) }));
 }
 
-/** Живые брони семьи (без отменённых и архива) — в порядке создания, с долгом. */
-async function familyMembersWithDebt(bookingId: string) {
-  const booking = await prisma.booking.findUnique({
+type Db = Parameters<typeof loadFamily>[0];
+
+/**
+ * Живые брони семьи (без отменённых и архива) — в порядке создания, с долгом.
+ * Бронь, где вводят платёж, в списке всегда: туда ложится остаток.
+ */
+async function familyMembersWithDebt(client: Db, bookingId: string) {
+  const booking = await client.booking.findUnique({
     where: { id: bookingId },
     select: { id: true, rootBookingId: true, deletedAt: true, status: true },
   });
@@ -59,8 +64,11 @@ async function familyMembersWithDebt(bookingId: string) {
   if (booking.deletedAt) {
     throw new HttpError(409, "Бронь в архиве — платёж записать нельзя. Сначала восстановите её из архива.", "BOOKING_ARCHIVED");
   }
-  const family = (await loadFamily(prisma, booking)).filter((m) => m.status !== "CANCELLED" && m.deletedAt == null);
-  const money = await prisma.booking.findMany({
+  if (booking.status === "CANCELLED") {
+    throw new HttpError(409, "Бронь отменена — платёж по семье на неё не разносится", "PAYMENT_SPREAD_CANCELLED_TARGET");
+  }
+  const family = (await loadFamily(client, booking)).filter((m) => m.status !== "CANCELLED" && m.deletedAt == null);
+  const money = await client.booking.findMany({
     where: { id: { in: family.map((m) => m.id) } },
     select: { id: true, amountOutstanding: true },
   });
@@ -73,13 +81,42 @@ async function familyMembersWithDebt(bookingId: string) {
 
 /** Превью разбивки для окна оплаты. */
 export async function previewFamilyPayment(bookingId: string, amount: Decimal) {
-  const { members } = await familyMembersWithDebt(bookingId);
+  const { members } = await familyMembersWithDebt(prisma, bookingId);
   return { parts: planFamilyPayment(members, amount, bookingId), members: members.length };
 }
 
+/** Предел частей одного платежа — не больше броней в семье разумного размера. */
+const MAX_PARTS = 100;
+
 /**
- * Записать платёж, разнесённый по семье. `requestKey` — от повтора одной и той
- * же отправки: каждая часть получает свой детерминированный id.
+ * Id частей платежа от ключа отправки — не от разбивки: при повторе после сбоя
+ * долги уже изменились, и новая разбивка дала бы другие брони и другие id.
+ * Повтор узнаётся по первой части, а возвращаются все.
+ */
+function partId(createdBy: string, requestKey: string, index: number): string {
+  return `idem_${createHash("sha256").update(`${createdBy}:${requestKey}:family:${index}`).digest("hex")}`;
+}
+
+async function replayFamilyPayment(args: {
+  requestKey: string;
+  createdBy: string;
+  method: PaymentMethod;
+  receivedAt: Date;
+}): Promise<Payment[] | null> {
+  const first = await prisma.payment.findUnique({ where: { id: partId(args.createdBy, args.requestKey, 0) } });
+  if (!first) return null;
+  if (first.createdBy !== args.createdBy || first.method !== args.method || first.receivedAt?.getTime() !== args.receivedAt.getTime()) {
+    throw new HttpError(409, "Этот платёж уже обрабатывался с другими данными. Проверьте журнал платежей.", "PAYMENT_REQUEST_CONFLICT");
+  }
+  const ids = Array.from({ length: MAX_PARTS }, (_, i) => partId(args.createdBy, args.requestKey, i));
+  const parts = await prisma.payment.findMany({ where: { id: { in: ids } } });
+  return ids.map((id) => parts.find((p) => p.id === id)).filter((p): p is Payment => p != null);
+}
+
+/**
+ * Записать платёж, разнесённый по семье. Разбивка считается внутри
+ * транзакции записи — по текущим долгам; сумма частей обязана совпасть с
+ * введённой. `requestKey` — от повтора одной и той же отправки.
  */
 export async function createFamilyPayment(args: {
   requestKey?: string;
@@ -92,62 +129,71 @@ export async function createFamilyPayment(args: {
   creatorRole?: UserRole;
 }): Promise<Payment[]> {
   const total = new Decimal(args.amount.toString());
-  const { booking, members } = await familyMembersWithDebt(args.bookingId);
-  const role: UserRole = args.creatorRole ?? "SUPER_ADMIN";
-  validateWhLimits(role, { method: args.method, amount: total }, { status: booking.status });
-  const parts = planFamilyPayment(members, total, args.bookingId);
-  const idOf = (bookingId: string) =>
-    args.requestKey
-      ? `idem_${createHash("sha256").update(`${args.createdBy}:${args.requestKey}:${bookingId}`).digest("hex")}`
-      : undefined;
-
-  // Повтор той же отправки — вернуть уже записанное, а не платить второй раз.
-  if (args.requestKey) {
-    const existing = await prisma.payment.findMany({ where: { id: { in: parts.map((p) => idOf(p.bookingId)!) } } });
-    if (existing.length > 0) return existing;
+  if (total.decimalPlaces() > 2) {
+    throw new HttpError(400, "Сумма — с точностью до копеек", "PAYMENT_AMOUNT_PRECISION");
   }
-  const group = parts.length > 1 ? parts.map((p) => p.docNumber ?? p.bookingId.slice(-6)).join(" + ") : null;
+  if (args.requestKey) {
+    const previous = await replayFamilyPayment({ ...args, requestKey: args.requestKey });
+    if (previous) return previous;
+  }
+  const role: UserRole = args.creatorRole ?? "SUPER_ADMIN";
   const auditAction = role === "WAREHOUSE" ? "PAYMENT_CREATE_BY_WH" : "PAYMENT_CREATE";
 
-  return prisma.$transaction(async (tx) => {
-    const created: Payment[] = [];
-    for (const part of parts) {
-      const note = [args.note?.trim() || null, group ? `один платёж на ${group}` : null].filter(Boolean).join(" · ") || null;
-      const id = idOf(part.bookingId);
-      const payment = await tx.payment.create({
-        data: {
-          ...(id ? { id } : {}),
-          bookingId: part.bookingId,
-          amount: new Decimal(part.amount),
-          method: args.method,
-          receivedAt: args.receivedAt,
-          note,
-          createdBy: args.createdBy,
-          paymentMethod: args.method,
-          paymentDate: args.receivedAt,
-          comment: note,
-          direction: "INCOME",
-          status: "RECEIVED",
-        },
-      });
-      await recomputeBookingFinance(part.bookingId, tx);
-      await writeAuditEntry({
-        tx,
-        userId: args.createdBy,
-        action: auditAction,
-        entityType: "Payment",
-        entityId: payment.id,
-        before: null,
-        after: diffFields({
-          ...payment,
-          amount: payment.amount.toString(),
-          bookingId: part.bookingId,
-          spreadFrom: args.bookingId,
-          spreadTotal: total.toFixed(2),
-        } as Record<string, unknown>),
-      });
-      created.push(payment);
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const { booking, members } = await familyMembersWithDebt(tx, args.bookingId);
+      validateWhLimits(role, { method: args.method, amount: total }, { status: booking.status });
+      const parts = planFamilyPayment(members, total, args.bookingId);
+      const sum = parts.reduce((s, p) => s.add(p.amount), new Decimal(0));
+      if (!sum.equals(total) || parts.length > MAX_PARTS) {
+        throw new HttpError(500, "Не удалось разложить платёж по броням семьи", "PAYMENT_SPREAD_MISMATCH");
+      }
+      const group = parts.length > 1 ? parts.map((p) => p.docNumber ?? p.bookingId.slice(-6)).join(" + ") : null;
+      const created: Payment[] = [];
+      for (const [index, part] of parts.entries()) {
+        const note = [args.note?.trim() || null, group ? `один платёж на ${group}` : null].filter(Boolean).join(" · ") || null;
+        const payment = await tx.payment.create({
+          data: {
+            ...(args.requestKey ? { id: partId(args.createdBy, args.requestKey, index) } : {}),
+            bookingId: part.bookingId,
+            amount: new Decimal(part.amount),
+            method: args.method,
+            receivedAt: args.receivedAt,
+            note,
+            createdBy: args.createdBy,
+            paymentMethod: args.method,
+            paymentDate: args.receivedAt,
+            comment: note,
+            direction: "INCOME",
+            status: "RECEIVED",
+          },
+        });
+        await recomputeBookingFinance(part.bookingId, tx);
+        await writeAuditEntry({
+          tx,
+          userId: args.createdBy,
+          action: auditAction,
+          entityType: "Payment",
+          entityId: payment.id,
+          before: null,
+          after: diffFields({
+            ...payment,
+            amount: payment.amount.toString(),
+            bookingId: part.bookingId,
+            spreadFrom: args.bookingId,
+            spreadTotal: total.toFixed(2),
+          } as Record<string, unknown>),
+        });
+        created.push(payment);
+      }
+      return created;
+    });
+  } catch (error) {
+    // Две одинаковые отправки одновременно: вторая упирается в id первой части.
+    if (args.requestKey && (error as { code?: string }).code === "P2002") {
+      const concurrent = await replayFamilyPayment({ ...args, requestKey: args.requestKey });
+      if (concurrent) return concurrent;
     }
-    return created;
-  });
+    throw error;
+  }
 }

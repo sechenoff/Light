@@ -144,6 +144,46 @@ describe("платёж «Разнести по продолжениям»", () =
     expect(await prisma.payment.count({ where: { bookingId: { in: [root.id, child.id] } } })).toBe(2);
   });
 
+  it("повтор после того, как первая отправка уже закрыла основную, — без второй оплаты", async () => {
+    const { root, child } = await mkFamily(100, 50);
+    const body = { requestKey: randomUUID(), bookingId: child.id, amount: 100, method: "CASH", receivedAt: new Date().toISOString(), spreadAcrossFamily: true };
+    const first = await request(app).post("/api/payments").set(AUTH()).send(body);
+    expect(first.body.payments.map((p: any) => [p.bookingId, p.amount])).toEqual([[root.id, "100"]]);
+    const retry = await request(app).post("/api/payments").set(AUTH()).send(body);
+    expect(retry.status).toBe(201);
+    expect(retry.body.payments.map((p: any) => p.id)).toEqual(first.body.payments.map((p: any) => p.id));
+    expect(await prisma.payment.count({ where: { bookingId: { in: [root.id, child.id] } } })).toBe(1);
+    expect(await owed(child.id)).toBe(50);
+  });
+
+  it("сумма частей — ровно введённая; копейки дробнее — отказ", async () => {
+    const { root, child } = await mkFamily(1000, 300);
+    const ok = await request(app)
+      .post("/api/payments")
+      .set(AUTH())
+      .send({ bookingId: child.id, amount: 1100.5, method: "CASH", receivedAt: new Date().toISOString(), spreadAcrossFamily: true });
+    expect(ok.body.payments.map((p: any) => [p.bookingId, p.amount])).toEqual([
+      [root.id, "1000"],
+      [child.id, "100.5"],
+    ]);
+    const tooPrecise = await request(app)
+      .post("/api/payments")
+      .set(AUTH())
+      .send({ bookingId: child.id, amount: 10.005, method: "CASH", receivedAt: new Date().toISOString(), spreadAcrossFamily: true });
+    expect(tooPrecise.status).toBe(400);
+  });
+
+  it("на отменённую бронь платёж по семье не разносится", async () => {
+    const { child } = await mkFamily(500, 500);
+    await prisma.booking.update({ where: { id: child.id }, data: { status: "CANCELLED" } });
+    const res = await request(app)
+      .post("/api/payments")
+      .set(AUTH())
+      .send({ bookingId: child.id, amount: 300, method: "CASH", receivedAt: new Date().toISOString(), spreadAcrossFamily: true });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("PAYMENT_SPREAD_CANCELLED_TARGET");
+  });
+
   it("платёж по счёту не разносится", async () => {
     const { child } = await mkFamily(1000, 1000);
     const res = await request(app)
