@@ -13,11 +13,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
+import { pluralize } from "@/lib/format";
 import { useDialog } from "@/hooks/useDialog";
 import { toast } from "../ToastProvider";
 import { quoteName } from "../inventory/format";
 import { ContinuationPriceBlock } from "./ContinuationPriceBlock";
-import { ReturnStayRow } from "./ReturnStayRow";
+import { ReturnStayRow, paidShortcutHelps } from "./ReturnStayRow";
 import {
   formatWhen,
   fromWhen,
@@ -68,12 +69,12 @@ export function capNoteOf(line: CorrectionLine): string | null {
   if (line.quantity >= line.booked) return null;
   const parts: string[] = [];
   if (line.inContinuations > 0) parts.push(`${count(line.inContinuations)} уже в продолжении`);
-  if (line.inRepair > 0) parts.push(`${count(line.inRepair)} сдана в ремонт`.replace(/^(\d+) сдана/, "$1 сданы"));
+  if (line.inRepair > 0) parts.push(`${count(line.inRepair)} ${pluralize(line.inRepair, "сдана", "сданы", "сданы")} в ремонт`);
   if (line.inProblems > 0) parts.push(`${count(line.inProblems)} уже в «Потеряшках»`);
   const reserved = line.reservedUnits ?? [];
   if (reserved.length > 0) {
     const names = Array.from(new Set(reserved.map((u) => u.reservedFor).filter((n): n is string => Boolean(n))));
-    parts.push(`${count(reserved.length)} зарезервирован${reserved.length === 1 ? "а" : "ы"} за ${names.length > 0 ? names.map((n) => quoteName(n)).join(", ") : "другой бронью"} — сначала снимите резерв там`);
+    parts.push(`${count(reserved.length)} зарезервирован${pluralize(reserved.length, "а", "ы", "ы")} за ${names.length > 0 ? names.map((n) => quoteName(n)).join(", ") : "другой бронью"} — сначала снимите резерв там`);
   }
   const accounted = line.inContinuations + line.inRepair + line.inProblems + reserved.length;
   if (line.unitTracked && line.booked - accounted > line.quantity) parts.push("остальные с приёмки уже побывали в других бронях или не на складе");
@@ -158,6 +159,11 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
   const blockedBy = plan?.blockedBy ?? null;
   const kept = Array.from(stays.values()).reduce((n, s) => n + s.quantity, 0);
   const blockingConflicts = unacknowledgedConflicts(preview, stays);
+  // «Сократите срок» — только если короткий срок и правда снимает конфликт.
+  const shortenHelps = blockingConflicts.some((c) => {
+    const line = plan?.lines.find((l) => l.bookingItemId === c.bookingItemId);
+    return line != null && Date.parse(line.paidThrough) > Date.now() && paidShortcutHelps(c, line);
+  });
   const visibleLines = plan
     ? plan.lines.filter((l) => !query.trim() || l.name.toLocaleLowerCase("ru-RU").includes(query.trim().toLocaleLowerCase("ru-RU")))
     : [];
@@ -284,6 +290,7 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
             ) : blockingConflicts.length > 0 ? (
               <span className="text-amber">
                 Нужно другой брони: {blockingConflicts.map((c) => `«${c.name}»`).join(", ")} — оставьте под ответственность
+                {shortenHelps ? " или сократите срок" : ""}
               </span>
             ) : null}
           </p>

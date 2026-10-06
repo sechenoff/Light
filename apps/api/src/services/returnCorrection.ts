@@ -36,6 +36,7 @@ import {
 import { paidThroughAt } from "./continuationPricing";
 import { BLOCKING_STATUSES } from "./availability";
 import { quoteName } from "./stockCount/act/buildStockCountAct";
+import { isSessionLive } from "./scanSessionPolicy";
 
 /** Сколько после приёмки можно исправить «Часть не вернули». */
 export const RETURN_CORRECTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -139,14 +140,28 @@ function throwBlock(block: CorrectionBlock): never {
   throw new HttpError(status, message, code);
 }
 
-/** Семья брони для исправления: живые продолжения (их штуки уже у клиента) и отменённые. */
-async function loadChildren(client: Db, bookingId: string) {
-  const children = await client.booking.findMany({
-    where: { parentBookingId: bookingId, deletedAt: null },
-    select: { id: true, status: true, items: { select: { equipmentId: true, customName: true, quantity: true } } },
-  });
+/**
+ * Семья брони для исправления: её продолжения — живые (их штуки уже у
+ * клиента) и отменённые, — и вся цепочка от корня: свои брони другим клиентом
+ * не считаются.
+ */
+async function loadChildren(client: Db, booking: { id: string; rootBookingId: string | null }) {
+  const rootId = booking.rootBookingId ?? booking.id;
+  const [children, chain] = await Promise.all([
+    client.booking.findMany({
+      where: { parentBookingId: booking.id, deletedAt: null },
+      select: {
+        id: true,
+        status: true,
+        items: {
+          select: { equipmentId: true, customName: true, customUnitPrice: true, customCategory: true, quantity: true },
+        },
+      },
+    }),
+    client.booking.findMany({ where: { OR: [{ id: rootId }, { rootBookingId: rootId }] }, select: { id: true } }),
+  ]);
   return {
-    familyIds: [bookingId, ...children.map((c) => c.id)],
+    familyIds: Array.from(new Set([booking.id, ...chain.map((b) => b.id), ...children.map((c) => c.id)])),
     cancelledIds: children.filter((c) => c.status === "CANCELLED").map((c) => c.id),
     liveItems: children.filter((c) => c.status !== "CANCELLED").flatMap((c) => c.items),
   };
@@ -182,8 +197,14 @@ async function loadClosedReserves(client: Db, bookingIds: string[]) {
           // Открытая выдача в киоске: единицу уже отметили для другой брони.
           scanRecords: {
             where: { session: { status: "ACTIVE", operation: "ISSUE" } },
-            select: { session: { select: { bookingId: true, booking: { select: { projectName: true } } } } },
+            select: {
+              scannedAt: true,
+              session: { select: { bookingId: true, booking: { select: { projectName: true, status: true, deletedAt: true } } } },
+            },
           },
+          // Ремонт или «Потеряшка» по единице после приёмки: она была на складе, у клиента её нет.
+          repairs: { select: { createdAt: true } },
+          problemItems: { select: { createdAt: true } },
         },
       },
     },
@@ -198,6 +219,8 @@ function isLiveReserveBlocking(
   now: Date,
 ): boolean {
   if (!booking || booking.deletedAt) return false;
+  // Выданная держит, пока её не примут, — даже просроченная.
+  if (booking.status === "ISSUED") return true;
   return (BLOCKING_STATUSES as string[]).includes(booking.status) && booking.endDate.getTime() > now.getTime();
 }
 
@@ -228,10 +251,25 @@ function unitCandidates(
     const u = r.equipmentUnit;
     if (seen.has(u.id) || u.status !== "AVAILABLE" || ctx.accountedUnitIds.has(u.id)) continue;
     seen.add(u.id);
+    // Сначала — может ли единица вообще быть у клиента: побывала после приёмки у
+    // другого клиента, в ремонте или в «Потеряшках» — значит, она была у нас.
+    const usedElsewhere =
+      u.bookingItemUnits.some((x) => after(x.returnedAt) && !ctx.familyIds.includes(x.bookingItem.bookingId)) ||
+      u.projectAssignments.some((x) => after(x.lot.issuedAt) || after(x.returnedAt)) ||
+      u.repairs.some((x) => after(x.createdAt)) ||
+      u.problemItems.some((x) => after(x.createdAt));
+    if (usedElsewhere) continue;
     const blocking = u.bookingItemUnits.find(
       (x) => x.returnedAt == null && !ctx.familyIds.includes(x.bookingItem.bookingId) && isLiveReserveBlocking(x.bookingItem.booking, ctx.now),
     );
-    const scanning = u.scanRecords.find((x) => !ctx.familyIds.includes(x.session.bookingId));
+    // Открытая выдача держит единицу, только пока она жива (бронь подтверждена);
+    // зависшая сессия принятой или откатившейся брони ничего не блокирует.
+    const scanning = u.scanRecords.find(
+      (x) =>
+        !ctx.familyIds.includes(x.session.bookingId) &&
+        x.session.booking != null &&
+        isSessionLive("ISSUE", { status: x.session.booking.status, deletedAt: x.session.booking.deletedAt }),
+    );
     if (blocking || scanning) {
       reservedUnits.push({
         id: u.id,
@@ -240,10 +278,6 @@ function unitCandidates(
       });
       continue;
     }
-    const usedElsewhere =
-      u.bookingItemUnits.some((x) => after(x.returnedAt) && !ctx.familyIds.includes(x.bookingItem.bookingId)) ||
-      u.projectAssignments.some((x) => after(x.lot.issuedAt) || after(x.returnedAt));
-    if (usedElsewhere) continue;
     units.push({ id: u.id, label: u.internalInventoryNumber });
   }
   return { units, reservedUnits };
@@ -257,7 +291,13 @@ function unitCandidates(
  */
 function continuationShares(
   items: BookingWithItems["items"],
-  liveItems: Array<{ equipmentId: string | null; customName: string | null; quantity: number }>,
+  liveItems: Array<{
+    equipmentId: string | null;
+    customName: string | null;
+    customUnitPrice: unknown;
+    customCategory: string | null;
+    quantity: number;
+  }>,
 ): Map<string, number> {
   const shares = new Map<string, number>();
   for (const it of items) {
@@ -265,16 +305,34 @@ function continuationShares(
       shares.set(it.id, liveItems.filter((c) => c.equipmentId === it.equipmentId).reduce((n, c) => n + c.quantity, 0));
     }
   }
-  const pools = new Map<string, number>();
+  // Продолжение копирует свою строку целиком (название, цена, категория): сначала
+  // раскладываем по точному совпадению, остаток — по названию.
+  const keyOf = (x: { customName: string | null; customUnitPrice: unknown; customCategory: string | null }) =>
+    `${x.customName}|${x.customUnitPrice == null ? "" : String(x.customUnitPrice)}|${x.customCategory ?? ""}`;
+  const exact = new Map<string, number>();
+  const byName = new Map<string, number>();
   for (const c of liveItems) {
-    if (!c.equipmentId && c.customName) pools.set(c.customName, (pools.get(c.customName) ?? 0) + c.quantity);
+    if (c.equipmentId || !c.customName) continue;
+    exact.set(keyOf(c), (exact.get(keyOf(c)) ?? 0) + c.quantity);
   }
-  for (const it of items) {
-    if (it.equipmentId) continue;
-    const pool = it.customName ? pools.get(it.customName) ?? 0 : 0;
-    const take = Math.min(pool, it.quantity);
+  const custom = items.filter((it) => !it.equipmentId);
+  for (const it of custom) {
+    const key = keyOf(it);
+    const take = Math.min(exact.get(key) ?? 0, it.quantity);
     shares.set(it.id, take);
-    if (it.customName) pools.set(it.customName, pool - take);
+    if (exact.has(key)) exact.set(key, (exact.get(key) ?? 0) - take);
+  }
+  for (const [key, left] of exact) {
+    if (left <= 0) continue;
+    const name = key.split("|")[0];
+    byName.set(name, (byName.get(name) ?? 0) + left);
+  }
+  for (const it of custom) {
+    const pool = it.customName ? byName.get(it.customName) ?? 0 : 0;
+    if (pool <= 0) continue;
+    const take = Math.min(pool, it.quantity - (shares.get(it.id) ?? 0));
+    shares.set(it.id, (shares.get(it.id) ?? 0) + take);
+    byName.set(it.customName!, pool - take);
   }
   return shares;
 }
@@ -290,7 +348,7 @@ async function correctionLines(
   now: Date,
 ): Promise<CorrectionLine[]> {
   const equipmentIds = booking.items.map((i) => i.equipmentId).filter((v): v is string => v != null);
-  const family = await loadChildren(client, booking.id);
+  const family = await loadChildren(client, booking);
   const [equipment, repairs, problems, reserves] = await Promise.all([
     client.equipment.findMany({ where: { id: { in: equipmentIds } }, select: { id: true, name: true, stockTrackingMode: true } }),
     client.repair.findMany({
@@ -466,7 +524,7 @@ async function prepareCorrectionInTx(
   // Штучные — сначала по единицам: у зарезервированной причина не в потолке.
   assertUnitsPickable(stays, lineById);
   assertWithinCaps(stays, lineById);
-  const { cancelledIds } = await loadChildren(tx, booking.id);
+  const { cancelledIds } = await loadChildren(tx, booking);
   const unitLabels: string[] = [];
   for (const s of stays) {
     const line = lineById.get(s.bookingItemId)!;

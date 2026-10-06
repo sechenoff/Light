@@ -595,7 +595,10 @@ async function stayConflicts(
           excludeBookingId: booking.id,
           excludeHolderIds: familyIds,
         });
-        const holder = holders.get(equipmentId) ?? null;
+        // Держатель, которому позиция нужна только после срока «до», дефицит не
+        // объясняет (окно поиска у длинной строки шире отрезка) — не называем его.
+        const found = holders.get(equipmentId) ?? null;
+        const holder = found && Date.parse(found.from) < segEnd.getTime() ? found : null;
         const neededFrom = holder ? Math.max(Date.parse(holder.from), segStart.getTime()) : segStart.getTime();
         out.push({
           bookingItemId: involved[0].bookingItemId,

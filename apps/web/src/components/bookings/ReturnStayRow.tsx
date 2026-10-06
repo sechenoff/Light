@@ -50,6 +50,14 @@ const shiftsWord = (n: number) => pluralize(n, "смена", "смены", "см
 /** Срок «до» — не дальше года (так же проверяет сервер). */
 const MAX_STAY_AHEAD_MS = 365 * 24 * 60 * 60 * 1000;
 
+/**
+ * В исправлении «Только до …» помогает, только если держателю позиция нужна
+ * не раньше конца оплаченного: тогда короткий срок снимает конфликт.
+ */
+export function paidShortcutHelps(conflict: StayConflict, line: ReturnPlanLine): boolean {
+  return Date.parse(conflict.neededFrom ?? conflict.from) >= Date.parse(line.paidThrough);
+}
+
 /** ISO → значение для <input type="datetime-local"> (время браузера). */
 function toLocalInput(iso: string): string {
   const d = new Date(iso);
@@ -139,7 +147,7 @@ export function ReturnStayRow({
                 type="button"
                 aria-pressed={on}
                 disabled={busy || full}
-                className={`min-h-11 rounded border px-3 text-xs sm:min-h-9 ${on ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-ink-2 hover:bg-surface-subtle"}`}
+                className={`min-h-11 rounded border px-3 text-xs disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-9 ${on ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-ink-2 hover:bg-surface-subtle disabled:hover:bg-transparent"}`}
                 onClick={() => onToggleUnit(u.id)}
               >
                 {u.label ?? `Единица ${i + 1}`}
@@ -162,7 +170,7 @@ export function ReturnStayRow({
                   aria-checked={on}
                   disabled={busy}
                   onClick={() => onChoice(c.choice)}
-                  className={`flex min-h-11 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight hyphens-auto [overflow-wrap:anywhere] sm:min-h-10 ${on ? "border-accent-bright bg-accent-soft font-semibold text-accent" : "border-border bg-surface text-ink-2 hover:bg-surface-subtle"}`}
+                  className={`flex min-h-11 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight hyphens-auto [overflow-wrap:anywhere] disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-10 ${on ? "border-accent-bright bg-accent-soft font-semibold text-accent" : "border-border bg-surface text-ink-2 hover:bg-surface-subtle"}`}
                 >
                   {c.label}
                 </button>
@@ -221,7 +229,7 @@ export function ReturnStayRow({
                 >
                   {stay.acknowledged ? "✓ Под ответственность" : "Оставить под ответственность"}
                 </button>
-                {canStay(line) && !correction && (
+                {canStay(line) && (!correction || paidShortcutHelps(conflict, line)) && (
                   <button
                     type="button"
                     disabled={busy}

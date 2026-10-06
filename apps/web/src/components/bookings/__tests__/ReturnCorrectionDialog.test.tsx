@@ -286,6 +286,43 @@ describe("окно «Часть не вернули»", () => {
     expect(apiFetchMock.mock.calls.filter(([url]) => String(url).endsWith("/preview"))).toHaveLength(0);
   });
 
+  it("держателю нужно только после оплаченного — «Только до …» и «или сократите срок» предлагаются", async () => {
+    const p = plan({ lines: [{ ...plan().lines[0], paidThrough: at(20), billingAnchor: at(20) }] });
+    apiFetchMock.mockImplementation(async (url: string, opts?: { method?: string }) => {
+      if (url.endsWith("/return-correction") && opts?.method !== "POST") return p;
+      return {
+        continuations: [],
+        conflicts: [
+          {
+            bookingItemId: "i-cable",
+            equipmentId: "e1",
+            name: "Кабель силовой 25 м",
+            needed: 1,
+            available: 0,
+            from: at(20),
+            until: at(68),
+            neededFrom: at(30),
+            holder: { bookingId: "b-x", projectName: "Клип Север", clientName: null, from: at(30) },
+          },
+        ],
+      };
+    });
+    open();
+    const line = await screen.findByTestId("return-line");
+    fireEvent.click(within(line).getByRole("button", { name: "Больше: Кабель силовой 25 м" }));
+    fireEvent.click(within(line).getAllByRole("radio")[2]);
+    const holder = await within(line).findByRole("group", { name: "Нужен другой брони: Кабель силовой 25 м" });
+    expect(within(holder).getByRole("button", { name: /Только до/ })).toBeInTheDocument();
+    expect(screen.getByText(/оставьте под ответственность\s+или сократите срок/)).toBeInTheDocument();
+  });
+
+  it("согласование числа: 21 сдана, 2 сданы, одна сдана", () => {
+    const base = { ...plan().lines[0], inProblems: 0 };
+    expect(capNoteOf({ ...base, booked: 30, quantity: 9, inRepair: 21 })).toBe("Не больше 9: было 30, 21 сдана в ремонт.");
+    expect(capNoteOf({ ...base, booked: 4, quantity: 2, inRepair: 2 })).toBe("Не больше 2: было 4, 2 сданы в ремонт.");
+    expect(capNoteOf({ ...base, booked: 4, quantity: 3, inRepair: 1 })).toBe("Не больше 3: было 4, одна сдана в ремонт.");
+  });
+
   it("ничего не отмечено — создавать нечего", async () => {
     apiFetchMock.mockResolvedValue(plan());
     open();
