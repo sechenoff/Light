@@ -4,6 +4,7 @@ import type { Decimal as PrismaDecimal } from "@prisma/client/runtime/library";
 import type { QuoteLine } from "../bookings";
 import { estimateLineKey, loadLineOrdering, sortLinesByCatalog, type LineOrdering } from "../lineOrder";
 import type { SmetaExportDocument, SmetaExportLine, SmetaOrgInfo } from "./types";
+export { lineShiftsNote, pluralShifts } from "./shiftsNote";
 
 function fmtRuDate(d: Date): string {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
@@ -16,34 +17,6 @@ function fmtRuTime(d: Date): string {
 function cleanField(v: string | null | undefined): string | null {
   const t = v?.trim();
   return t ? t : null;
-}
-
-/** «смена / смены / смен» для числа. */
-export function pluralShifts(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "смена";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "смены";
-  return "смен";
-}
-
-/**
- * Подпись строки о её сроке — общая для PDF и XLSX:
- *  - своя позиция в брони больше чем на смену: «цена за весь срок аренды»
- *    (колонка «цена / смена» показывает её фиксированную цену);
- *  - каталожная строка со своим числом смен (только для XLSX: в PDF для этого
- *    есть колонка «Смен») — «на 2 смены».
- */
-export function lineShiftsNote(
-  line: { shifts: number | null },
-  doc: { shiftsCount: number; showShiftsColumn: boolean },
-  opts: { withCount: boolean },
-): string | null {
-  if (line.shifts == null) return doc.shiftsCount > 1 ? "цена за весь срок аренды" : null;
-  if (opts.withCount && doc.showShiftsColumn && line.shifts !== Math.max(1, doc.shiftsCount)) {
-    return `на ${line.shifts} ${pluralShifts(line.shifts)}`;
-  }
-  return null;
 }
 
 /**

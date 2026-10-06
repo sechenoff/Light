@@ -14,7 +14,8 @@ import Decimal from "decimal.js";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 
-import { buildSmetaFromPersistedEstimate, lineShiftsNote } from "../services/smetaExport/buildDocument";
+import { buildSmetaExportDocument, buildSmetaFromPersistedEstimate, lineShiftsNote } from "../services/smetaExport/buildDocument";
+import { lineNote } from "../services/smetaExport/shiftsNote";
 import { writeSmetaPdf } from "../services/smetaExport/renderPdf";
 import { addSmetaSheetToWorkbook } from "../services/smetaExport/renderXlsx";
 
@@ -101,6 +102,46 @@ describe("сборка сметы: смены строки", () => {
     expect(d.showShiftsColumn).toBe(false);
   });
 
+  it("своя позиция не делится, даже если у строки записаны смены", () => {
+    const d = doc(2, [
+      { ...catalog("Расходники", 0, 1), equipmentId: null, categorySnapshot: "Произвольная позиция", unitPrice: new Decimal(1500), lineSum: new Decimal(1500), shifts: 2 },
+    ]);
+    expect(d.lines[0].pricePerShift).toBe("1500.00");
+    expect(d.lines[0].shifts).toBeNull();
+  });
+
+  it("превью сметы из формы (/quote/export): своя позиция тоже целиком", () => {
+    const d = buildSmetaExportDocument({
+      startDate: START,
+      endDate: new Date(START.getTime() + 2 * DAY),
+      clientName: "Продакшн «Сфера»",
+      projectName: "Реклама кофейни «Зерно»",
+      comment: null,
+      optionalNote: null,
+      includeOptionalInExport: false,
+      hourCalculationText: "",
+      shifts: 2,
+      discountPercent: "0",
+      subtotal: "3900",
+      discountAmount: "0",
+      totalAfterDiscount: "3900",
+      lines: [
+        {
+          equipmentId: "eq-ls60", categorySnapshot: "Свет", nameSnapshot: "Aputure LS 60x", brandSnapshot: null, modelSnapshot: null,
+          quantity: 1, unitPrice: new Decimal(2400), lineSum: new Decimal(2400), pricingMode: "SHIFT", isCustom: false,
+          listUnitPrice: null, isNegotiated: false, shifts: 2,
+        },
+        {
+          equipmentId: null, categorySnapshot: "Произвольная позиция", nameSnapshot: "Расходники", brandSnapshot: null, modelSnapshot: null,
+          quantity: 1, unitPrice: new Decimal(1500), lineSum: new Decimal(1500), pricingMode: "CUSTOM", isCustom: true,
+          listUnitPrice: null, isNegotiated: false, shifts: null,
+        },
+      ],
+    });
+    expect(d.lines.find((l) => l.name === "Aputure LS 60x")!.pricePerShift).toBe("1200.00");
+    expect(d.lines.find((l) => l.name === "Расходники")!.pricePerShift).toBe("1500.00");
+  });
+
   it("строка без equipmentId в данных (не выбран из базы) своей позицией не считается", () => {
     const line = catalog("Старый снимок", 1000, 2);
     delete line.equipmentId;
@@ -146,6 +187,18 @@ async function drawnPdfText(data: ReturnType<typeof doc>): Promise<string[]> {
   return drawn;
 }
 
+describe("подпись под названием", () => {
+  it("договорная цена на свои смены — обе подписи через « · »", () => {
+    expect(
+      lineNote(
+        { shifts: 2, listPricePerShift: "5000.00" },
+        { shiftsCount: 1, showShiftsColumn: true },
+        { withCount: true, rub: (v) => `${v} ₽` },
+      ),
+    ).toBe("персональная скидка · цена до скидки 5000.00 ₽ · на 2 смены");
+  });
+});
+
 describe("PDF", () => {
   it("колонка «Смен» и «Смен по брони» — только когда у строк разные смены", async () => {
     const mixed = await drawnPdfText(
@@ -183,5 +236,27 @@ describe("XLSX", () => {
     expect(values).toContain("Aputure STORM 400x\nна 2 смены");
     expect(values).toContain("Стойка C-Stand");
     expect(values).toContain("СМЕН ПО БРОНИ");
+  });
+
+  it("своя позиция многосменной брони: подпись второй строкой и строка выше, чтобы её не обрезало", () => {
+    const wb = new ExcelJS.Workbook();
+    const { sheet } = addSmetaSheetToWorkbook(
+      wb,
+      doc(2, [
+        catalog("Aputure LS 60x", 1200, 2),
+        { ...catalog("Расходники", 0, 1), equipmentId: null, categorySnapshot: "Произвольная позиция", unitPrice: new Decimal(1500), lineSum: new Decimal(1500) },
+      ]),
+      "Смета",
+    );
+    let noteRow: ExcelJS.Row | null = null;
+    let plainRow: ExcelJS.Row | null = null;
+    sheet.eachRow((row) => {
+      const v = String(row.getCell(2).value ?? "");
+      if (v === "Расходники\nцена за весь срок аренды") noteRow = row;
+      if (v === "Aputure LS 60x") plainRow = row;
+    });
+    expect(noteRow).not.toBeNull();
+    expect(noteRow!.height).toBeGreaterThan(18);
+    expect(plainRow!.height).toBe(18);
   });
 });

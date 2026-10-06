@@ -10,7 +10,7 @@ import type {
   SmetaTransportSection,
 } from "./types";
 import { buildAttachmentContentDisposition } from "../../utils/contentDisposition";
-import { lineShiftsNote, pluralShifts } from "./buildDocument";
+import { lineNote, pluralShifts } from "./shiftsNote";
 
 // ── A4-геометрия ──────────────────────────────────────────────────────────────
 // Пагинация полностью ручная: документ создаётся с нулевыми полями pdfkit,
@@ -410,9 +410,7 @@ class SmetaPdfWriter {
     // Подписи живут под названием: так уступка видна заказчику, а колонка цены
     // остаётся одной цифрой. Своя позиция в многосменной брони подписана «цена
     // за весь срок»: на смены её цена не делится.
-    const noteText = line.listPricePerShift
-      ? `персональная скидка · цена до скидки ${rub(line.listPricePerShift)}`
-      : lineShiftsNote(line, this.tableDoc, { withCount: false });
+    const noteText = lineNote(line, this.tableDoc, { withCount: false, rub });
     const noteH = noteText ? d.fontSize(7).heightOfString(noteText, { width: nameW }) + 1.5 : 0;
     d.fontSize(8.5);
     const rowH = Math.max(19, nameH + noteH + 9);

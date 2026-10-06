@@ -104,7 +104,7 @@ export function AddonEstimateSection({
             Позиции, добавленные поверх согласованной сметы — при выдаче или довезённые позже.
           </p>
         </div>
-        <span className="shrink-0 text-xs text-ink-3">Смен: {addon.shifts}</span>
+        <span className="shrink-0 text-xs text-ink-3">Смен по брони: {addon.shifts}</span>
       </div>
       <table className="w-full text-[13px]">
         <thead className="text-[11px] uppercase tracking-wider text-ink-3">
