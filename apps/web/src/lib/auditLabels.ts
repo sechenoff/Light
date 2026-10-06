@@ -76,6 +76,7 @@ export const ACTION_LABELS: Record<string, string> = {
   BOOKING_REJECTED: "Бронь отклонена",
   BOOKING_ISSUED: "Выдача по брони",
   BOOKING_RETURNED: "Возврат по брони",
+  BOOKING_CONTINUATION_CREATED: "Продолжение брони: часть оборудования осталась у клиента",
   BOOKING_STATUS_CHANGED: "Статус брони изменён",
   BOOKING_ARCHIVED: "Бронь архивирована",
   BOOKING_RESTORED: "Бронь восстановлена",

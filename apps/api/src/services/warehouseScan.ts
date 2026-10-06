@@ -68,6 +68,7 @@ import {
   reconcileIssueUnits,
   reconcileReturnUnits,
 } from "./warehouseScanReconcile";
+import { hasPlannedStays } from "./bookingContinuation";
 
 export * from "./warehouseScanShared";
 export { getReconciliationPreview, getSessionWithDetails } from "./warehouseScanDetails";
@@ -204,6 +205,16 @@ export async function completeSession(
   } else {
     await assertReturnSplit(session.bookingId, options);
     await assertVehicleMileages(session.bookingId, options.vehicleMileages ?? []);
+    // Позиции «по плану у клиента» киоск пока не оставляет (этап 11): «Готово»
+    // сдало бы их на склад или в «не найдено». Приёмка — на карточке брони.
+    const withItems = await prisma.booking.findUniqueOrThrow({ where: { id: session.bookingId }, include: { items: true } });
+    if (hasPlannedStays(withItems)) {
+      throw new HttpError(
+        409,
+        "Часть позиций по плану ещё у клиента — оформите приёмку на карточке брони («Принять возврат»)",
+        "PLANNED_STAY_ON_CARD",
+      );
+    }
   }
 
   const ctx: CompletionCtx = { sessionId, bookingId: session.bookingId, operation, completedBy, options };

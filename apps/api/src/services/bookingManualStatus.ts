@@ -29,6 +29,8 @@ export type ManualStatusAction = "issue" | "return";
  * живущие своим циклом (MAINTENANCE/RETIRED/MISSING), не трогаем — фильтруем
  * по текущему статусу.
  */
+export type ManualStatusArgs = Parameters<typeof setBookingIssuedOrReturnedManually>[0];
+
 export async function setBookingIssuedOrReturnedManually(a: {
   bookingId: string;
   /** Статус, из которого переводим: захват — по нему (второе нажатие получает 409). */
@@ -45,9 +47,19 @@ export async function setBookingIssuedOrReturnedManually(a: {
     expectedPaymentDate?: Date | null;
     paymentComment?: string | null;
   };
+  /** Добавка к записи журнала (частичная приёмка: via и созданные продолжения). */
+  auditExtra?: Record<string, unknown>;
 }) {
+  return prisma.$transaction((tx: Prisma.TransactionClient) => setBookingIssuedOrReturnedInTx(tx, a));
+}
+
+/**
+ * То же внутри уже открытой транзакции — частичная приёмка возвращает
+ * основную бронь и создаёт продолжение одной транзакцией.
+ */
+export async function setBookingIssuedOrReturnedInTx(tx: Prisma.TransactionClient, a: ManualStatusArgs) {
   const id = a.bookingId;
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  {
     // Первой записью — условный переход статуса: проверка «можно ли» до
     // транзакции не защищает от второго нажатия и второго сотрудника.
     // Три быстрых «Вернуть» писали три события, «Отменить» ‖ «Выдать»
@@ -124,10 +136,11 @@ export async function setBookingIssuedOrReturnedManually(a: {
           unitsUpdated: touchedUnits,
           closedScanSessions: closed.length,
           ...(a.action === "issue" && a.force ? { forcedEarlyIssue: true } : {}),
+          ...(a.auditExtra ?? {}),
         }),
       });
     }
     const u = await tx.booking.findUniqueOrThrow({ where: { id }, include: MANUAL_STATUS_INCLUDE });
     return { booking: u, closedScanSessions: closed.length };
-  });
+  }
 }

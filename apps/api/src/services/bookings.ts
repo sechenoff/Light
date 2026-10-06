@@ -30,7 +30,7 @@ import { toMoscowDateString, fromMoscowDateString, formatMoscowDayTime } from ".
  * Вычисляет дату оплаты по умолчанию: endDate + N дней из OrganizationSettings.
  * Читает настройки из БД. N по умолчанию = 0 (день сдачи), если запись отсутствует.
  */
-async function computeDefaultPaymentDate(endDate: Date): Promise<Date> {
+export async function computeDefaultPaymentDate(endDate: Date): Promise<Date> {
   const settings = await prisma.organizationSettings.findUnique({ where: { id: "singleton" } });
   const days = settings?.defaultPaymentTermsDays ?? 0;
   // Берём московскую дату endDate, прибавляем N дней (как Moscow-midnight UTC)
@@ -726,7 +726,20 @@ export async function rebuildBookingEstimate(
   bookingId: string,
   opts?: { preserveAddonSplit?: boolean },
 ) {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction((tx) => writeMainEstimateInTx(tx, bookingId, opts));
+}
+
+/**
+ * Пересборка MAIN-сметы брони внутри уже открытой транзакции — то же, что
+ * rebuildBookingEstimate. Нужна частичной приёмке: продолжение создаётся и
+ * получает свою смету одной транзакцией с приёмкой основной брони.
+ */
+export async function writeMainEstimateInTx(
+  tx: Prisma.TransactionClient,
+  bookingId: string,
+  opts?: { preserveAddonSplit?: boolean },
+) {
+  {
     const booking = await tx.booking.findUnique({
       where: { id: bookingId },
       include: {
@@ -809,7 +822,7 @@ export async function rebuildBookingEstimate(
         lines: { create: linesData },
       },
     });
-  });
+  }
 }
 
 export async function confirmBooking(bookingId: string) {
