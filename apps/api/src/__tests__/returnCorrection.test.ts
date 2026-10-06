@@ -671,3 +671,27 @@ describe("«Часть не вернули»: второй круг провер
     expect(Date.parse(pv.body.conflicts[0].neededFrom)).toBeLessThan(until.getTime());
   });
 });
+
+describe("«Часть не вернули»: третий круг проверки", () => {
+  it("держатель, выданный раньше срока, держит позицию уже сейчас — он и назван, и записан в журнал", async () => {
+    const eq = await freshStand();
+    const { b, standItem } = await returnedBooking({ standId: eq });
+    const early = await prisma.booking.create({
+      data: {
+        clientId, projectName: "Выдали заранее", status: "ISSUED",
+        startDate: new Date(Date.now() + 30 * HOUR), endDate: new Date(Date.now() + 60 * HOUR), issuedAt: new Date(Date.now() - HOUR),
+        items: { create: [{ equipmentId: eq, quantity: 18 }] },
+      },
+    });
+    const stays = [{ bookingItemId: standItem, quantity: 3, until: new Date(Date.now() + 10 * HOUR).toISOString() }];
+    const pv = await preview(b.id, stays);
+    expect(pv.body.conflicts).toEqual([
+      expect.objectContaining({ needed: 3, available: 2, holder: expect.objectContaining({ bookingId: early.id, projectName: "Выдали заранее" }) }),
+    ]);
+    const res = await correct(b.id, { stays: [{ ...stays[0], acknowledgedConflict: true }], expectedSplitRevision: (await plan(b.id)).splitRevision });
+    expect(res.status).toBe(200);
+    const audit = await prisma.auditEntry.findFirst({ where: { entityId: res.body.continuationIds[0], action: "BOOKING_CONTINUATION_CREATED" } });
+    const after = typeof audit.after === "string" ? JSON.parse(audit.after) : audit.after;
+    expect(after).toMatchObject({ acknowledgedConflict: true, conflictBookingIds: early.id });
+  });
+});

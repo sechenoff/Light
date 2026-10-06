@@ -595,11 +595,14 @@ async function stayConflicts(
           excludeBookingId: booking.id,
           excludeHolderIds: familyIds,
         });
-        // Держатель, которому позиция нужна только после срока «до», дефицит не
-        // объясняет (окно поиска у длинной строки шире отрезка) — не называем его.
+        // Держатель занимает позицию с начала своей брони, а выданный раньше
+        // срока — с момента выдачи. Кому она нужна только после срока «до»,
+        // дефицит не объясняет (окно поиска у длинной строки шире отрезка) —
+        // такого не называем.
         const found = holders.get(equipmentId) ?? null;
-        const holder = found && Date.parse(found.from) < segEnd.getTime() ? found : null;
-        const neededFrom = holder ? Math.max(Date.parse(holder.from), segStart.getTime()) : segStart.getTime();
+        const occupiedFrom = found ? holderOccupiedFrom(found) : null;
+        const holder = found && occupiedFrom! < segEnd.getTime() ? found : null;
+        const neededFrom = holder ? Math.max(occupiedFrom!, segStart.getTime()) : segStart.getTime();
         out.push({
           bookingItemId: involved[0].bookingItemId,
           equipmentId,
@@ -618,6 +621,13 @@ async function stayConflicts(
     }
   }
   return out;
+}
+
+/** С какого момента держатель занимает позицию: начало брони или, у выданной раньше срока, выдача. */
+function holderOccupiedFrom(h: AddonConflict): number {
+  const start = Date.parse(h.from);
+  const issued = h.issuedAt ? Date.parse(h.issuedAt) : Number.POSITIVE_INFINITY;
+  return Math.min(start, issued);
 }
 
 /** Превью продолжения для окна приёмки: цена дополнительной сметы, держатели. */
