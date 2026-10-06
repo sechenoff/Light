@@ -317,6 +317,8 @@ export interface ChecklistState {
   plannedStays?: PlannedStay[];
   /** Ревизия разделения брони — уходит в `complete({ expectedSplitRevision })`. */
   splitRevision?: number;
+  /** Приёмка: до когда оплачена строка (ISO), bookingItemId → срок. */
+  linePaidThrough?: Record<string, string>;
 }
 
 /** Позиция «по плану у клиента» в чек-листе приёмки. */
@@ -335,6 +337,8 @@ export interface StayInput {
   quantity: number;
   until: string;
   equipmentUnitIds?: string[];
+  /** Нужна другой брони сверх оплаченного — оставить «под ответственность». */
+  acknowledgedConflict?: boolean;
 }
 
 // ── Return-flow outcomes ─────────────────────────────────────────────────────

@@ -53,7 +53,10 @@ import { SessionClosedNotice } from "./SessionClosedNotice";
 import { AbortSessionButton } from "./AbortSessionButton";
 import { ResumedSessionBanner } from "./ResumedSessionBanner";
 import { useChecklistDraft } from "./useChecklistDraft";
-import { PlannedStaysBlock, staysPayload } from "./PlannedStaysBlock";
+import { PlannedStaysBlock } from "./PlannedStaysBlock";
+import { KioskStayEditor, StayTerms } from "./KioskStayEditor";
+import type { KioskStay } from "./kioskStays";
+import { useKioskStays } from "./useKioskStays";
 import {
   buildReturnCompletePayload,
   computeAcceptedCount,
@@ -81,6 +84,7 @@ import {
 import type {
   ChecklistDraftV1,
   ChecklistSessionProps,
+  ChecklistItem,
   ChecklistState,
   CompleteResult,
   DraftOutdatedDetails,
@@ -126,6 +130,17 @@ function markedPlannedIds(state: { plannedStays?: { bookingItemId: string }[]; i
       return (item?.units ?? []).some((u) => u.checked || h.outcomes[u.unitId] != null);
     })
     .map((p) => p.bookingItemId);
+}
+
+/**
+ * Сетка COUNT-строки под её текущее количество: часть штук «остаётся у
+ * клиента» — лишние ячейки с конца уходят, вернули обратно — добавляются пустые.
+ */
+function fitSlots(slots: UnitSlot[] | undefined, qty: number): UnitSlot[] {
+  if (!slots) return emptySlots(qty);
+  if (slots.length === qty) return slots;
+  if (slots.length > qty) return slots.slice(0, qty);
+  return [...slots, ...emptySlots(qty).slice(slots.length)];
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -195,13 +210,33 @@ export function ReturnChecklist({
   const pendingRebase = useRef<PendingRebase | null>(null);
 
   const planned = useMemo(() => state?.plannedStays ?? [], [state]);
-  const items = useMemo(() => {
+  // Строки чек-листа до «остаётся у клиента»: по ним рисуются группы и
+  // редакторы «Остаётся у клиента…».
+  const baseItems = useMemo(() => {
     if (!state) return [];
     const plannedIds = new Set(planned.map((p) => p.bookingItemId));
     return returnableItems(state.items).filter(
       (i) => !plannedIds.has(i.bookingItemId) || returnNow.has(i.bookingItemId),
     );
   }, [state, planned, returnNow]);
+  // «Остаётся у клиента» (этап 15): строки за вычетом оставленного, stays,
+  // превью доплаты и держателей.
+  const {
+    plannedTerms,
+    extraStays,
+    adjustedById,
+    items,
+    allStays,
+    paidThroughOf,
+    previewLoading: staysPreviewLoading,
+    previewLineFor,
+    conflictFor,
+    previewDiscount,
+    unacknowledgedConflicts,
+    anyExtraStaying,
+    setExtraStay,
+    setPlannedTerm,
+  } = useKioskStays({ sessionId, state, baseItems, planned, returnNow });
 
   const applyHydration = useCallback(
     (h: HydratedReturn, opts: { markDirty: boolean }) => {
@@ -302,7 +337,18 @@ export function ReturnChecklist({
   }, []);
 
   // Группы категорий в порядке первого появления: порядок строк задаёт сервер.
-  const groups = useMemo(() => groupByCategory(items, (item) => item.category), [items]);
+  const groups = useMemo(() => groupByCategory(baseItems, (item) => item.category), [baseItems]);
+  // Сетки COUNT-строк под их текущее количество (часть штук могла остаться у клиента).
+  const effectiveGrids = useMemo(() => {
+    const m = new Map<string, UnitSlot[]>();
+    for (const it of items) {
+      const g = unitGrids.get(it.bookingItemId);
+      if (g && it.trackingMode !== "UNIT") m.set(it.bookingItemId, fitSlots(g, it.quantity));
+      else if (g) m.set(it.bookingItemId, g);
+    }
+    return m;
+  }, [items, unitGrids]);
+
 
   const unitIds = useMemo(() => returnUnitIds(items), [items]);
 
@@ -381,7 +427,7 @@ export function ReturnChecklist({
 
   /** Grid of a COUNT row, lazily all-PENDING. */
   function slotsOf(bookingItemId: string, qty: number): UnitSlot[] {
-    return unitGrids.get(bookingItemId) ?? emptySlots(qty);
+    return fitSlots(unitGrids.get(bookingItemId), qty);
   }
 
   function updateGrid(bookingItemId: string, qty: number, map: (slots: UnitSlot[]) => UnitSlot[]) {
@@ -394,7 +440,7 @@ export function ReturnChecklist({
     });
     setUnitGrids((prev) => {
       const updated = new Map(prev);
-      updated.set(bookingItemId, map(prev.get(bookingItemId) ?? emptySlots(qty)));
+      updated.set(bookingItemId, map(fitSlots(prev.get(bookingItemId), qty)));
       return updated;
     });
   }
@@ -451,6 +497,28 @@ export function ReturnChecklist({
     });
   }
 
+  /**
+   * «Остаётся у клиента…» у обычной строки. Единицы, которые теперь остаются,
+   * снимаются с «принято»: на полку их ставить нельзя.
+   */
+  function changeExtraStay(item: ChecklistItem, next: KioskStay | null) {
+    dirtyRef.current = true;
+    const prev = extraStays.get(item.bookingItemId);
+    const nowKept = new Set(next?.unitIds ?? []);
+    const added = (item.units ?? []).filter((u) => nowKept.has(u.unitId) && !(prev?.unitIds ?? []).includes(u.unitId));
+    for (const u of added) {
+      if (u.checked || outcomes[u.unitId]?.outcome === "ACCEPTED") void uncheck(u.unitId).catch(() => undefined);
+    }
+    if (added.length > 0) {
+      setOutcomes((o) => {
+        const n = { ...o };
+        for (const u of added) delete n[u.unitId];
+        return n;
+      });
+    }
+    setExtraStay(item.bookingItemId, next);
+  }
+
   // «Принять всё разом»: every UNIT unit ACCEPTED (hook guard dedupes) and
   // every COUNT slot ACCEPTED. Строки ×0 не трогаем — их в приёмке нет.
   async function acceptAll() {
@@ -493,7 +561,7 @@ export function ReturnChecklist({
 
   /** Commit row + summary errors; returns them (empty ⇒ valid). */
   function validate(): Record<string, string> {
-    const errs = computeReturnRowErrors(items, outcomes, unitGrids);
+    const errs = computeReturnRowErrors(items, outcomes, effectiveGrids);
     setRowErrors(errs);
     const count = Object.keys(errs).length;
     const messages: string[] = [];
@@ -503,6 +571,9 @@ export function ReturnChecklist({
       );
     }
     if (!vehicleMileagesValid) messages.push("Введите пробег для каждой машины брони");
+    if (unacknowledgedConflicts.length > 0) {
+      messages.push("Оставленное нужно другой брони — оставьте под ответственность или сократите срок");
+    }
     setValidationSummary(messages.length > 0 ? messages.join(". ") : null);
     return errs;
   }
@@ -584,6 +655,7 @@ export function ReturnChecklist({
       focusFirstError(errs);
       return;
     }
+    if (unacknowledgedConflicts.length > 0) return;
     // Пробег: per-row подсветка панели включится через attemptedSubmit.
     if (!vehicleMileagesValid) return;
     setSubmitting(true);
@@ -594,7 +666,7 @@ export function ReturnChecklist({
       const payload = buildReturnCompletePayload({
         items,
         outcomes,
-        unitGrids,
+        unitGrids: effectiveGrids,
         mileages: vehicleMileages,
       });
       if (state?.itemsVersion) payload.itemsVersion = state.itemsVersion;
@@ -602,7 +674,7 @@ export function ReturnChecklist({
       // Новый сервер знает позиции «по плану»: что не вернули сейчас — в
       // продолжение (пустой список — «вернули всё»). Старый поля не шлёт.
       if (state?.plannedStays) {
-        payload.stays = staysPayload(state.plannedStays, returnNow);
+        payload.stays = allStays;
         if (typeof state.splitRevision === "number") payload.expectedSplitRevision = state.splitRevision;
       }
       const res = await scanApi.complete(sessionId, payload);
@@ -691,7 +763,7 @@ export function ReturnChecklist({
   if (!state) return null;
 
   const interactionsDisabled = bulkBusy || submitting;
-  const anyStaying = planned.some((p) => !returnNow.has(p.bookingItemId));
+  const anyStaying = planned.some((p) => !returnNow.has(p.bookingItemId)) || anyExtraStaying;
   const draftOffline = draft.status === "offline" || draft.status === "failed";
   // Плашка «Продолжена приёмка»: страница передаёт ответ createSession только
   // для продолженной сессии; честно пишем, восстановлено ли что-то.
@@ -746,6 +818,34 @@ export function ReturnChecklist({
           returnNow={returnNow}
           onToggle={toggleReturnNow}
           disabled={interactionsDisabled}
+          renderTerms={
+            state.linePaidThrough
+              ? (p) => {
+                  const terms = plannedTerms.get(p.bookingItemId) ?? {
+                    quantity: p.quantity,
+                    unitIds: p.unitIds,
+                    choice: "paid" as const,
+                    until: p.until,
+                  };
+                  return (
+                    <StayTerms
+                      label={state.items.find((i) => i.bookingItemId === p.bookingItemId)?.equipmentName ?? "Позиция"}
+                      paidThrough={p.until}
+                      stay={terms}
+                      previewLine={previewLineFor(p.bookingItemId)}
+                      conflict={conflictFor(p.bookingItemId)}
+                      discountPercent={previewDiscount}
+                      previewLoading={staysPreviewLoading}
+                      disabled={interactionsDisabled}
+                      onChange={(next) => {
+                        dirtyRef.current = true;
+                        setPlannedTerm(p.bookingItemId, next);
+                      }}
+                    />
+                  );
+                }
+              : undefined
+          }
         />
 
         {/* «Принять всё разом» — primary bar (mockup .ph-acceptall). */}
@@ -770,20 +870,44 @@ export function ReturnChecklist({
           <section key={group.category} className="mb-1">
             <p className="eyebrow px-1.5 pb-1 pt-2">{group.category}</p>
             <div className="space-y-1.5">
-              {group.items.map((item) => (
-                <ReturnItemRows
-                  key={item.bookingItemId}
-                  item={item}
-                  sessionId={sessionId}
-                  outcomes={outcomes}
-                  slots={slotsOf(item.bookingItemId, item.quantity)}
-                  rowErrors={rowErrors}
-                  resetNotice={resetRows.has(item.bookingItemId) ? RESET_ROW_NOTICE : null}
-                  disabled={interactionsDisabled}
-                  handlers={handlers}
-                  registerRow={registerRow}
-                />
-              ))}
+              {group.items.map((base) => {
+                const item = adjustedById.get(base.bookingItemId) ?? null;
+                const isPlanned = planned.some((p) => p.bookingItemId === base.bookingItemId);
+                return (
+                  <div key={base.bookingItemId} className="space-y-1">
+                    {item ? (
+                      <ReturnItemRows
+                        item={item}
+                        sessionId={sessionId}
+                        outcomes={outcomes}
+                        slots={slotsOf(item.bookingItemId, item.quantity)}
+                        rowErrors={rowErrors}
+                        resetNotice={resetRows.has(item.bookingItemId) ? RESET_ROW_NOTICE : null}
+                        disabled={interactionsDisabled}
+                        handlers={handlers}
+                        registerRow={registerRow}
+                      />
+                    ) : (
+                      <p className="rounded-lg border border-teal-border bg-surface px-3 py-2.5 text-[14px] font-medium text-ink">
+                        {base.equipmentName} <span className="text-[12px] font-normal text-teal">· всё остаётся у клиента</span>
+                      </p>
+                    )}
+                    {!isPlanned && state.linePaidThrough && (
+                      <KioskStayEditor
+                        item={base}
+                        stay={extraStays.get(base.bookingItemId)}
+                        paidThrough={state.linePaidThrough[base.bookingItemId]}
+                        previewLine={previewLineFor(base.bookingItemId)}
+                        conflict={conflictFor(base.bookingItemId)}
+                        discountPercent={previewDiscount}
+                        previewLoading={staysPreviewLoading}
+                        disabled={interactionsDisabled}
+                        onChange={(next) => changeExtraStay(base, next)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
         ))}

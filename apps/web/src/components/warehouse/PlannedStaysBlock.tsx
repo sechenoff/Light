@@ -9,6 +9,8 @@
  * раньше — «Вернули сейчас», и строка уходит в обычный чек-лист ниже.
  * Оставить сверх оплаченного (чипы «+1 смена») — следующий этап.
  */
+import type { ReactNode } from "react";
+
 import type { ChecklistItem, PlannedStay } from "./types";
 
 /** «ср 14 окт., 10:00» по Москве. */
@@ -46,9 +48,14 @@ type Props = {
   returnNow: ReadonlySet<string>;
   onToggle: (bookingItemId: string) => void;
   disabled?: boolean;
+  /**
+   * Срок и доплата оставленного (чипы «+N смен», держатель) — вместо подписи
+   * «Вернут … · без доплаты». Не передано — старый сервер, только подпись.
+   */
+  renderTerms?: (stay: PlannedStay) => ReactNode;
 };
 
-export function PlannedStaysBlock({ stays, items, returnNow, onToggle, disabled = false }: Props) {
+export function PlannedStaysBlock({ stays, items, returnNow, onToggle, disabled = false, renderTerms }: Props) {
   if (stays.length === 0) return null;
   const nameOf = (id: string) => items.find((i) => i.bookingItemId === id)?.equipmentName ?? "Позиция";
   const staying = stays.filter((s) => !returnNow.has(s.bookingItemId));
@@ -96,11 +103,15 @@ export function PlannedStaysBlock({ stays, items, returnNow, onToggle, disabled 
                   ✓ Вернули сейчас
                 </button>
               </div>
-              <p className={`mt-1 text-[12px] ${back ? "text-emerald" : "text-indigo"}`}>
-                {back
-                  ? "Принимаете сейчас — отметьте в чек-листе ниже"
-                  : `Вернут ${formatStayWhen(s.until)} · без доплаты`}
-              </p>
+              {!back && renderTerms ? (
+                <div className="mt-2">{renderTerms(s)}</div>
+              ) : (
+                <p className={`mt-1 text-[12px] ${back ? "text-emerald" : "text-indigo"}`}>
+                  {back
+                    ? "Принимаете сейчас — отметьте в чек-листе ниже"
+                    : `Вернут ${formatStayWhen(s.until)} · без доплаты`}
+                </p>
+              )}
             </li>
           );
         })}
