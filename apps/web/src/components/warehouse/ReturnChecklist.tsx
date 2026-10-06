@@ -236,6 +236,7 @@ export function ReturnChecklist({
     anyExtraStaying,
     setExtraStay,
     setPlannedTerm,
+    refreshPreview: refreshStaysPreview,
   } = useKioskStays({ sessionId, state, baseItems, planned, returnNow });
 
   const applyHydration = useCallback(
@@ -572,7 +573,9 @@ export function ReturnChecklist({
     }
     if (!vehicleMileagesValid) messages.push("Введите пробег для каждой машины брони");
     if (unacknowledgedConflicts.length > 0) {
-      messages.push("Оставленное нужно другой брони — оставьте под ответственность или сократите срок");
+      messages.push(
+        `Нужно другой брони: ${unacknowledgedConflicts.map((c) => `«${c.name}»`).join(", ")} — оставьте под ответственность или сократите срок`,
+      );
     }
     setValidationSummary(messages.length > 0 ? messages.join(". ") : null);
     return errs;
@@ -639,6 +642,11 @@ export function ReturnChecklist({
       }
       setNotice(isScanApiError(err) ? err.message : OTHER_DEVICE_NOTICE);
       return;
+    }
+    if (code === "CONTINUATION_CONFLICT") {
+      // Оставленное заняли, пока шла приёмка: пересчитать — у строки появится
+      // карточка держателя и «Оставить под ответственность».
+      refreshStaysPreview();
     }
     setSubmitError(
       isScanApiError(err) ? err.message : "Не удалось завершить приёмку — попробуйте ещё раз",

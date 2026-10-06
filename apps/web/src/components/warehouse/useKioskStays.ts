@@ -35,6 +35,9 @@ export function useKioskStays({ sessionId, state, baseItems, planned, returnNow 
   const [extraStays, setExtraStays] = useState<ReadonlyMap<string, KioskStay>>(new Map());
   const [preview, setPreview] = useState<KioskStaysPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  // Пересчитать с теми же отметками: «Завершить» получил 409 — позицию
+  // заняли, пока шла приёмка, и карточка держателя должна появиться.
+  const [nonce, setNonce] = useState(0);
   const previewSeq = useRef(0);
 
   // Что остаётся у клиента, из строки уходит: у COUNT — меньше штук, у UNIT —
@@ -123,7 +126,7 @@ export function useKioskStays({ sessionId, state, baseItems, planned, returnNow 
     return () => clearTimeout(timer);
     // staysKey — содержимое allStays.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, staysKey, anyBeyond]);
+  }, [sessionId, staysKey, anyBeyond, nonce]);
 
   const previewLineFor = (id: string) =>
     preview?.continuations.flatMap((c) => c.lines).find((l) => l.bookingItemId === id) ?? null;
@@ -162,5 +165,6 @@ export function useKioskStays({ sessionId, state, baseItems, planned, returnNow 
     anyExtraStaying,
     setExtraStay,
     setPlannedTerm,
+    refreshPreview: () => setNonce((n) => n + 1),
   };
 }

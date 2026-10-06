@@ -18,6 +18,8 @@ import {
   stayChoices,
   toLocalInput,
   untilFor,
+  withTerms,
+  MAX_STAY_AHEAD_MS,
   type KioskStay,
   type KioskStayChoice,
   type KioskStaysPreview,
@@ -50,7 +52,7 @@ export function StayTerms({
 }) {
   const beyond = beyondPaid(stay.until, paidThrough);
   const pick = (choice: KioskStayChoice, customUntil?: string) =>
-    onChange({ ...stay, choice, until: choice === "date" ? customUntil ?? stay.until : untilFor(paidThrough, choice) });
+    onChange(withTerms(stay, { choice, until: choice === "date" ? customUntil ?? stay.until : untilFor(paidThrough, choice) }));
 
   return (
     <div className="space-y-2">
@@ -65,7 +67,7 @@ export function StayTerms({
               aria-checked={on}
               disabled={disabled}
               onClick={() => pick(c.choice)}
-              className={`flex min-h-11 items-center justify-center rounded border px-1 py-1 text-center text-[12px] leading-tight disabled:opacity-60 ${
+              className={`flex min-h-11 items-center justify-center rounded border px-1 py-1 text-center text-[12px] leading-tight hyphens-auto [overflow-wrap:anywhere] disabled:opacity-60 ${
                 on ? "border-accent-bright bg-accent-soft font-semibold text-accent" : "border-border bg-surface text-ink-2"
               }`}
             >
@@ -79,10 +81,13 @@ export function StayTerms({
           type="datetime-local"
           aria-label={`Срок возврата: ${label}`}
           value={toLocalInput(stay.until)}
+          min={toLocalInput(new Date().toISOString())}
+          max={toLocalInput(new Date(Date.now() + MAX_STAY_AHEAD_MS).toISOString())}
           disabled={disabled}
           onChange={(e) => {
             const d = new Date(e.target.value);
-            if (Number.isFinite(d.getTime()) && d.getTime() > Date.now()) pick("date", d.toISOString());
+            const t = d.getTime();
+            if (Number.isFinite(t) && t > Date.now() && t <= Date.now() + MAX_STAY_AHEAD_MS) pick("date", d.toISOString());
           }}
           className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-ink"
         />
@@ -91,6 +96,8 @@ export function StayTerms({
         Вернут <span className="font-semibold text-ink">{formatStayWhen(stay.until)}</span>
         {!beyond ? (
           " · без доплаты"
+        ) : previewLoading ? (
+          <span className="text-ink-3"> · считаем доплату…</span>
         ) : previewLine && previewLine.billedShifts > 0 ? (
           <span className="text-amber">
             {" "}
@@ -98,13 +105,13 @@ export function StayTerms({
             {previewLine.negotiated ? ", договорная цена" : discountPercent > 0 ? " со скидкой" : ""}
           </span>
         ) : (
-          <span className="text-ink-3"> · {previewLoading ? "считаем доплату…" : "сверх оплаченного"}</span>
+          <span className="text-ink-3"> · сверх оплаченного</span>
         )}
       </p>
       {conflict && beyond && (
         <div className="rounded-md border border-amber-border bg-amber-soft px-3 py-2.5" role="group" aria-label={`Нужен другой брони: ${label}`}>
           <p className="text-[13px] font-semibold text-amber">
-            Нужен {conflict.holder ? `брони ${quoteName(conflict.holder.projectName)}` : "другой брони"} с {formatStayWhen(conflict.from)}
+            Нужен {conflict.holder ? `брони ${quoteName(conflict.holder.projectName)}` : "другой брони"} с {formatStayWhen(conflict.neededFrom ?? conflict.from)}
           </p>
           <p className="mt-0.5 text-[12px] leading-snug text-ink-2">
             Свободно {Math.max(0, conflict.available)} из {conflict.needed}. Клиент сам договорился — склад не запрещает.
@@ -199,7 +206,7 @@ export function KioskStayEditor({
                 disabled={disabled}
                 onClick={() => {
                   const unitIds = on ? stay.unitIds.filter((id) => id !== u.unitId) : [...stay.unitIds, u.unitId];
-                  onChange({ ...stay, unitIds, quantity: unitIds.length });
+                  onChange(withTerms(stay, { unitIds, quantity: unitIds.length }));
                 }}
                 className={`min-h-11 rounded-md border px-3 text-[13px] ${on ? "border-teal bg-teal text-surface" : "border-border bg-surface text-ink-2"}`}
               >
@@ -215,7 +222,7 @@ export function KioskStayEditor({
               type="button"
               aria-label={`Меньше остаётся: ${item.equipmentName}`}
               disabled={disabled || stay.quantity <= 1}
-              onClick={() => onChange({ ...stay, quantity: stay.quantity - 1 })}
+              onClick={() => onChange(withTerms(stay, { quantity: stay.quantity - 1 }))}
               className="flex h-11 w-11 items-center justify-center text-ink-2 disabled:opacity-40"
             >
               −
@@ -227,7 +234,7 @@ export function KioskStayEditor({
               type="button"
               aria-label={`Больше остаётся: ${item.equipmentName}`}
               disabled={disabled || stay.quantity >= total}
-              onClick={() => onChange({ ...stay, quantity: stay.quantity + 1 })}
+              onClick={() => onChange(withTerms(stay, { quantity: stay.quantity + 1 }))}
               className="flex h-11 w-11 items-center justify-center text-ink-2 disabled:opacity-40"
             >
               +

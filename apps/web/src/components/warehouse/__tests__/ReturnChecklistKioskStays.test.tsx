@@ -42,6 +42,7 @@ vi.mock("../api", () => ({
 }));
 
 import { ReturnChecklist } from "../ReturnChecklist";
+import { formatStayWhen } from "../PlannedStaysBlock";
 
 const HOUR = 3_600_000;
 const SHIFT = 24 * HOUR;
@@ -213,6 +214,69 @@ describe("ReturnChecklist: «Остаётся у клиента» у обычн�
     await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
     const [, payload] = completeSpy.mock.calls[0] as [string, { stays: Array<Record<string, unknown>> }];
     expect(payload.stays[0]).toMatchObject({ bookingItemId: "bi-stand", quantity: 1, acknowledgedConflict: true });
+  });
+
+  it("карточка держателя — с начала его брони; другой срок — «под ответственность» заново", async () => {
+    const neededFrom = new Date(Date.now() + 30 * HOUR).toISOString();
+    previewSpy.mockResolvedValue(
+      previewWith({
+        conflicts: [
+          {
+            bookingItemId: "bi-stand",
+            name: "Стойка C-Stand",
+            needed: 1,
+            available: 0,
+            from: new Date(Date.now() + HOUR).toISOString(),
+            neededFrom,
+            holder: { projectName: "Клип Север", clientName: null },
+          },
+        ],
+      }),
+    );
+    mockState = stateWith([countItem("bi-stand", "Стойка C-Stand", 6)], { linePaidThrough: { "bi-stand": paidPast } });
+    render(<ReturnChecklist sessionId="s1" projectName="ZZ" onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Остаётся у клиента: Стойка C-Stand" }));
+    const holder = await screen.findByRole("group", { name: "Нужен другой брони: Стойка C-Stand" });
+    expect(holder).toHaveTextContent(`с ${formatStayWhen(neededFrom)}`);
+    fireEvent.click(within(holder).getByRole("button", { name: "Оставить под ответственность" }));
+    expect(within(holder).getByRole("button", { name: "✓ Под ответственность" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("radio", { name: "+2 смены" }));
+    const again = await screen.findByRole("group", { name: "Нужен другой брони: Стойка C-Stand" });
+    expect(within(again).getByRole("button", { name: "Оставить под ответственность" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("«Завершить» получил 409 — позицию заняли: превью пересчитано, видна карточка держателя", async () => {
+    let conflictNow = false;
+    previewSpy.mockImplementation(async () =>
+      conflictNow
+        ? previewWith({
+            conflicts: [
+              {
+                bookingItemId: "bi-stand",
+                name: "Стойка C-Stand",
+                needed: 1,
+                available: 0,
+                from: new Date(Date.now() + HOUR).toISOString(),
+                holder: { projectName: "Клип Север", clientName: null },
+              },
+            ],
+          })
+        : previewWith(),
+    );
+    completeSpy.mockImplementation(async () => {
+      conflictNow = true;
+      throw Object.assign(new Error("Позиция «Стойка C-Stand» нужна брони «Клип Север»"), { code: "CONTINUATION_CONFLICT", status: 409 });
+    });
+    mockState = stateWith([countItem("bi-stand", "Стойка C-Stand", 6)], { linePaidThrough: { "bi-stand": paidPast } });
+    render(<ReturnChecklist sessionId="s1" projectName="ZZ" onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Остаётся у клиента: Стойка C-Stand" }));
+    await waitFor(() => expect(previewSpy).toHaveBeenCalledTimes(1));
+    await wait(30);
+    await finish();
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/нужна брони «Клип Север»/)).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "Нужен другой брони: Стойка C-Stand" })).toBeInTheDocument();
+    expect(previewSpy).toHaveBeenCalledTimes(2);
   });
 
   it("штучная позиция: оставленная единица снимается с «принято» и уходит в stays", async () => {
