@@ -211,6 +211,20 @@ export function bookingOccupancyInterval(
 }
 
 /**
+ * Плановый конец позиции: конец брони, а у длинной позиции — её срок возврата
+ * (конец брони + лишние смены по 24 ч). Смены брони — billableShifts24h с её
+ * «не считать вторые сутки», как в смете. Без хвоста просрочки — это план,
+ * по нему проверяют склад при подтверждении и подбирают единицы.
+ */
+export function linePlannedEnd(
+  b: { startDate: Date; endDate: Date; skipPartialDay: boolean },
+  lineShifts: number | null | undefined,
+): Date {
+  if (lineShifts == null) return b.endDate;
+  return new Date(lineDueAt(b.endDate, billableShifts24h(b.startDate, b.endDate, b.skipPartialDay), lineShifts));
+}
+
+/**
  * Интервал, в который ПОЗИЦИЯ брони занимает склад. Как у брони
  * (`bookingOccupancyInterval`), но конец — срок возврата позиции: позиция со
  * своим числом смен сверх брони (BookingItem.shifts) держит склад дольше —
@@ -226,10 +240,7 @@ export function lineOccupancyInterval(
 ): { start: number; end: number; dueAt: number } {
   const base = bookingOccupancyInterval(b, now);
   const endMs = b.endDate.getTime();
-  const dueAt =
-    lineShifts == null
-      ? endMs
-      : lineDueAt(endMs, billableShifts24h(b.startDate, b.endDate, b.skipPartialDay), lineShifts);
+  const dueAt = linePlannedEnd(b, lineShifts).getTime();
   if (dueAt === endMs) return { ...base, dueAt };
   return { start: base.start, end: b.status === "ISSUED" ? Math.max(dueAt, now + 1) : dueAt, dueAt };
 }

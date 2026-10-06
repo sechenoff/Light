@@ -22,7 +22,7 @@ import type { Booking, BookingStatus, PrismaClient, ScanOperation, ScanSession }
 
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
-import { toMoscowDateString } from "../utils/moscowDate";
+import { formatMoscowDayTime, toMoscowDateString } from "../utils/moscowDate";
 import { writeAuditEntry } from "./audit";
 
 /** Базовый клиент или клиент интерактивной транзакции. */
@@ -82,20 +82,6 @@ export const CLIENT_CANCEL_REASONS = ["KIOSK_ABORT", "CARD_ABORT", "EMPTY_LEAVE"
 /** Действие аудита для закрытия сессии киоска. */
 export const SCAN_SESSION_CANCELLED_ACTION = "SCAN_SESSION_CANCELLED";
 
-
-/** «24.09 08:42» по Москве. */
-function formatMoscowDayTime(d: Date): string {
-  const parts = new Intl.DateTimeFormat("ru-RU", {
-    timeZone: "Europe/Moscow",
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(d);
-  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("day")}.${get("month")} ${get("hour")}:${get("minute")}`;
-}
 
 export function alreadyCompletedMessage(op: ScanOperation): string {
   return op === "ISSUE" ? "Выдача по этой брони уже оформлена" : "Приёмка по этой брони уже завершена";

@@ -9,14 +9,13 @@ import { billableShifts24h, formatExportHourCalculationLine } from "../utils/dat
 import { HttpError } from "../utils/errors";
 import { computeUnitPriceForBookingPeriod, resolveCatalogLinePrice, splitEquipmentDiscount } from "./pricing";
 import { generateEstimateDocNumber } from "./numberingService";
-import { getAvailability } from "./availability";
+import { getAvailability, linePlannedEnd } from "./availability";
 import { findHoldersBatch, type AddonConflict } from "./addonAvailability";
-import { notEnoughUnitsError } from "./stockCap";
+import { listFreeUnitIdsOnWindow, notEnoughUnitsError } from "./stockCap";
 import { computeTransportPrice } from "./transportCalculator";
 import type { TransportBreakdown } from "./transportCalculator";
-import { toMoscowDateString, fromMoscowDateString } from "../utils/moscowDate";
+import { toMoscowDateString, fromMoscowDateString, formatMoscowDayTime } from "../utils/moscowDate";
 
-const BLOCKING_STATUSES = ["CONFIRMED", "ISSUED"] as const;
 
 /**
  * Вычисляет дату оплаты по умолчанию: endDate + N дней из OrganizationSettings.
@@ -898,16 +897,38 @@ export async function confirmBooking(bookingId: string) {
       await tx.$executeRaw`UPDATE "Equipment" SET "totalQuantity" = "totalQuantity" WHERE "id" = ${it.equipmentId};`;
     }
 
-    const availability = await getAvailability({
-      startDate: booking.startDate,
-      endDate: booking.endDate,
-      equipmentIds: requestedItemsSorted.map((i) => i.equipmentId),
-      // MF-1: PENDING_APPROVAL теперь блокирует доступность — исключаем саму бронь,
-      // иначе она конфликтовала бы сама с собой при approve (PENDING_APPROVAL → CONFIRMED).
-      excludeBookingId: bookingId,
-      tx,
-    });
+    // Каждая позиция проверяется на своём окне: длинная (свои смены сверх
+    // брони) — до своего срока возврата, остальные — до конца брони. Нехватка
+    // на дополнительные дни длинной позиции — такой же отказ, как любая другая.
+    // Позиции с общим концом окна — одним запросом.
+    const lineEndByEquipment = new Map(
+      catalogBookingItems.map((it) => [it.equipmentId!, linePlannedEnd(booking, it.shifts)]),
+    );
+    const equipmentByEnd = new Map<number, string[]>();
+    for (const it of requestedItemsSorted) {
+      const end = lineEndByEquipment.get(it.equipmentId)!.getTime();
+      equipmentByEnd.set(end, [...(equipmentByEnd.get(end) ?? []), it.equipmentId]);
+    }
+    const availability: Awaited<ReturnType<typeof getAvailability>> = [];
+    for (const [end, equipmentIds] of equipmentByEnd) {
+      availability.push(
+        ...(await getAvailability({
+          startDate: booking.startDate,
+          endDate: new Date(end),
+          equipmentIds,
+          // MF-1: PENDING_APPROVAL теперь блокирует доступность — исключаем саму бронь,
+          // иначе она конфликтовала бы сама с собой при approve (PENDING_APPROVAL → CONFIRMED).
+          excludeBookingId: bookingId,
+          tx,
+        })),
+      );
+    }
     const availabilityById = new Map(availability.map((a) => [a.equipment.id, a]));
+    /** Конец окна позиции, если он позже конца брони — для текста отказа. */
+    const longLineUntil = (equipmentId: string): string | undefined => {
+      const end = lineEndByEquipment.get(equipmentId);
+      return end && end.getTime() > booking.endDate.getTime() ? end.toISOString() : undefined;
+    };
 
     const conflicts: Array<{
       equipmentId: string;
@@ -916,6 +937,8 @@ export async function confirmBooking(bookingId: string) {
       occupiedQuantity: number;
       availableQuantity: number;
       requestedQuantity: number;
+      /** Позиция взята дольше брони: проверена до этого момента (ISO). */
+      until?: string;
       /** Кто держит позицию на эти даты (ближайшая по началу чужая бронь). */
       holder?: AddonConflict | null;
     }> = [];
@@ -934,6 +957,7 @@ export async function confirmBooking(bookingId: string) {
           occupiedQuantity: 0,
           availableQuantity: 0,
           requestedQuantity: item.quantity,
+          until: longLineUntil(item.equipmentId),
         });
         continue;
       }
@@ -946,6 +970,7 @@ export async function confirmBooking(bookingId: string) {
           occupiedQuantity: a.occupiedQuantity,
           availableQuantity: a.availableQuantity,
           requestedQuantity: requested,
+          until: longLineUntil(item.equipmentId),
         });
       }
     }
@@ -956,7 +981,7 @@ export async function confirmBooking(bookingId: string) {
       const summary = conflicts
         .map(
           (c) =>
-            `${c.equipmentName}: нужно ${c.requestedQuantity}, свободно ${c.availableQuantity} из ${c.totalQuantity}`,
+            `${c.equipmentName}${c.until ? ` (до ${formatMoscowDayTime(new Date(c.until))})` : ""}: нужно ${c.requestedQuantity}, свободно ${c.availableQuantity} из ${c.totalQuantity}`,
         )
         .join("; ");
       // Кто держит. Выданная бронь держит прибор до приёмки, а на проде возврат
@@ -1041,45 +1066,6 @@ export async function confirmBooking(bookingId: string) {
     const discountPercent = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
     const { subtotal, discountAmount, totalAfterDiscount } = splitEquipmentDiscount(lines, discountPercent);
 
-    // Reserve units for UNIT-tracked equipment (count-only needs no per-unit rows).
-    const overlappingBlockingBookings = await tx.booking.findMany({
-      where: {
-        status: { in: [...BLOCKING_STATUSES] },
-        startDate: { lte: booking.endDate },
-        endDate: { gte: booking.startDate },
-      },
-      select: { id: true },
-    });
-    const overlappingBookingIds = overlappingBlockingBookings.map((b) => b.id);
-    const bookingItemIds = booking.items.map((it) => it.id);
-
-    // Map bookingItemId -> equipmentId already present; we need booked unit sets by equipmentId.
-    const bookedReservedUnitsByEquipmentId = new Map<string, Set<string>>();
-    if (overlappingBookingIds.length > 0) {
-      const overlappingBookingItems = await tx.bookingItem.findMany({
-        where: {
-          bookingId: { in: overlappingBookingIds },
-          equipmentId: { in: requestedItems.map((i) => i.equipmentId), not: null },
-        },
-        select: { id: true, equipmentId: true },
-      });
-
-      const bookingItemIdToEquipmentId = new Map(overlappingBookingItems.map((bi) => [bi.id, bi.equipmentId]));
-      const reservedUnits = await tx.bookingItemUnit.findMany({
-        where: {
-          bookingItemId: { in: overlappingBookingItems.map((bi) => bi.id) },
-        },
-        select: { bookingItemId: true, equipmentUnitId: true },
-      });
-
-      for (const r of reservedUnits) {
-        const equipmentId = bookingItemIdToEquipmentId.get(r.bookingItemId);
-        if (!equipmentId) continue;
-        if (!bookedReservedUnitsByEquipmentId.has(equipmentId)) bookedReservedUnitsByEquipmentId.set(equipmentId, new Set());
-        bookedReservedUnitsByEquipmentId.get(equipmentId)!.add(r.equipmentUnitId);
-      }
-    }
-
     // Prepare create payloads.
     const estimateCreate = {
       currency: "RUB",
@@ -1107,39 +1093,55 @@ export async function confirmBooking(bookingId: string) {
       },
     };
 
-    // Reserve units per booking item (for UNIT tracking).
-    // We lock by updating equipment rows would be ideal, but Prisma/SQLite doesn't support fine locks.
-    // Transaction scope is enough since we validate conflicts with fresh availability before reserving.
-    for (const it of booking.items) {
-      if (!it.equipmentId || !it.equipment) continue;
-      if (it.equipment.stockTrackingMode !== "UNIT") continue;
-      const alreadyReserved = bookedReservedUnitsByEquipmentId.get(it.equipmentId) ?? new Set<string>();
-      const availableUnits = await tx.equipmentUnit.findMany({
-        where: { equipmentId: it.equipmentId, status: "AVAILABLE" },
-        select: { id: true },
-        orderBy: { id: "asc" },
+    // Резерв экземпляров под UNIT-позиции (у COUNT экземпляров нет). Общий
+    // подбор stockCap: живые резервы чужих броней в блокирующих статусах, без
+    // архива, полуоткрытые окна (стык-в-стык не пересекается) — так же, как
+    // доступность. Окно позиции — до её срока: длинная позиция уедет вместе с
+    // единицей на все свои смены.
+    // Бронь, которую вернули с подтверждения на согласование (или отклонили),
+    // свои резервы сохранила. Годные — единица на полке и никем другим на
+    // окне не занята — оставляем и добираем только недостающее: иначе та же
+    // единица резервировалась бы второй раз (падение на уникальном ключе).
+    // Негодные снимаем: пока бронь была черновиком, единицу могла занять
+    // другая бронь — оставить её значило бы выдать один прибор дважды.
+    const unitItems = booking.items.filter((it) => it.equipmentId && it.equipment?.stockTrackingMode === "UNIT");
+    const ownLiveRows = unitItems.length > 0
+      ? await tx.bookingItemUnit.findMany({
+          where: { bookingItemId: { in: unitItems.map((it) => it.id) }, returnedAt: null },
+          select: { id: true, bookingItemId: true, equipmentUnitId: true },
+        })
+      : [];
+    for (const it of unitItems) {
+      // Пул без исключения своих резервов: свои годные в нём есть, негодных нет.
+      const pool = await listFreeUnitIdsOnWindow(tx, {
+        bookingId,
+        bookingItemId: null,
+        equipmentId: it.equipmentId!,
+        start: booking.startDate,
+        end: lineEndByEquipment.get(it.equipmentId!) ?? booking.endDate,
       });
-      const allFreeUnitIds = availableUnits
-        .map((u) => u.id)
-        .filter((id) => !alreadyReserved.has(id));
-      const freeUnitIds = allFreeUnitIds.slice(0, it.quantity);
-      if (freeUnitIds.length < it.quantity) {
+      const poolSet = new Set(pool);
+      const own = ownLiveRows.filter((r) => r.bookingItemId === it.id);
+      const stale = own.filter((r) => !poolSet.has(r.equipmentUnitId));
+      if (stale.length > 0) {
+        await tx.bookingItemUnit.deleteMany({ where: { id: { in: stale.map((r) => r.id) } } });
+      }
+      const kept = new Set(own.filter((r) => poolSet.has(r.equipmentUnitId)).map((r) => r.equipmentUnitId));
+      const need = it.quantity - kept.size;
+      if (need <= 0) continue;
+      const free = pool.filter((id) => !kept.has(id));
+      if (free.length < need) {
         // Агрегат по датам прошёл, а конкретных экземпляров нет: единица
-        // застряла «Выдана» у брони с чужими датами или в ремонте. Раньше —
-        // английское «Not enough free units during reservation.» без кода.
+        // застряла «Выдана» у брони с чужими датами или в ремонте.
         throw notEnoughUnitsError({
-          equipmentId: it.equipmentId,
-          name: it.equipment.name,
-          available: allFreeUnitIds.length,
+          equipmentId: it.equipmentId!,
+          name: it.equipment!.name,
+          available: kept.size + free.length,
           requested: it.quantity,
         });
       }
-
       await tx.bookingItemUnit.createMany({
-        data: freeUnitIds.map((unitId) => ({
-          bookingItemId: it.id,
-          equipmentUnitId: unitId,
-        })),
+        data: free.slice(0, need).map((unitId) => ({ bookingItemId: it.id, equipmentUnitId: unitId })),
       });
     }
 
