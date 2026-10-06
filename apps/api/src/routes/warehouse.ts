@@ -673,10 +673,11 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       select: { id: true, operation: true },
     });
     // Продолжения, в которые ушли позиции «по плану у клиента» — для экрана итога.
+    const continuationIds = summary.continuationIds ?? [];
     const continuations =
-      summary.continuationIds.length > 0
+      continuationIds.length > 0
         ? await prisma.booking.findMany({
-            where: { id: { in: summary.continuationIds } },
+            where: { id: { in: continuationIds } },
             select: { id: true, docNumber: true, endDate: true, items: { select: { quantity: true } } },
             orderBy: { endDate: "asc" },
           })
