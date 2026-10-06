@@ -20,7 +20,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { bookingOccupancyInterval, standardReservations } from "./availability";
 import { projectReservations, reservationOverlaps, type Reservation } from "./projectReservations";
-import { computeAddCaps } from "./stockCap";
+import { computeAddCaps, lineWindowEnds } from "./stockCap";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -32,7 +32,7 @@ export interface AddonConflict {
   projectName: string;
   clientName: string | null;
   from: string;               // ISO — начало брони-держателя
-  to: string;                 // ISO — конец брони-держателя
+  to: string;                 // ISO — когда держатель вернёт позицию (у длинной позиции — позже конца брони)
   /**
    * ISO — когда держатель освободит позицию (конец его брони). null, если
    * выданная бронь просрочена: срок прошёл, а возврат не отмечен — когда
@@ -105,6 +105,14 @@ async function loadHolders(
   });
   const bookingById = new Map(bookings.map((b) => [b.id, b]));
 
+  // Срок возврата позиции у держателя: у длинной позиции он позже конца брони.
+  const dueByEquipmentBooking = new Map<string, number>();
+  for (const r of reservations) {
+    if (r.dueAt == null) continue;
+    const key = `${r.equipmentId}|${r.bookingId}`;
+    dueByEquipmentBooking.set(key, Math.max(dueByEquipmentBooking.get(key) ?? 0, r.dueAt));
+  }
+
   const byEquipment = new Map<string, typeof bookings>();
   for (const r of reservations) {
     const b = bookingById.get(r.bookingId);
@@ -121,21 +129,37 @@ async function loadHolders(
       (x, y) => occupiedFrom(x) - occupiedFrom(y) || x.id.localeCompare(y.id),
     )[0];
     const holderStatus = asHolderStatus(nearest.status);
-    const overdue = holderStatus === "ISSUED" && nearest.endDate.getTime() < nowMs;
+    const due = new Date(dueByEquipmentBooking.get(`${equipmentId}|${nearest.id}`) ?? nearest.endDate.getTime());
+    const overdue = holderStatus === "ISSUED" && due.getTime() < nowMs;
     holders.set(equipmentId, {
       bookingId: nearest.id,
       bookingNo: bookingNo(nearest.id),
       projectName: nearest.projectName,
       clientName: nearest.client?.name ?? null,
       from: nearest.startDate.toISOString(),
-      to: nearest.endDate.toISOString(),
-      freeFrom: overdue ? null : nearest.endDate.toISOString(),
+      to: due.toISOString(),
+      freeFrom: overdue ? null : due.toISOString(),
       holderStatus,
       issuedAt: holderStatus === "ISSUED" ? nearest.issuedAt?.toISOString() ?? null : null,
       overdue,
     });
   }
   return holders;
+}
+
+/** Конец окна для длинных позиций брони `bookingId` (см. stockCap.lineWindowEnds). */
+async function lineEndFor(
+  client: Db,
+  bookingId: string,
+  window: { start: Date; end: Date },
+  equipmentIds: string[],
+): Promise<Map<string, Date>> {
+  const items = await client.bookingItem.findMany({
+    where: { bookingId, equipmentId: { in: equipmentIds }, shifts: { not: null } },
+    select: { equipmentId: true, shifts: true },
+  });
+  const ends = await lineWindowEnds(client, bookingId, window, items);
+  return new Map(Array.from(ends, ([id, ms]) => [id, new Date(ms)]));
 }
 
 /**
@@ -171,10 +195,13 @@ export async function findAddonConflict(
   const available = Math.max(0, cap.physicalStock - cap.occupiedByOthers);
   if (available >= alreadyInBooking + requested) return null;
 
+  // Длинная позиция брони занята до своего срока — держателя ищем в том же
+  // окне, по которому посчитан потолок (computeAddCaps).
+  const lineEnd = await lineEndFor(client, excludeBookingId, { start, end }, [equipmentId]);
   const holders = await loadHolders(client, {
     equipmentIds: [equipmentId],
     start,
-    end,
+    end: lineEnd.get(equipmentId) ?? end,
     excludeBookingId,
     now: new Date(),
   });
@@ -197,7 +224,19 @@ export async function findHoldersBatch(
   const equipmentIds = Array.from(new Set(a.equipmentIds));
   if (equipmentIds.length === 0) return result;
 
-  const holders = await loadHolders(client, { ...a, equipmentIds, now: new Date() });
+  // Позиции с одинаковым концом окна — одним запросом; длинные позиции брони
+  // — на своём окне до срока (тот же расчёт, что у computeAddCaps).
+  const lineEnd = await lineEndFor(client, a.excludeBookingId, { start: a.start, end: a.end }, equipmentIds);
+  const groups = new Map<number, string[]>();
+  for (const id of equipmentIds) {
+    const end = lineEnd.get(id)?.getTime() ?? a.end.getTime();
+    groups.set(end, [...(groups.get(end) ?? []), id]);
+  }
+  const holders = new Map<string, Holder>();
+  for (const [end, ids] of groups) {
+    const groupHolders = await loadHolders(client, { ...a, end: new Date(end), equipmentIds: ids, now: new Date() });
+    for (const [id, h] of groupHolders) holders.set(id, h);
+  }
   if (holders.size === 0) return result;
   const caps = await computeAddCaps(client, {
     bookingId: a.excludeBookingId,

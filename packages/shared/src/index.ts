@@ -31,3 +31,4 @@ export {
 export type { CrewInput, RoleBreakdown, CalculationResult } from "./crewCalculator";
 export * from "./bookingRegister";
 export * from "./bookingIssues";
+export * from "./lineShifts";

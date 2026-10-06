@@ -18,10 +18,13 @@
  * видит единицу, застрявшую у просроченной брони с чужими датами.
  */
 import type { Prisma } from "@prisma/client";
+import { lineDueAt } from "@light-rental/shared";
 
 import { prisma } from "../prisma";
+import { billableShifts24h } from "../utils/dates";
 import { HttpError } from "../utils/errors";
-import { BLOCKING_STATUSES, getAvailabilityForIds } from "./availability";
+import { BLOCKING_STATUSES, getAvailabilityForIds, LONG_LINE_LOOKBACK_MS } from "./availability";
+import type { AvailabilityRow } from "./availability";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -97,16 +100,9 @@ export async function computeAddCaps(
 
   // Последовательно, а не Promise.all: внутри интерактивной транзакции запросы
   // всё равно идут по одному соединению.
-  const rows = await getAvailabilityForIds({
-    startDate: a.window.start,
-    endDate: a.window.end,
-    equipmentIds: ids,
-    excludeBookingId: a.bookingId,
-    tx: client,
-  });
   const items = await client.bookingItem.findMany({
     where: { bookingId: a.bookingId, equipmentId: { in: ids } },
-    select: { id: true, equipmentId: true, quantity: true },
+    select: { id: true, equipmentId: true, quantity: true, shifts: true },
   });
   const alreadyFromBooking = new Map<string, number>();
   const bookingItemIdByEquipment = new Map<string, string>();
@@ -116,18 +112,39 @@ export async function computeAddCaps(
     bookingItemIdByEquipment.set(it.equipmentId, it.id);
   }
 
-  const unitEquipmentIds = Array.from(rows.values())
-    .filter((r) => r.equipment.stockTrackingMode === "UNIT")
-    .map((r) => r.equipment.id);
-  const freeUnits = await freeUnitIdsByEquipment(client, {
-    bookingId: a.bookingId,
-    equipmentIds: unitEquipmentIds,
-    ownBookingItemIds: unitEquipmentIds
-      .map((id) => bookingItemIdByEquipment.get(id))
-      .filter((id): id is string => Boolean(id)),
-    start: a.window.start,
-    end: a.window.end,
-  });
+  // Позиция со своими сменами сверх брони уезжает дольше: её потолок
+  // считается на окне до её срока возврата. Без длинных позиций окно одно.
+  const windowEnd = await lineWindowEnds(client, a.bookingId, a.window, items);
+  const groups = new Map<number, string[]>();
+  for (const id of ids) {
+    const end = windowEnd.get(id) ?? a.window.end.getTime();
+    groups.set(end, [...(groups.get(end) ?? []), id]);
+  }
+  const rows = new Map<string, AvailabilityRow>();
+  const freeUnits = new Map<string, string[]>();
+  for (const [end, groupIds] of groups) {
+    const groupRows = await getAvailabilityForIds({
+      startDate: a.window.start,
+      endDate: new Date(end),
+      equipmentIds: groupIds,
+      excludeBookingId: a.bookingId,
+      tx: client,
+    });
+    for (const [id, row] of groupRows) rows.set(id, row);
+    const unitEquipmentIds = Array.from(groupRows.values())
+      .filter((r) => r.equipment.stockTrackingMode === "UNIT")
+      .map((r) => r.equipment.id);
+    const groupFree = await freeUnitIdsByEquipment(client, {
+      bookingId: a.bookingId,
+      equipmentIds: unitEquipmentIds,
+      ownBookingItemIds: unitEquipmentIds
+        .map((id) => bookingItemIdByEquipment.get(id))
+        .filter((id): id is string => Boolean(id)),
+      start: a.window.start,
+      end: new Date(end),
+    });
+    for (const [id, list] of groupFree) freeUnits.set(id, list);
+  }
 
   for (const row of rows.values()) {
     const equipmentId = row.equipment.id;
@@ -162,11 +179,38 @@ export async function computeAddCaps(
 }
 
 /**
+ * Конец окна для длинных позиций брони: max(конец окна, срок возврата
+ * позиции). В ответе только позиции, чьё окно длиннее общего.
+ */
+export async function lineWindowEnds(
+  client: Db,
+  bookingId: string,
+  window: StockWindow,
+  items: ReadonlyArray<{ equipmentId: string | null; shifts: number | null }>,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  const longLines = items.filter((it) => it.equipmentId && it.shifts != null);
+  if (longLines.length === 0) return result;
+  const booking = await client.booking.findUnique({
+    where: { id: bookingId },
+    select: { startDate: true, endDate: true, skipPartialDay: true },
+  });
+  if (!booking) return result;
+  const bookingShifts = billableShifts24h(booking.startDate, booking.endDate, booking.skipPartialDay);
+  for (const it of longLines) {
+    const due = lineDueAt(booking.endDate, bookingShifts, it.shifts);
+    if (due > window.end.getTime()) result.set(it.equipmentId!, due);
+  }
+  return result;
+}
+
+/**
  * Свободные экземпляры по позициям: статус AVAILABLE, не в живом резерве
  * пересекающейся брони (блокирующие статусы, без архива) и не в живом резерве
  * своих позиций брони. Окно полуоткрытое: бронь, закончившаяся ровно в начале
- * окна, экземпляр уже не держит. Под ответственность чужие резервы НЕ отдаём:
- * конкретная единица нужна той брони на выдаче.
+ * окна, экземпляр уже не держит. Длинная позиция чужой брони держит единицу до
+ * своего срока возврата, а не до конца брони. Под ответственность чужие резервы
+ * НЕ отдаём: конкретная единица нужна той брони на выдаче.
  */
 async function freeUnitIdsByEquipment(
   client: Db,
@@ -174,21 +218,42 @@ async function freeUnitIdsByEquipment(
 ): Promise<Map<string, string[]>> {
   const result = new Map<string, string[]>();
   if (a.equipmentIds.length === 0) return result;
-  const takenByOthers = await client.bookingItemUnit.findMany({
+  const otherBooking = {
+    id: { not: a.bookingId },
+    status: { in: BLOCKING_STATUSES },
+    deletedAt: null,
+    startDate: { lt: a.end },
+  };
+  const candidatesTaken = await client.bookingItemUnit.findMany({
     where: {
       returnedAt: null,
       equipmentUnit: { equipmentId: { in: a.equipmentIds } },
       bookingItem: {
-        booking: {
-          id: { not: a.bookingId },
-          status: { in: BLOCKING_STATUSES },
-          deletedAt: null,
-          startDate: { lt: a.end },
-          endDate: { gt: a.start },
-        },
+        OR: [
+          { booking: { ...otherBooking, endDate: { gt: a.start } } },
+          // Бронь кончилась раньше окна, но её длинная позиция ещё держит единицу.
+          {
+            shifts: { not: null },
+            booking: { ...otherBooking, endDate: { gt: new Date(a.start.getTime() - LONG_LINE_LOOKBACK_MS) } },
+          },
+        ],
       },
     },
-    select: { equipmentUnitId: true },
+    select: {
+      equipmentUnitId: true,
+      bookingItem: {
+        select: { shifts: true, booking: { select: { startDate: true, endDate: true, skipPartialDay: true } } },
+      },
+    },
+  });
+  const startMs = a.start.getTime();
+  const takenByOthers = candidatesTaken.filter((r) => {
+    const b = r.bookingItem.booking;
+    const due =
+      r.bookingItem.shifts == null
+        ? b.endDate.getTime()
+        : lineDueAt(b.endDate, billableShifts24h(b.startDate, b.endDate, b.skipPartialDay), r.bookingItem.shifts);
+    return due > startMs;
   });
   const mine = a.ownBookingItemIds.length > 0
     ? await client.bookingItemUnit.findMany({
@@ -225,12 +290,18 @@ export async function listFreeUnitIds(
   client: Db,
   a: { bookingId: string; bookingItemId: string | null; equipmentId: string; start: Date; end: Date },
 ): Promise<string[]> {
+  // Единица уедет с позицией до её срока возврата: у длинной позиции — позже
+  // конца брони, и свободной она должна быть на всё это время.
+  const item = a.bookingItemId
+    ? await client.bookingItem.findUnique({ where: { id: a.bookingItemId }, select: { equipmentId: true, shifts: true } })
+    : null;
+  const lineEnd = item ? (await lineWindowEnds(client, a.bookingId, { start: a.start, end: a.end }, [item])).get(a.equipmentId) : undefined;
   const byEquipment = await freeUnitIdsByEquipment(client, {
     bookingId: a.bookingId,
     equipmentIds: [a.equipmentId],
     ownBookingItemIds: a.bookingItemId ? [a.bookingItemId] : [],
     start: a.start,
-    end: a.end,
+    end: lineEnd != null ? new Date(lineEnd) : a.end,
   });
   return byEquipment.get(a.equipmentId) ?? [];
 }
