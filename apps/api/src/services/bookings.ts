@@ -7,7 +7,14 @@ import type { Booking, Equipment, BookingItem, Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { billableShifts24h, formatExportHourCalculationLine } from "../utils/dates";
 import { HttpError } from "../utils/errors";
-import { computeUnitPriceForBookingPeriod, resolveBookingLinePrice, splitEquipmentDiscount } from "./pricing";
+import { computeUnitPriceForBookingPeriod, splitEquipmentDiscount } from "./pricing";
+import {
+  CUSTOM_LINE_CATEGORY,
+  catalogEstimateLine,
+  customEstimateLine,
+  estimateLineCreateData,
+  estimateLinesFromBookingItems,
+} from "./estimateLines";
 import { generateEstimateDocNumber } from "./numberingService";
 import { getAvailability, linePlannedEnd } from "./availability";
 import { findHoldersBatch, type AddonConflict } from "./addonAvailability";
@@ -30,7 +37,7 @@ async function computeDefaultPaymentDate(endDate: Date): Promise<Date> {
   return new Date(endMoscowMidnight.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
-export const CUSTOM_LINE_CATEGORY = "Произвольная позиция";
+export { CUSTOM_LINE_CATEGORY };
 
 function sumDec(values: Decimal[]) {
   return values.reduce((acc, v) => acc.add(v), new Decimal(0));
@@ -154,51 +161,16 @@ export async function quoteEstimate(args: {
   const catalogLines: QuoteLine[] = catalogItems.map((item) => {
     const eq = equipmentById.get(item.equipmentId!);
     if (!eq) throw new HttpError(400, `Equipment not found: ${item.equipmentId}`);
-    const { unitPrice, listUnitPrice, isNegotiated, shifts: lineShifts } = resolveBookingLinePrice({
-      ratePerShift: eq.rentalRatePerShift.toString(),
-      bookingShifts: shifts,
-      lineShifts: item.shifts ?? null,
-      negotiatedRatePerShift: item.negotiatedRatePerShift ?? null,
-    });
-    const { mode } = computeUnitPriceForBookingPeriod({ equipment: eq, shifts: lineShifts });
-    const quantity = item.quantity;
-    const lineSum = unitPrice.mul(quantity);
-    return {
-      equipmentId: eq.id,
-      categorySnapshot: eq.category,
-      nameSnapshot: eq.name,
-      brandSnapshot: eq.brand,
-      modelSnapshot: eq.model,
-      quantity,
-      unitPrice,
-      lineSum,
-      pricingMode: mode,
-      isCustom: false,
-      listUnitPrice,
-      isNegotiated,
-      shifts: lineShifts,
-    };
+    const line = catalogEstimateLine(eq.id, eq, item, shifts);
+    const { mode } = computeUnitPriceForBookingPeriod({ equipment: eq, shifts: line.shifts ?? shifts });
+    return { ...line, pricingMode: mode, isCustom: false };
   });
 
-  const customLines: QuoteLine[] = customItems.map((item) => {
-    const unitPrice = new Decimal(item.customUnitPrice!);
-    const lineSum = unitPrice.mul(item.quantity);
-    return {
-      equipmentId: null,
-      categorySnapshot: CUSTOM_LINE_CATEGORY,
-      nameSnapshot: item.customName!,
-      brandSnapshot: null,
-      modelSnapshot: null,
-      quantity: item.quantity,
-      unitPrice,
-      lineSum,
-      pricingMode: "CUSTOM",
-      isCustom: true,
-      listUnitPrice: null,
-      isNegotiated: false,
-      shifts: null,
-    };
-  });
+  const customLines: QuoteLine[] = customItems.map((item) => ({
+    ...customEstimateLine({ customName: item.customName!, customUnitPrice: item.customUnitPrice!, quantity: item.quantity }),
+    pricingMode: "CUSTOM",
+    isCustom: true,
+  }));
 
   const lines: QuoteLine[] = [...catalogLines, ...customLines];
 
@@ -623,20 +595,7 @@ export async function createBookingDraft(args: {
             args.endDate,
             args.skipPartialDay ?? false,
           ),
-          lines: {
-            create: quote.lines.map((l) => ({
-              equipmentId: l.equipmentId,
-              categorySnapshot: l.categorySnapshot,
-              nameSnapshot: l.nameSnapshot,
-              brandSnapshot: l.brandSnapshot,
-              modelSnapshot: l.modelSnapshot,
-              quantity: l.quantity,
-              unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
-              lineSum: l.lineSum.toDecimalPlaces(2).toString(),
-              listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
-              shifts: l.shifts ?? null,
-            })),
-          },
+          lines: { create: quote.lines.map(estimateLineCreateData) },
         },
       });
     } catch {
@@ -773,64 +732,11 @@ export async function rebuildBookingEstimate(
           )
         : null;
 
-    type MainLine = {
-      equipmentId: string | null;
-      categorySnapshot: string;
-      nameSnapshot: string;
-      brandSnapshot: string | null;
-      modelSnapshot: string | null;
-      quantity: number;
-      unitPrice: Decimal;
-      lineSum: Decimal;
-      listUnitPrice: Decimal | null;
-      isNegotiated: boolean;
-      /** Смены строки; null у произвольной позиции. */
-      shifts: number | null;
-    };
-    // Явный тип возврата: у каталожной и произвольной строки разные литеральные
-    // типы (equipmentId: string | null), и flatMap иначе выводит тип по первой ветке.
-    const lines: MainLine[] = booking.items.flatMap((it): MainLine[] => {
-      if (it.equipmentId != null && it.equipment != null) {
-        const quantity = mainQtyCap
-          ? Math.min(it.quantity, mainQtyCap.get(it.equipmentId) ?? 0)
-          : it.quantity;
-        // Позиция целиком добор — в MAIN ей места нет.
-        if (quantity <= 0) return [];
-        const { unitPrice, listUnitPrice, isNegotiated, shifts: lineShifts } = resolveBookingLinePrice({
-          ratePerShift: it.equipment.rentalRatePerShift.toString(),
-          bookingShifts: shifts,
-          lineShifts: it.shifts,
-          negotiatedRatePerShift: it.negotiatedRatePerShift?.toString() ?? null,
-        });
-        return [{
-          equipmentId: it.equipmentId,
-          categorySnapshot: it.equipment.category,
-          nameSnapshot: it.equipment.name,
-          brandSnapshot: it.equipment.brand,
-          modelSnapshot: it.equipment.model,
-          quantity,
-          unitPrice,
-          lineSum: unitPrice.mul(quantity),
-          listUnitPrice,
-          isNegotiated,
-          shifts: lineShifts,
-        }];
-      }
-      // Произвольная позиция — фиксированная цена без умножения на shifts
-      const unitPrice = new Decimal(it.customUnitPrice!.toString());
-      return [{
-        equipmentId: null,
-        categorySnapshot: it.customCategory ?? CUSTOM_LINE_CATEGORY,
-        nameSnapshot: it.customName!,
-        brandSnapshot: null,
-        modelSnapshot: null,
-        quantity: it.quantity,
-        unitPrice,
-        lineSum: unitPrice.mul(it.quantity),
-        listUnitPrice: null,
-        isNegotiated: false,
-        shifts: null,
-      }];
+    // Позиция целиком добор — в MAIN ей места нет (quantityOf вернёт 0).
+    const lines = estimateLinesFromBookingItems(booking.items, shifts, {
+      quantityOf: mainQtyCap
+        ? ({ equipmentId, quantity }) => Math.min(quantity, mainQtyCap.get(equipmentId) ?? 0)
+        : undefined,
     });
 
     const discountPercent = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
@@ -849,18 +755,7 @@ export async function rebuildBookingEstimate(
       hoursSummaryText: formatExportHourCalculationLine(booking.startDate, booking.endDate, booking.skipPartialDay ?? false),
     };
 
-    const linesData = lines.map((l) => ({
-      equipmentId: l.equipmentId,
-      categorySnapshot: l.categorySnapshot,
-      nameSnapshot: l.nameSnapshot,
-      brandSnapshot: l.brandSnapshot,
-      modelSnapshot: l.modelSnapshot,
-      quantity: l.quantity,
-      unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
-      lineSum: l.lineSum.toDecimalPlaces(2).toString(),
-      listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
-      shifts: l.shifts,
-    }));
+    const linesData = lines.map(estimateLineCreateData);
 
     // Удаляем существующий MAIN Estimate (если есть) — ADDON оставляем нетронутым:
     // его судьбу решает recomputeAddonEstimate у вызывающей стороны.
@@ -1029,64 +924,7 @@ export async function confirmBooking(bookingId: string) {
 
     const shifts = billableShifts24h(booking.startDate, booking.endDate, booking.skipPartialDay ?? false);
     // Create estimate snapshot (stored together with booking).
-    const lines: Array<{
-      equipmentId: string | null;
-      categorySnapshot: string;
-      nameSnapshot: string;
-      brandSnapshot: string | null;
-      modelSnapshot: string | null;
-      quantity: number;
-      unitPrice: Decimal;
-      lineSum: Decimal;
-      listUnitPrice: Decimal | null;
-      isNegotiated: boolean;
-      /** Смены строки; null у произвольной позиции. */
-      shifts: number | null;
-      estimateLineCreate: any;
-    }> = [];
-
-    for (const it of booking.items) {
-      if (it.equipmentId != null && it.equipment != null) {
-        const { unitPrice, listUnitPrice, isNegotiated, shifts: lineShifts } = resolveBookingLinePrice({
-          ratePerShift: it.equipment.rentalRatePerShift.toString(),
-          bookingShifts: shifts,
-          lineShifts: it.shifts,
-          negotiatedRatePerShift: it.negotiatedRatePerShift?.toString() ?? null,
-        });
-        const lineSum = unitPrice.mul(it.quantity);
-        lines.push({
-          equipmentId: it.equipmentId,
-          categorySnapshot: it.equipment.category,
-          nameSnapshot: it.equipment.name,
-          brandSnapshot: it.equipment.brand,
-          modelSnapshot: it.equipment.model,
-          quantity: it.quantity,
-          unitPrice,
-          lineSum,
-          listUnitPrice,
-          isNegotiated,
-          shifts: lineShifts,
-          estimateLineCreate: null,
-        });
-      } else {
-        // Произвольная позиция — фиксированная цена без умножения на shifts
-        const unitPrice = new Decimal(it.customUnitPrice!.toString());
-        lines.push({
-          equipmentId: null,
-          categorySnapshot: it.customCategory ?? CUSTOM_LINE_CATEGORY,
-          nameSnapshot: it.customName!,
-          brandSnapshot: null,
-          modelSnapshot: null,
-          quantity: it.quantity,
-          unitPrice,
-          lineSum: unitPrice.mul(it.quantity),
-          listUnitPrice: null,
-          isNegotiated: false,
-          shifts: null,
-          estimateLineCreate: null,
-        });
-      }
-    }
+    const lines = estimateLinesFromBookingItems(booking.items, shifts);
 
     const discountPercent = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
     const { subtotal, discountAmount, totalAfterDiscount } = splitEquipmentDiscount(lines, discountPercent);
@@ -1103,20 +941,7 @@ export async function confirmBooking(bookingId: string) {
       optionalNote: booking.estimateOptionalNote ?? null,
       includeOptionalInExport: booking.estimateIncludeOptionalInExport,
       hoursSummaryText: formatExportHourCalculationLine(booking.startDate, booking.endDate, booking.skipPartialDay ?? false),
-      lines: {
-        create: lines.map((l) => ({
-          equipmentId: l.equipmentId,
-          categorySnapshot: l.categorySnapshot,
-          nameSnapshot: l.nameSnapshot,
-          brandSnapshot: l.brandSnapshot,
-          modelSnapshot: l.modelSnapshot,
-          quantity: l.quantity,
-          unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
-          lineSum: l.lineSum.toDecimalPlaces(2).toString(),
-          listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
-          shifts: l.shifts,
-        })),
-      },
+      lines: { create: lines.map(estimateLineCreateData) },
     };
 
     // Резерв экземпляров под UNIT-позиции (у COUNT экземпляров нет). Общий

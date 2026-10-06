@@ -35,6 +35,7 @@ import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
 import { resolveBookingLinePrice, splitEquipmentDiscount } from "./pricing";
+import { estimateLineCreateData } from "./estimateLines";
 
 export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
   const main = await prisma.estimate.findFirst({
@@ -126,20 +127,7 @@ export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
         optionalNote: null,
         includeOptionalInExport: false,
         hoursSummaryText: main.hoursSummaryText,
-        lines: {
-          create: lines.map((l) => ({
-            equipmentId: l.equipmentId,
-            categorySnapshot: l.categorySnapshot,
-            nameSnapshot: l.nameSnapshot,
-            brandSnapshot: l.brandSnapshot,
-            modelSnapshot: l.modelSnapshot,
-            quantity: l.quantity,
-            unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
-            lineSum: l.lineSum.toDecimalPlaces(2).toString(),
-            listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
-            shifts: l.shifts,
-          })),
-        },
+        lines: { create: lines.map(estimateLineCreateData) },
       },
     });
   });
