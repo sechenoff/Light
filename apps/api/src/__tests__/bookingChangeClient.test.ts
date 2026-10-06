@@ -199,3 +199,85 @@ describe("POST /api/bookings/:id/change-client", () => {
     expect(res.body.code).toBe("BOOKING_NOT_FOUND");
   });
 });
+
+describe("смена клиента у семьи броней и у длинного проекта", () => {
+  /** Основная бронь (принята) и её выданное продолжение — у одного клиента. */
+  async function family() {
+    const uid = `${Date.now()}_${++_counter}`;
+    const clientA = await prisma.client.create({ data: { name: `Семья А ${uid}` } });
+    const clientB = await prisma.client.create({ data: { name: `Семья Б ${uid}` } });
+    const root = await prisma.booking.create({
+      data: {
+        clientId: clientA.id, projectName: "Основная", status: "RETURNED", docNumber: `СМ-${uid}`,
+        startDate: new Date(Date.now() - 3 * 86_400_000), endDate: new Date(Date.now() - 86_400_000),
+      },
+    });
+    const child = await prisma.booking.create({
+      data: {
+        clientId: clientA.id, projectName: "Основная", status: "ISSUED", docNumber: `СМ-${uid}-1`,
+        parentBookingId: root.id, rootBookingId: root.id,
+        startDate: new Date(Date.now() - 86_400_000), endDate: new Date(Date.now() + 86_400_000),
+      },
+    });
+    return { clientA, clientB, root, child };
+  }
+
+  it("у брони с продолжением клиент меняется у всей семьи — с основной и с продолжения", async () => {
+    for (const from of ["root", "child"] as const) {
+      const f = await family();
+      const res = await request(app)
+        .post(`/api/bookings/${f[from].id}/change-client`)
+        .set(AUTH_SA())
+        .send({ clientId: f.clientB.id });
+      expect(res.status).toBe(200);
+      expect(res.body.changedBookings).toBe(2);
+      for (const b of [f.root, f.child]) {
+        expect((await prisma.booking.findUnique({ where: { id: b.id } })).clientId).toBe(f.clientB.id);
+        const entry = await prisma.auditEntry.findFirst({ where: { entityId: b.id, action: "BOOKING_CLIENT_CHANGED" } });
+        expect(JSON.parse(entry.after)).toMatchObject({ clientId: f.clientB.id, clientName: f.clientB.name });
+      }
+    }
+  });
+
+  it("финансовые исправления меняют клиента тоже у всей семьи", async () => {
+    const f = await family();
+    const res = await request(app)
+      .patch(`/api/bookings/${f.child.id}/finance-corrections`)
+      .set(AUTH_SA())
+      .send({ clientId: f.clientB.id });
+    expect(res.status).toBe(200);
+    expect((await prisma.booking.findUnique({ where: { id: f.root.id } })).clientId).toBe(f.clientB.id);
+    expect((await prisma.booking.findUnique({ where: { id: f.child.id } })).clientId).toBe(f.clientB.id);
+  });
+
+  it("длинный проект: клиент меняется операцией проекта — с ревизией и записью в истории", async () => {
+    const uid = `${Date.now()}_${++_counter}`;
+    const clientA = await prisma.client.create({ data: { name: `Проект А ${uid}` } });
+    const clientB = await prisma.client.create({ data: { name: `Проект Б ${uid}` } });
+    const project = await prisma.booking.create({
+      data: {
+        clientId: clientA.id, projectName: "Сериал", mode: "PROJECT", status: "RETURNED",
+        startDate: new Date(Date.now() - 30 * 86_400_000), endDate: new Date(Date.now() - 86_400_000),
+      },
+    });
+    await prisma.bookingProject.create({ data: { bookingId: project.id } });
+    // Обычный путь для проекта закрыт: проект меняется своими операциями.
+    const generic = await request(app).post(`/api/bookings/${project.id}/change-client`).set(AUTH_SA()).send({ clientId: clientB.id });
+    expect(generic.status).toBe(409);
+    expect(generic.body.code).toBe("PROJECT_ACTION_REQUIRED");
+
+    const stale = await request(app).post(`/api/booking-projects/${project.id}/client`).set(AUTH_SA()).send({ revision: 7, clientId: clientB.id });
+    expect(stale.status).toBe(409);
+    expect(stale.body.code).toBe("PROJECT_CHANGED");
+    const wh = await request(app).post(`/api/booking-projects/${project.id}/client`).set(AUTH_WH()).send({ revision: 0, clientId: clientB.id });
+    expect(wh.status).toBe(403);
+
+    // Завершённый проект тоже можно исправить — правка «бумажная».
+    const res = await request(app).post(`/api/booking-projects/${project.id}/client`).set(AUTH_SA()).send({ revision: 0, clientId: clientB.id });
+    expect(res.status).toBe(200);
+    expect(res.body.client).toMatchObject({ id: clientB.id, name: clientB.name });
+    expect((await prisma.booking.findUnique({ where: { id: project.id } })).clientId).toBe(clientB.id);
+    const event = await prisma.projectEvent.findFirst({ where: { bookingId: project.id, kind: "CLIENT_CHANGED" } });
+    expect(event.text).toBe(`Клиент: «${clientA.name}» → «${clientB.name}».`);
+  });
+});

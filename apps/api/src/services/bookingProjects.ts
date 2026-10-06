@@ -1017,6 +1017,37 @@ export async function recordProjectPayment(
     );
   });
 }
+/**
+ * Сменить клиента проекта. Правка «бумажная»: поставки, выдачи и расчёты не
+ * меняются, в историю проекта пишется событие. Можно и у завершённого
+ * проекта: клиента могли выбрать по ошибке, а долг и документы читаются по
+ * клиенту брони.
+ */
+export async function changeProjectClient(
+  id: string,
+  revision: number,
+  clientId: string,
+  userId: string,
+) {
+  return mutate(id, revision, async (tx, p) => {
+    if (p.booking.clientId === clientId)
+      throw new HttpError(400, "Проект уже принадлежит этому клиенту", "NO_CHANGE");
+    const client = await tx.client.findUnique({
+      where: { id: clientId },
+      select: { id: true, name: true },
+    });
+    if (!client) throw new HttpError(400, "Клиент не найден", "INVALID_CLIENT_ID");
+    await tx.booking.update({ where: { id }, data: { clientId } });
+    await event(
+      tx,
+      id,
+      userId,
+      "CLIENT_CHANGED",
+      `Клиент: «${p.booking.client.name}» → «${client.name}».`,
+    );
+    return client;
+  });
+}
 export async function cancelProject(
   id: string,
   revision: number,

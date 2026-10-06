@@ -239,7 +239,9 @@ describe("POST /api/clients", () => {
       .set(AUTH_SA())
       .send({ name: "Уникальный Клиент" });
     expect(res.status).toBe(409);
-    expect(res.body.details).toBe("CLIENT_NAME_TAKEN");
+    expect(res.body.code).toBe("CLIENT_NAME_TAKEN");
+    // Ответ называет существующего — окно выбора подставляет его вместо дубля.
+    expect(res.body.details).toMatchObject({ name: "Уникальный Клиент" });
   });
 
   it("invalid email returns 400", async () => {
@@ -301,7 +303,7 @@ describe("PATCH /api/clients/:id", () => {
       .set(AUTH_SA())
       .send({ name: "Существующий Клиент" });
     expect(res.status).toBe(409);
-    expect(res.body.details).toBe("CLIENT_NAME_TAKEN");
+    expect(res.body.code).toBe("CLIENT_NAME_TAKEN");
   });
 
   it("sparse PATCH with only name leaves phone/email/comment untouched", async () => {

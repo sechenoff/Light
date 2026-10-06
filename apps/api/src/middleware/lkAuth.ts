@@ -18,13 +18,16 @@ export async function lkAuth(req: Request, res: Response, next: NextFunction) {
     // Enforce account status on every request — disable propagates immediately.
     const account = await prisma.clientPortalAccount.findUnique({
       where: { id: payload.accountId },
-      select: { status: true },
+      select: { status: true, clientId: true },
     });
     if (!account || account.status === "DISABLED") {
       throw new HttpError(401, "Не авторизован", "UNAUTHENTICATED");
     }
 
-    req.clientPortal = payload;
+    // Клиент — из учётной записи, а не из токена: при объединении карточек
+    // кабинет дубля переезжает к основной, и сессия, выданная до этого, иначе
+    // смотрела бы в удалённую карточку.
+    req.clientPortal = { ...payload, clientId: account.clientId };
     next();
   } catch (err) {
     next(err);
