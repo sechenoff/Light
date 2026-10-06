@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M2 · Смета и дополнительная смета</title>
+<!--
+  МОКАП M2 · ПЕЧАТНЫЕ ФОРМЫ · ОСНОВНАЯ СМЕТА С КОЛОНКОЙ «СМЕН» И ДОПОЛНИТЕЛЬНАЯ СМЕТА ПРОДОЛЖЕНИЯ
+  Стиль листа — как у «Счёта на оплату» (docs/mockups/bill-invoice/concept-A.html):
+  волосяные линии, синяя полоса под заголовком, плашка «Итого к оплате».
+  Бронь СМ-2026-0231 (1 смена, скидка 50 %, по счёту +9 %), её продолжение СМ-2026-0231-1.
+  Реквизиты, клиенты и суммы вымышлены. Лист следует теме экрана; в PDF он всегда белый.
+-->
+<style>/*__TAILWIND__*/</style>
+</head>
+<body class="min-h-screen bg-surface-muted">
+<!--@include chrome-->
+
+<main class="mx-auto max-w-[1240px] px-4 pb-16 pt-6 sm:pt-8">
+  <p class="eyebrow">Мокап M2 · документы</p>
+  <h1 class="mt-1 font-cond text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Смета с колонкой «Смен» и дополнительная смета продолжения</h1>
+  <p class="mt-2 max-w-[760px] text-sm text-ink-2">Колонка «Смен» появляется, только если смены хоть одной строки отличаются от смен брони. Дополнительная смета — отдельный документ со своим номером, датой, периодом и сроком оплаты. Позиции, уже оплаченные в основной смете, стоят в ней за 0 ₽.</p>
+
+  <!-- ═════════════ ЛИСТ 1 · ОСНОВНАЯ СМЕТА ═════════════ -->
+  <section id="main-smeta" class="mt-8">
+    <p class="eyebrow">Лист 1 · PDF, A4</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Основная смета № СМ-2026-0231</h2>
+
+    <div class="mt-4 grid items-start gap-5 xl:grid-cols-[794px_minmax(0,1fr)]">
+      <div class="min-w-0">
+      <p class="mb-2 text-[12px] text-ink-3 md:hidden">Лист A4 не перестраивается под экран — листайте вбок.</p>
+      <div data-a4 class="overflow-x-auto pb-2">
+        <article data-a4-page class="w-[794px] border border-border bg-surface px-[56px] pb-[48px] pt-[52px] text-[12.5px] leading-[1.35] text-ink shadow-sm">
+          <!-- Исполнитель -->
+          <div class="flex items-start justify-between gap-6 text-[11px] text-ink-2">
+            <div>
+              <p class="text-[12px] font-semibold text-ink">ИП Лучников Кирилл Сергеевич</p>
+              <p>прокат осветительного оборудования</p>
+              <p class="mono-num">ИНН 770000000000 · +7 (900) 000-00-00</p>
+            </div>
+            <p class="eyebrow text-right">Смета на аренду<br>оборудования</p>
+          </div>
+
+          <div class="mt-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+            <div>
+              <h3 class="whitespace-nowrap font-cond text-[21px] font-bold leading-tight">Смета № СМ-2026-0231</h3>
+              <p class="text-[12px] text-ink-2">от 12 октября 2026 г.</p>
+            </div>
+            <p class="ml-auto whitespace-nowrap pb-0.5 text-right text-[12px] text-ink-2"><b class="font-semibold text-ink">7</b> позиций <span class="px-1.5 text-ink-3">·</span> <b class="mono-num font-semibold text-ink">28 340 ₽</b></p>
+          </div>
+          <div class="mt-2 h-[3px] bg-accent"></div>
+
+          <dl class="mt-4 grid grid-cols-[170px_minmax(0,1fr)] gap-x-4 gap-y-1.5">
+            <dt class="eyebrow whitespace-nowrap pt-0.5">Заказчик</dt><dd class="font-semibold">Продакшн «Сфера»</dd>
+            <dt class="eyebrow whitespace-nowrap pt-0.5">Проект</dt><dd>Реклама кофейни «Зерно»</dd>
+            <dt class="eyebrow whitespace-nowrap pt-0.5">Период аренды</dt><dd class="mono-num text-[12px]">12.10.2026 10:00 — 13.10.2026 10:00</dd>
+            <dt class="eyebrow whitespace-nowrap pt-0.5">Смен по брони</dt>
+            <dd class="flex items-center gap-2"><span class="mono-num font-semibold">1</span><span aria-label="Пометка 1" class="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-dashed border-indigo text-[10px] font-bold text-indigo">1</span></dd>
+          </dl>
+
+          <table class="mt-5 w-full table-fixed border-collapse text-[12px]">
+            <colgroup><col class="w-[28px]"><col><col class="w-[64px]"><col class="w-[112px]"><col class="w-[56px]"><col class="w-[96px]"></colgroup>
+            <thead>
+              <tr class="border-b border-ink-2">
+                <th class="eyebrow pb-1.5 pr-2 text-right">№</th>
+                <th class="eyebrow px-2 pb-1.5 text-left">Наименование</th>
+                <th class="eyebrow whitespace-nowrap px-2 pb-1.5 text-right">Кол-во</th>
+                <th class="eyebrow whitespace-nowrap px-2 pb-1.5 text-right">Цена за смену</th>
+                <th class="eyebrow px-2 pb-1.5 text-right"><span class="inline-flex items-center gap-1">Смен <span aria-label="Пометка 2" class="flex h-[16px] w-[16px] items-center justify-center rounded-full border border-dashed border-indigo text-[9px] font-bold normal-case tracking-normal text-indigo">2</span></span></th>
+                <th class="eyebrow pb-1.5 pl-2 text-right">Сумма</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="6" class="pb-1 pt-2.5 font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-2">COB Light</td></tr>
+              <tr class="border-b border-border align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">1</td>
+                <td class="px-2 py-1.5">Aputure STORM 400x<span class="block text-[11px] text-ink-2">до 14.10.2026, 10:00</span></td>
+                <td class="mono-num px-2 py-1.5 text-right">2</td>
+                <td class="mono-num px-2 py-1.5 text-right">4 000</td>
+                <td class="mono-num px-2 py-1.5 text-right font-bold">2</td>
+                <td class="mono-num py-1.5 pl-2 text-right">16 000</td>
+              </tr>
+              <tr class="border-b border-border align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">2</td>
+                <td class="px-2 py-1.5">Nanlux Evoke 1200<span class="block text-[11px] text-ink-2">до 14.10.2026, 10:00</span></td>
+                <td class="mono-num px-2 py-1.5 text-right">1</td>
+                <td class="mono-num px-2 py-1.5 text-right">7 000</td>
+                <td class="mono-num px-2 py-1.5 text-right font-bold">2</td>
+                <td class="mono-num py-1.5 pl-2 text-right">14 000</td>
+              </tr>
+              <tr class="border-b border-border align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">3</td>
+                <td class="px-2 py-1.5">Aputure LS 60x</td>
+                <td class="mono-num px-2 py-1.5 text-right">4</td>
+                <td class="mono-num px-2 py-1.5 text-right">1 200</td>
+                <td class="mono-num px-2 py-1.5 text-right text-ink-2">1</td>
+                <td class="mono-num py-1.5 pl-2 text-right">4 800</td>
+              </tr>
+              <tr><td colspan="6" class="pb-1 pt-2.5 font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-2">LED</td></tr>
+              <tr class="border-b border-border align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">4</td>
+                <td class="px-2 py-1.5">Astera Titan Tube, комплект 8 шт<span class="block text-[11px] text-indigo">персональная цена · по прайсу 8 000</span></td>
+                <td class="mono-num px-2 py-1.5 text-right">1</td>
+                <td class="mono-num px-2 py-1.5 text-right">6 000</td>
+                <td class="mono-num px-2 py-1.5 text-right text-ink-2">1</td>
+                <td class="mono-num py-1.5 pl-2 text-right">6 000</td>
+              </tr>
+              <tr><td colspan="6" class="pb-1 pt-2.5 font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-2">Грип</td></tr>
+              <tr class="border-b border-border align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">5</td>
+                <td class="px-2 py-1.5">Зажим Super Clamp с пальцем</td>
+                <td class="mono-num px-2 py-1.5 text-right">6</td>
+                <td class="mono-num px-2 py-1.5 text-right">150</td>
+                <td class="mono-num px-2 py-1.5 text-right text-ink-2">1</td>
+                <td class="mono-num py-1.5 pl-2 text-right">900</td>
+              </tr>
+              <tr class="border-b border-border align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">6</td>
+                <td class="px-2 py-1.5">Стойка C-Stand 40"</td>
+                <td class="mono-num px-2 py-1.5 text-right">8</td>
+                <td class="mono-num px-2 py-1.5 text-right">350</td>
+                <td class="mono-num px-2 py-1.5 text-right text-ink-2">1</td>
+                <td class="mono-num py-1.5 pl-2 text-right">2 800</td>
+              </tr>
+              <tr><td colspan="6" class="pb-1 pt-2.5 font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-2">Произвольные позиции</td></tr>
+              <tr class="border-b border-border-strong align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">7</td>
+                <td class="px-2 py-1.5">Расходники: гели, скотч <span aria-label="Пометка 3" class="ml-1 inline-flex h-[16px] w-[16px] items-center justify-center rounded-full border border-dashed border-indigo align-[1px] text-[9px] font-bold text-indigo">3</span><span class="block text-[11px] text-ink-2">цена за весь срок аренды</span></td>
+                <td class="mono-num px-2 py-1.5 text-right">1</td>
+                <td class="mono-num px-2 py-1.5 text-right">1 500</td>
+                <td class="mono-num px-2 py-1.5 text-right text-ink-3">—</td>
+                <td class="mono-num py-1.5 pl-2 text-right">1 500</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="ml-auto mt-3 w-[380px] text-[12.5px]">
+            <div class="flex justify-between gap-4 py-[3px]"><span class="text-ink-2">Оборудование по прайсу</span><span class="mono-num font-semibold">40 000</span></div>
+            <div class="flex justify-between gap-4 py-[3px]"><span class="text-ink-2">Скидка 50 %</span><span class="mono-num font-semibold">−20 000</span></div>
+            <div class="flex justify-between gap-4 py-[3px]"><span class="text-ink-2">Позиции по договорённости</span><span class="mono-num font-semibold">6 000</span></div>
+            <div class="flex justify-between gap-4 border-t border-border py-[3px]"><span class="text-ink">Итого оборудование</span><span class="mono-num font-semibold">26 000</span></div>
+            <div class="flex justify-between gap-4 py-[3px]"><span class="text-ink-2">Безналичный расчёт (+9 %)</span><span class="mono-num font-semibold">2 340</span></div>
+            <div class="mt-1.5 flex items-baseline justify-between gap-4 border-y border-accent-border bg-accent-soft px-3 py-2">
+              <span class="text-[10.5px] font-bold uppercase tracking-[0.08em] text-accent">Итого к оплате</span>
+              <span class="mono-num text-[18px] font-bold">28 340 <small class="text-[12.5px] font-semibold">₽</small></span>
+            </div>
+          </div>
+          <p class="mt-4 border-t border-border pt-3 text-[13px]"><span class="text-ink-2">Сумма прописью:</span> <b class="font-bold">Двадцать восемь тысяч триста сорок рублей 00 копеек</b></p>
+          <p class="mt-10 text-center text-[10.5px] text-ink-3">Стр. 1 из 1</p>
+        </article>
+      </div>
+      </div>
+
+      <aside class="space-y-3">
+        <div class="rounded-lg border border-border bg-surface p-4">
+          <p class="flex items-center gap-2 text-sm font-semibold text-ink"><span class="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-indigo text-[11px] font-bold text-indigo">1</span>«Смен по брони» в шапке</p>
+          <p class="mt-1.5 text-[13px] text-ink-2">Печатается всегда, когда в смете есть колонка «Смен»: читателю нужна точка отсчёта — с чем сравнивать 2 в строке.</p>
+        </div>
+        <div class="rounded-lg border border-border bg-surface p-4">
+          <p class="flex items-center gap-2 text-sm font-semibold text-ink"><span class="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-indigo text-[11px] font-bold text-indigo">2</span>Колонка «Смен» — по условию</p>
+          <p class="mt-1.5 text-[13px] text-ink-2">Появляется, если смены хоть одной строки отличаются от смен брони. Отличающиеся — полужирным, срок возврата — под наименованием. Скидка 50 % ложится и на них; договорная строка — без скидки.</p>
+          <p class="mt-3 text-[12px] text-ink-3">Если у всех строк смены как у брони — колонки нет, как сейчас:</p>
+          <table class="mt-1.5 w-full text-[12px]">
+            <thead><tr class="border-b border-ink-2"><th class="eyebrow pb-1 text-left">Наименование</th><th class="eyebrow px-2 pb-1 text-right">Кол-во</th><th class="eyebrow px-2 pb-1 text-right">Цена</th><th class="eyebrow pb-1 text-right">Сумма</th></tr></thead>
+            <tbody>
+              <tr class="border-b border-border"><td class="py-1">Aputure LS 60x</td><td class="mono-num px-2 py-1 text-right">4</td><td class="mono-num px-2 py-1 text-right">1 200</td><td class="mono-num py-1 text-right">4 800</td></tr>
+              <tr class="border-b border-border"><td class="py-1">Стойка C-Stand 40"</td><td class="mono-num px-2 py-1 text-right">8</td><td class="mono-num px-2 py-1 text-right">350</td><td class="mono-num py-1 text-right">2 800</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="rounded-lg border border-border bg-surface p-4">
+          <p class="flex items-center gap-2 text-sm font-semibold text-ink"><span class="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-indigo text-[11px] font-bold text-indigo">3</span>Своя позиция — «—»</p>
+          <p class="mt-1.5 text-[13px] text-ink-2">У произвольной позиции нет смен: в колонке «—», под названием «цена за весь срок аренды». На смены она не умножается и не делится.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ═════════════ ЛИСТ 2 · ДОПОЛНИТЕЛЬНАЯ СМЕТА ═════════════ -->
+  <section id="continuation-smeta" class="mt-12">
+    <p class="eyebrow">Лист 2 · PDF, A4</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Дополнительная смета продолжения № СМ-2026-0231-1</h2>
+    <p class="mt-1 max-w-[760px] text-sm text-ink-2">При приёмке 13 октября клиент оставил у себя 4 позиции. Две уже оплачены в основной смете по плану, за остальные — смены сверх оплаченного, по тем же ставкам, скидке и надбавке.</p>
+
+    <div class="mt-4 grid items-start gap-5 xl:grid-cols-[794px_minmax(0,1fr)]">
+      <div class="min-w-0">
+      <p class="mb-2 text-[12px] text-ink-3 md:hidden">Лист A4 не перестраивается под экран — листайте вбок.</p>
+      <div data-a4 class="overflow-x-auto pb-2">
+        <article data-a4-page class="w-[794px] border border-border bg-surface px-[56px] pb-[48px] pt-[52px] text-[12.5px] leading-[1.35] text-ink shadow-sm">
+          <div class="flex items-start justify-between gap-6 text-[11px] text-ink-2">
+            <div>
+              <p class="text-[12px] font-semibold text-ink">ИП Лучников Кирилл Сергеевич</p>
+              <p>прокат осветительного оборудования</p>
+              <p class="mono-num">ИНН 770000000000 · +7 (900) 000-00-00</p>
+            </div>
+            <p class="eyebrow text-right">Продолжение<br>аренды</p>
+          </div>
+
+          <div class="mt-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+            <div>
+              <h3 class="whitespace-nowrap font-cond text-[21px] font-bold leading-tight">Дополнительная смета № СМ-2026-0231-1</h3>
+              <p class="text-[12px] text-ink-2">от 13 октября 2026 г. · продолжение к смете № СМ-2026-0231 от 12 октября 2026 г. <span aria-label="Пометка 4" class="ml-0.5 inline-flex h-[16px] w-[16px] items-center justify-center rounded-full border border-dashed border-indigo align-[1px] text-[9px] font-bold text-indigo">4</span></p>
+            </div>
+          </div>
+          <div class="mt-2 h-[3px] bg-accent"></div>
+
+          <dl class="mt-4 grid grid-cols-[170px_minmax(0,1fr)] gap-x-4 gap-y-1.5">
+            <dt class="eyebrow whitespace-nowrap pt-0.5">Заказчик</dt><dd class="font-semibold">Продакшн «Сфера»</dd>
+            <dt class="eyebrow whitespace-nowrap pt-0.5">Проект</dt><dd>Реклама кофейни «Зерно»</dd>
+            <dt class="eyebrow whitespace-nowrap pt-0.5">Период продолжения</dt><dd class="mono-num text-[12px]">13.10.2026 10:00 — 15.10.2026 10:00</dd>
+            <dt class="eyebrow whitespace-nowrap pt-0.5">Срок оплаты</dt><dd class="mono-num text-[12px]">20.10.2026</dd>
+          </dl>
+
+          <table class="mt-5 w-full table-fixed border-collapse text-[12px]">
+            <colgroup><col class="w-[28px]"><col><col class="w-[64px]"><col class="w-[112px]"><col class="w-[56px]"><col class="w-[96px]"></colgroup>
+            <thead>
+              <tr class="border-b border-ink-2">
+                <th class="eyebrow pb-1.5 pr-2 text-right">№</th>
+                <th class="eyebrow px-2 pb-1.5 text-left">Наименование</th>
+                <th class="eyebrow whitespace-nowrap px-2 pb-1.5 text-right">Кол-во</th>
+                <th class="eyebrow whitespace-nowrap px-2 pb-1.5 text-right">Цена за смену</th>
+                <th class="eyebrow px-2 pb-1.5 text-right">Смен</th>
+                <th class="eyebrow pb-1.5 pl-2 text-right">Сумма</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="6" class="pb-1 pt-2.5 font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-2">COB Light</td></tr>
+              <tr class="border-b border-border align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">1</td>
+                <td class="px-2 py-1.5">Aputure STORM 400x <span aria-label="Пометка 5" class="ml-0.5 inline-flex h-[16px] w-[16px] items-center justify-center rounded-full border border-dashed border-indigo align-[1px] text-[9px] font-bold text-indigo">5</span><span class="block text-[11px] text-ink-2">по плану · у клиента до 14.10.2026, 10:00</span></td>
+                <td class="mono-num px-2 py-1.5 text-right">2</td>
+                <td colspan="2" class="whitespace-nowrap px-2 py-1.5 text-right text-[11.5px] text-ink-2">оплачено в основной смете</td>
+                <td class="mono-num py-1.5 pl-2 text-right text-ink-2">0</td>
+              </tr>
+              <tr class="border-b border-border align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">2</td>
+                <td class="px-2 py-1.5">Nanlux Evoke 1200<span class="block text-[11px] text-ink-2">14.10 10:00 → 15.10 10:00 · 2 смены оплачены в основной смете</span></td>
+                <td class="mono-num px-2 py-1.5 text-right">1</td>
+                <td class="mono-num px-2 py-1.5 text-right">7 000</td>
+                <td class="mono-num px-2 py-1.5 text-right font-bold">1</td>
+                <td class="mono-num py-1.5 pl-2 text-right">7 000</td>
+              </tr>
+              <tr class="border-b border-border align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">3</td>
+                <td class="px-2 py-1.5">Aputure LS 60x<span class="block text-[11px] text-ink-2">13.10 10:00 → 14.10 10:00 · 2 из 4 шт</span></td>
+                <td class="mono-num px-2 py-1.5 text-right">2</td>
+                <td class="mono-num px-2 py-1.5 text-right">1 200</td>
+                <td class="mono-num px-2 py-1.5 text-right font-bold">1</td>
+                <td class="mono-num py-1.5 pl-2 text-right">2 400</td>
+              </tr>
+              <tr><td colspan="6" class="pb-1 pt-2.5 font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-2">LED</td></tr>
+              <tr class="border-b border-border-strong align-top">
+                <td class="py-1.5 pr-2 text-right text-ink-3">4</td>
+                <td class="px-2 py-1.5">Astera Titan Tube, комплект 8 шт <span aria-label="Пометка 6" class="ml-0.5 inline-flex h-[16px] w-[16px] items-center justify-center rounded-full border border-dashed border-indigo align-[1px] text-[9px] font-bold text-indigo">6</span><span class="block text-[11px] text-indigo">13.10 10:00 → 14.10 10:00 · персональная цена, скидка не применяется</span></td>
+                <td class="mono-num px-2 py-1.5 text-right">1</td>
+                <td class="mono-num px-2 py-1.5 text-right">6 000</td>
+                <td class="mono-num px-2 py-1.5 text-right font-bold">1</td>
+                <td class="mono-num py-1.5 pl-2 text-right">6 000</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="ml-auto mt-3 w-[380px] text-[12.5px]">
+            <div class="flex justify-between gap-4 py-[3px]"><span class="text-ink-2">Оборудование по прайсу</span><span class="mono-num font-semibold">9 400</span></div>
+            <div class="flex justify-between gap-4 py-[3px]"><span class="text-ink-2">Скидка 50 %</span><span class="mono-num font-semibold">−4 700</span></div>
+            <div class="flex justify-between gap-4 py-[3px]"><span class="text-ink-2">Позиции по договорённости</span><span class="mono-num font-semibold">6 000</span></div>
+            <div class="flex justify-between gap-4 border-t border-border py-[3px]"><span class="text-ink">Итого оборудование</span><span class="mono-num font-semibold">10 700</span></div>
+            <div class="flex justify-between gap-4 py-[3px]"><span class="text-ink-2">Безналичный расчёт (+9 %)</span><span class="mono-num font-semibold">963</span></div>
+            <div class="mt-1.5 flex items-baseline justify-between gap-4 border-y border-accent-border bg-accent-soft px-3 py-2">
+              <span class="text-[10.5px] font-bold uppercase tracking-[0.08em] text-accent">Итого к оплате</span>
+              <span class="mono-num text-[18px] font-bold">11 663 <small class="text-[12.5px] font-semibold">₽</small></span>
+            </div>
+          </div>
+          <p class="mt-4 border-t border-border pt-3 text-[13px]"><span class="text-ink-2">Сумма прописью:</span> <b class="font-bold">Одиннадцать тысяч шестьсот шестьдесят три рубля 00 копеек</b></p>
+          <p class="mt-2 text-[11px] text-ink-2">Ставки, скидка 50 % и надбавка за безналичный расчёт — как в смете № СМ-2026-0231; зафиксированы при переносе 13.10.2026 и не меняются вместе с прайсом.</p>
+          <p class="mt-10 text-center text-[10.5px] text-ink-3">Стр. 1 из 1</p>
+        </article>
+      </div>
+      </div>
+
+      <aside class="space-y-3">
+        <div class="rounded-lg border border-border bg-surface p-4">
+          <p class="flex items-center gap-2 text-sm font-semibold text-ink"><span class="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-indigo text-[11px] font-bold text-indigo">4</span>Свой номер, своя дата</p>
+          <p class="mt-1.5 text-[13px] text-ink-2">Номер — номер основной сметы с «-1». Дата — день приёмки, когда оставленное перешло в продолжение. Ссылка на основную смету — в подзаголовке, чтобы бухгалтер клиента сразу видел связь.</p>
+        </div>
+        <div class="rounded-lg border border-border bg-surface p-4">
+          <p class="flex items-center gap-2 text-sm font-semibold text-ink"><span class="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-indigo text-[11px] font-bold text-indigo">5</span>0 ₽ — «оплачено в основной смете»</p>
+          <p class="mt-1.5 text-[13px] text-ink-2">Позиции по плану в документе есть: клиент видит, что именно у него и до какого числа. Цена и смены заменены одной надписью, сумма — 0. Новых денег за плановый срок не появляется.</p>
+        </div>
+        <div class="rounded-lg border border-border bg-surface p-4">
+          <p class="flex items-center gap-2 text-sm font-semibold text-ink"><span class="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-indigo text-[11px] font-bold text-indigo">6</span>Договорная строка — без скидки</p>
+          <p class="mt-1.5 text-[13px] text-ink-2">Персональная цена из основной сметы переходит как есть и умножается на смены. Процент брони на неё не начисляется — как в основной смете.</p>
+        </div>
+        <div class="rounded-lg border border-border bg-surface p-4">
+          <p class="text-sm font-semibold text-ink">Смены сверх оплаченного</p>
+          <p class="mt-1.5 text-[13px] text-ink-2">Evoke был на 2 смены по плану, клиент оставил ещё на сутки — в строке 1 смена, а под названием «2 смены оплачены в основной смете». Счёт идёт от начала основной брони минус оплаченное.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ═════════════ XLSX ═════════════ -->
+  <section id="xlsx" class="mt-12">
+    <p class="eyebrow">XLSX</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">В таблице Excel колонки не меняются — смены второй строкой под названием</h2>
+    <p class="mt-1 max-w-[760px] text-sm text-ink-2">XLSX открывают в Excel и считают формулами, поэтому набор колонок у него постоянный. Если смены строки отличаются от брони, в ячейке наименования появляется вторая строка «на 2 смены», сумма уже посчитана на эти смены.</p>
+
+    <div class="mt-4 overflow-x-auto">
+      <div class="w-[720px] overflow-hidden rounded-md border border-border-strong bg-surface text-[12px] text-ink shadow-sm">
+        <div class="flex items-center gap-2 border-b border-border bg-surface-subtle px-2 py-1.5">
+          <span class="w-12 rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-[11px] text-ink-2">B6</span>
+          <span class="font-mono text-ink-3">fx</span>
+          <span class="truncate text-ink-2">Aputure STORM 400x <span class="text-ink-3">↵</span> на 2 смены</span>
+        </div>
+        <table class="w-full table-fixed border-collapse">
+          <colgroup><col class="w-[32px]"><col class="w-[40px]"><col><col class="w-[72px]"><col class="w-[110px]"><col class="w-[110px]"></colgroup>
+          <thead>
+            <tr class="bg-surface-subtle text-[11px] text-ink-3">
+              <th class="border border-border font-normal"></th>
+              <th class="border border-border py-0.5 font-normal">A</th><th class="border border-border font-normal">B</th><th class="border border-border font-normal">C</th><th class="border border-border font-normal">D</th><th class="border border-border font-normal">E</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="border border-border bg-surface-subtle text-center text-[11px] text-ink-3">1</td><td colspan="5" class="border border-border px-1.5 py-1 font-semibold">Смета № СМ-2026-0231 от 12.10.2026</td></tr>
+            <tr><td class="border border-border bg-surface-subtle text-center text-[11px] text-ink-3">2</td><td colspan="5" class="border border-border px-1.5 py-1 text-ink-2">Смен по брони: 1 · 12.10.2026 10:00 — 13.10.2026 10:00</td></tr>
+            <tr class="font-semibold"><td class="border border-border bg-surface-subtle text-center text-[11px] font-normal text-ink-3">3</td><td class="border border-border px-1.5 py-1 text-right">№</td><td class="border border-border px-1.5 py-1">Наименование</td><td class="border border-border px-1.5 py-1 text-right">Кол-во</td><td class="border border-border px-1.5 py-1 text-right">Цена за смену</td><td class="border border-border px-1.5 py-1 text-right">Сумма</td></tr>
+            <tr><td class="border border-border bg-surface-subtle text-center text-[11px] text-ink-3">4</td><td colspan="5" class="border border-border bg-surface-subtle px-1.5 py-1 font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-2">COB Light</td></tr>
+            <tr class="align-top"><td class="border border-border bg-surface-subtle text-center text-[11px] text-ink-3">5</td><td class="mono-num border border-border px-1.5 py-1 text-right">1</td><td class="border border-border px-1.5 py-1">Aputure LS 60x</td><td class="mono-num border border-border px-1.5 py-1 text-right">4</td><td class="mono-num border border-border px-1.5 py-1 text-right">1 200</td><td class="mono-num border border-border px-1.5 py-1 text-right">4 800</td></tr>
+            <tr class="align-top"><td class="border border-border bg-surface-subtle text-center text-[11px] text-ink-3">6</td><td class="mono-num border border-border px-1.5 py-1 text-right">2</td><td class="border-2 border-accent-bright px-1.5 py-1">Aputure STORM 400x<span class="block text-ink-2">на 2 смены</span></td><td class="mono-num border border-border px-1.5 py-1 text-right">2</td><td class="mono-num border border-border px-1.5 py-1 text-right">4 000</td><td class="mono-num border border-border px-1.5 py-1 text-right">16 000</td></tr>
+            <tr class="align-top"><td class="border border-border bg-surface-subtle text-center text-[11px] text-ink-3">7</td><td class="mono-num border border-border px-1.5 py-1 text-right">3</td><td class="border border-border px-1.5 py-1">Nanlux Evoke 1200<span class="block text-ink-2">на 2 смены</span></td><td class="mono-num border border-border px-1.5 py-1 text-right">1</td><td class="mono-num border border-border px-1.5 py-1 text-right">7 000</td><td class="mono-num border border-border px-1.5 py-1 text-right">14 000</td></tr>
+            <tr class="align-top"><td class="border border-border bg-surface-subtle text-center text-[11px] text-ink-3">8</td><td class="mono-num border border-border px-1.5 py-1 text-right">7</td><td class="border border-border px-1.5 py-1">Расходники: гели, скотч<span class="block text-ink-2">за весь срок аренды</span></td><td class="mono-num border border-border px-1.5 py-1 text-right">1</td><td class="mono-num border border-border px-1.5 py-1 text-right">1 500</td><td class="mono-num border border-border px-1.5 py-1 text-right">1 500</td></tr>
+          </tbody>
+        </table>
+        <div class="flex gap-0.5 border-t border-border bg-surface-subtle px-2 pt-1 text-[11px]">
+          <span class="rounded-t border border-b-0 border-border bg-surface px-2 py-0.5 font-medium text-ink">Смета</span>
+          <span class="px-2 py-0.5 text-ink-3">Дополнительная смета</span>
+        </div>
+      </div>
+    </div>
+    <p class="mt-2 text-[12px] text-ink-3">Дополнительная смета в XLSX — тем же способом: «оплачено в основной смете» второй строкой и 0 в «Сумме».</p>
+  </section>
+</main>
+
+<script>
+/* Лист A4 (794 px) ужимается под ширину колонки, но не мельче 75 %: дальше — прокрутка вбок. */
+(() => {
+  const fit = () => document.querySelectorAll("[data-a4]").forEach((wrap) => {
+    const page = wrap.querySelector("[data-a4-page]");
+    page.style.zoom = "";
+    const z = Math.max(0.75, Math.min(1, wrap.clientWidth / 796));
+    if (z < 1) page.style.zoom = String(z);
+  });
+  fit();
+  addEventListener("resize", fit);
+})();
+</script>
+</body>
+</html>

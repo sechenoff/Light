@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3 · Приёмка в киоске</title>
+<!--
+  МОКАП M3 · КИОСК СКЛАДА · ПРИЁМКА, КОГДА ЧАСТЬ ОСТАЁТСЯ У КЛИЕНТА
+  Основа — текущий чек-лист приёмки (ReturnChecklist, CountSplitRow, UnitRow) и
+  мокапы warehouse-scan/00, 01, 05. Новое: блок «По плану у клиента», исход
+  «Остаётся у клиента», чипы срока, расчёт доп. сметы, карточка держателя.
+  Бронь СМ-2026-0231: 6 позиций, 22 ед. Сегодня вт 13 октября, 10:20. Всё вымышлено.
+  Цвета: бирюзовый — «у клиента» (как статус «Выдана»), индиго — «по плану»
+  (как своё число смен в форме), янтарный — «сверх оплаченного» и держатель.
+-->
+<style>/*__TAILWIND__*/</style>
+</head>
+<body class="min-h-screen bg-surface-muted">
+<!--@include chrome-->
+
+<main class="mx-auto max-w-[1240px] px-4 pb-16 pt-6 sm:pt-8">
+  <p class="eyebrow">Мокап M3 · киоск склада</p>
+  <h1 class="mt-1 font-cond text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Приёмка, когда часть остаётся у клиента</h1>
+  <p class="mt-2 max-w-[760px] text-sm text-ink-2">Обычная приёмка не меняется: «Принять всё разом» и «Готово». Новое появляется, только если у брони есть позиции по плану или кладовщик сам отметил «Остаётся у клиента». Оставленное уходит в продолжение брони со своей сметой — кладовщик видит цену сразу, до нажатия.</p>
+
+  <div class="mt-8 flex flex-wrap items-start gap-5">
+
+    <!-- ═════════════ ЭКРАН 1 · ЧЕК-ЛИСТ ═════════════ -->
+    <section aria-labelledby="k1" class="w-full max-w-[380px]">
+      <p class="eyebrow">Экран 1</p>
+      <h2 id="k1" class="mt-1 text-[15px] font-semibold text-ink">Чек-лист: по плану, «остаётся», держатель</h2>
+      <div class="mt-3 overflow-hidden rounded-[22px] border border-border-strong bg-surface-muted shadow-sm">
+        <header class="bg-accent-chrome px-4 py-3 text-on-inverse">
+          <div class="flex items-center gap-3">
+            <span class="-ml-1 flex h-9 w-9 items-center justify-center rounded text-lg leading-none text-on-inverse/80">←</span>
+            <div class="min-w-0 flex-1">
+              <p class="eyebrow !text-on-inverse/70">Приёмка · вт 13 октября, 10:20</p>
+              <div class="flex min-w-0 items-center gap-2">
+                <h3 class="truncate text-[15px] font-semibold leading-snug">Реклама кофейни «Зерно»</h3>
+              </div>
+              <p class="truncate text-[12px] text-on-inverse/70">Продакшн «Сфера» · 22 ед. · бронь до вт 10:00</p>
+            </div>
+          </div>
+          <div class="mt-2 h-1 overflow-hidden rounded-full bg-on-inverse/20"><div class="h-full w-[73%] bg-on-inverse"></div></div>
+        </header>
+
+        <div class="space-y-3 px-3 pb-4 pt-3">
+          <div class="flex min-h-[36px] items-center gap-3 px-1">
+            <p class="text-[11px] text-ink-3">Черновик сохранён · 10:21</p>
+            <button type="button" class="ml-auto inline-flex h-9 items-center rounded border border-border bg-surface px-3 text-[12px] font-medium text-ink-2">Прервать</button>
+          </div>
+
+          <!-- По плану у клиента -->
+          <section class="overflow-hidden rounded-lg border border-indigo-border bg-surface">
+            <div class="flex items-center justify-between gap-2 border-b border-indigo-border bg-indigo-soft px-3 py-2">
+              <p class="text-[13px] font-semibold text-indigo">По плану у клиента до ср 10:00 · оплачено</p>
+              <span class="mono-num shrink-0 text-[12px] font-semibold text-indigo">3 ед.</span>
+            </div>
+            <p class="px-3 pt-2 text-[11.5px] leading-snug text-ink-2">Взяты на 2 смены. Сейчас их не принимаем — перейдут в продолжение за 0 ₽. Привезли раньше — «Вернули сейчас».</p>
+
+            <div class="space-y-2 border-b border-border px-3 py-2.5">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="text-[13px] font-medium text-ink">Aputure STORM 400x</p>
+                  <p class="text-[11px] text-ink-3">2 прибора · по плану</p>
+                </div>
+                <button type="button" class="inline-flex h-10 shrink-0 items-center rounded border border-emerald-border bg-surface px-3 text-[12px] font-semibold text-emerald">✓ Вернули сейчас</button>
+              </div>
+              <div class="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-1" role="radiogroup" aria-label="До какого срока остаётся">
+                  <button type="button" role="radio" aria-checked="true" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-accent-bright bg-accent-soft font-semibold text-accent">до конца оплаченного</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+1 смена</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+2 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">дата…</button>
+                </div>
+              <p class="text-[11.5px] text-ink-2">Вернут <b class="font-semibold text-ink">ср 14 окт., 10:00</b> · без доплаты</p>
+            </div>
+
+            <div class="space-y-2 px-3 py-2.5">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="text-[13px] font-medium text-ink">Nanlux Evoke 1200</p>
+                  <p class="text-[11px] text-ink-3">1 прибор · по плану</p>
+                </div>
+                <button type="button" class="inline-flex h-10 shrink-0 items-center rounded border border-emerald-border bg-surface px-3 text-[12px] font-semibold text-emerald">✓ Вернули сейчас</button>
+              </div>
+              <div class="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-1" role="radiogroup" aria-label="До какого срока остаётся">
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">до конца оплаченного</button>
+                  <button type="button" role="radio" aria-checked="true" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-accent-bright bg-accent-soft font-semibold text-accent">+1 смена</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+2 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">дата…</button>
+                </div>
+              <p class="text-[11.5px] text-ink-2">Вернут <b class="font-semibold text-ink">чт 15 окт., 10:00</b> · <span class="text-amber">сверх оплаченного +1 смена → <span class="whitespace-nowrap">3 500 ₽ со скидкой</span></span></p>
+
+              <!-- Держатель -->
+              <div class="rounded-md border border-amber-border bg-amber-soft px-3 py-2.5">
+                <p class="text-[12.5px] font-semibold text-amber">Нужен брони Петрова со ср 12:00</p>
+                <p class="mt-0.5 text-[12px] leading-snug text-ink-2">Клип «Ночной рейс». Других свободных Evoke 1200 на ср нет. Клиент сам договорился — склад не запрещает.</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button type="button" class="inline-flex h-10 items-center rounded border border-amber bg-surface px-3 text-[12.5px] font-semibold text-amber">Оставить под ответственность</button>
+                  <button type="button" class="inline-flex h-10 items-center rounded border border-border bg-surface px-3 text-[12.5px] text-ink-2">Только до ср 10:00</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <button type="button" class="block w-full rounded-lg bg-accent-bright px-4 py-3 text-center text-sm font-semibold text-surface">✓ Принять всё, кроме оставленного</button>
+
+          <section>
+            <p class="eyebrow px-1.5 pb-1 pt-1">COB Light</p>
+            <!-- COUNT: часть остаётся -->
+            <div class="rounded-lg border border-l-4 border-border border-l-teal bg-teal-soft/20 p-3">
+              <div class="mb-2 flex items-start justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-[13px] font-semibold text-ink">Aputure LS 60x</p>
+                  <p class="mt-0.5 text-[11px] text-ink-3">все 4 отмечены</p>
+                </div>
+                <div class="flex shrink-0 gap-1">
+                  <span class="rounded-full bg-emerald-soft px-2 py-0.5 text-[11px] font-semibold text-emerald">✓ 2</span>
+                  <span class="rounded-full bg-teal-soft px-2 py-0.5 text-[11px] font-semibold text-teal">у клиента 2</span>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" disabled class="h-10 rounded border border-emerald-border bg-emerald px-3 text-[12px] font-semibold text-surface opacity-40">✓ Принять 1</button>
+                <button type="button" disabled class="h-10 rounded border border-amber-border bg-surface px-3 text-[12px] font-semibold text-amber opacity-40">🔧 Ремонт 1</button>
+                <button type="button" disabled class="h-10 rounded border border-rose-border bg-surface px-3 text-[12px] font-semibold text-rose opacity-40">✗ Проблема 1</button>
+              </div>
+              <div class="mt-3 space-y-2 border-t border-border pt-3">
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                  <span class="text-[12.5px] font-semibold text-teal">Остаётся у клиента:</span>
+                  <span class="inline-flex items-center overflow-hidden rounded border border-teal-border bg-surface">
+                    <button type="button" aria-label="Меньше" class="flex h-10 w-10 items-center justify-center text-ink-2">−</button>
+                    <span class="flex h-10 w-9 items-center justify-center border-x border-teal-border font-mono text-[13px] font-semibold text-teal">2</span>
+                    <button type="button" aria-label="Больше" class="flex h-10 w-10 items-center justify-center text-ink-2">+</button>
+                  </span>
+                  
+                </div>
+                <div class="grid grid-cols-4 gap-1" role="radiogroup" aria-label="До какого срока остаётся">
+                  <button type="button" role="radio" aria-checked="true" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-accent-bright bg-accent-soft font-semibold text-accent">+1 смена</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+2 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+3 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">дата…</button>
+                </div>
+                <p class="text-[11.5px] text-ink-2">Вернут <b class="font-semibold text-ink">ср 14 окт., 10:00</b> · оплачено было до вт 10:00 · <span class="text-amber">2 шт × 1 смена → <span class="whitespace-nowrap">1 200 ₽ со скидкой</span></span></p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <p class="eyebrow px-1.5 pb-1 pt-1">LED</p>
+            <!-- UNIT: 4-й исход -->
+            <div class="rounded-lg border border-teal-border bg-surface px-2.5 py-2">
+              <div class="flex items-center gap-2">
+                <div class="min-w-0 flex-1">
+                  <p class="text-[13px] leading-tight text-ink">Astera Titan Tube, комплект</p>
+                  <p class="mt-0.5 text-[11px] text-ink-3">комплект 1 из 1</p>
+                </div>
+                <div class="flex shrink-0 gap-1">
+                  <button type="button" aria-label="Принято" class="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface-muted text-[13px] text-ink-2">✓</button>
+                  <button type="button" aria-label="Ремонт" class="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface-muted text-[13px]">🔧</button>
+                  <button type="button" aria-label="Проблема" class="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface-muted text-[13px] text-ink-2">✗</button>
+                  <button type="button" aria-label="Остаётся у клиента" aria-pressed="true" class="flex h-10 w-10 items-center justify-center rounded border border-teal bg-teal text-[13px] text-surface">⏳</button>
+                </div>
+              </div>
+              <div class="mt-2 space-y-2 border-t border-dashed border-teal-border pt-2">
+                <p class="text-[12.5px] font-semibold text-teal">Остаётся у клиента до…</p>
+                <div class="grid grid-cols-4 gap-1" role="radiogroup" aria-label="До какого срока остаётся">
+                  <button type="button" role="radio" aria-checked="true" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-accent-bright bg-accent-soft font-semibold text-accent">+1 смена</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+2 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">+3 смены</button>
+                  <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight border-border bg-surface text-ink-2">дата…</button>
+                </div>
+                <p class="text-[11.5px] text-ink-2">Вернут <b class="font-semibold text-ink">ср 14 окт., 10:00</b> · <span class="text-amber">1 смена → <span class="whitespace-nowrap">6 000 ₽, договорная</span> цена без скидки</span></p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <p class="eyebrow px-1.5 pb-1 pt-1">Грип</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between gap-2 rounded-lg border border-l-4 border-border border-l-emerald bg-emerald-soft/30 px-3 py-2.5">
+                <div class="min-w-0"><p class="truncate text-[13px] font-semibold text-ink">Зажим Super Clamp с пальцем</p><button type="button" class="mt-0.5 inline-flex min-h-8 items-center text-[11.5px] text-teal underline decoration-dotted underline-offset-2">Остаётся у клиента…</button></div>
+                <span class="shrink-0 rounded-full bg-emerald-soft px-2 py-0.5 text-[11px] font-semibold text-emerald">✓ 6</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 rounded-lg border border-l-4 border-border border-l-emerald bg-emerald-soft/30 px-3 py-2.5">
+                <div class="min-w-0"><p class="truncate text-[13px] font-semibold text-ink">Стойка C-Stand 40"</p><button type="button" class="mt-0.5 inline-flex min-h-8 items-center text-[11.5px] text-teal underline decoration-dotted underline-offset-2">Остаётся у клиента…</button></div>
+                <span class="shrink-0 rounded-full bg-emerald-soft px-2 py-0.5 text-[11px] font-semibold text-emerald">✓ 8</span>
+              </div>
+            </div>
+          </section>
+        </div>
+        <!--@include tabbar-->
+      </div>
+    </section>
+
+    <!-- ═════════════ ЭКРАН 2 · ЦЕНА И ФУТЕР ═════════════ -->
+    <section aria-labelledby="k2" class="w-full max-w-[380px]">
+      <p class="eyebrow">Экран 2 · прокручено вниз</p>
+      <h2 id="k2" class="mt-1 text-[15px] font-semibold text-ink">Цена дополнительной сметы и «Принять 16 ед.»</h2>
+      <div class="mt-3 overflow-hidden rounded-[22px] border border-border-strong bg-surface-muted shadow-sm">
+        <div class="space-y-3 px-3 pb-4 pt-3">
+          <div class="flex items-center justify-between gap-2 rounded-lg border border-l-4 border-border border-l-emerald bg-emerald-soft/30 px-3 py-2.5 opacity-70">
+            <p class="truncate text-[13px] font-semibold text-ink">Стойка C-Stand 40"</p>
+            <span class="shrink-0 rounded-full bg-emerald-soft px-2 py-0.5 text-[11px] font-semibold text-emerald">✓ 8</span>
+          </div>
+
+          <section class="overflow-hidden rounded-lg border border-border bg-surface">
+            <div class="border-b border-border bg-surface-subtle px-3 py-2">
+              <p class="eyebrow">Дополнительная смета</p>
+              <p class="mt-0.5 text-[13px] font-semibold text-ink">Продолжение СМ-2026-0231-1</p>
+            </div>
+            <dl class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 px-3 py-2.5 text-[12.5px]">
+              <dt class="text-ink-2">Aputure STORM 400x · 2 шт <span class="block text-[11px] text-indigo">по плану, оплачено</span></dt><dd class="mono-num text-right text-ink-3">0</dd>
+              <dt class="text-ink-2">Nanlux Evoke 1200 · +1 смена</dt><dd class="mono-num text-right text-ink">7 000</dd>
+              <dt class="text-ink-2">Aputure LS 60x · 2 шт × 1 смена</dt><dd class="mono-num text-right text-ink">2 400</dd>
+              <dt class="text-ink-2">Astera Titan Tube · 1 смена <span class="block text-[11px] text-indigo">договорная, без скидки</span></dt><dd class="mono-num text-right text-ink">6 000</dd>
+              <dt class="text-ink-2">Скидка брони 50 %</dt><dd class="mono-num text-right text-rose">−4 700</dd>
+              <dt class="text-ink-2">Безналичный расчёт +9 %</dt><dd class="mono-num text-right text-ink">963</dd>
+              <dt class="border-t border-border pt-2 font-semibold text-ink">К оплате</dt><dd class="mono-num border-t border-border pt-2 text-right text-[15px] font-bold text-ink">11 663 ₽</dd>
+            </dl>
+            <p class="border-t border-border px-3 py-2 text-[11.5px] text-ink-3">Ставки, скидка и надбавка — как в основной смете. Оплата — до 20 окт.</p>
+          </section>
+        </div>
+
+        <!-- Липкий футер -->
+        <div class="border-t border-border bg-surface px-3 py-3">
+          <dl class="mb-2.5 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 text-[12.5px]">
+            <dt class="text-ink-2">Принимаем на склад</dt><dd class="text-right font-semibold text-emerald">16 ед.</dd>
+            <dt class="text-ink-2">Остаются у клиента</dt><dd class="text-right font-semibold text-teal">6 ед. · 4 позиции</dd>
+            <dt class="text-ink-2">Оставлено под ответственность</dt><dd class="text-right font-semibold text-amber">Evoke 1200</dd>
+          </dl>
+          <p class="mb-2.5 rounded-md border border-border bg-surface-subtle px-3 py-2 text-[11.5px] leading-snug text-ink-2">Основная бронь закроется как «Возвращена частично». Оставленное перейдёт в продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span>.</p>
+          <button type="button" class="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-surface">Принять 16 ед.</button>
+        </div>
+        <!--@include tabbar-->
+      </div>
+    </section>
+
+    <!-- ═════════════ ЭКРАН 3 · ИТОГ ═════════════ -->
+    <section aria-labelledby="k3" class="w-full max-w-[380px]">
+      <p class="eyebrow">Экран 3</p>
+      <h2 id="k3" class="mt-1 text-[15px] font-semibold text-ink">Итог: осталось у клиента → продолжение</h2>
+      <div class="mt-3 overflow-hidden rounded-[22px] border border-border-strong bg-surface-muted shadow-sm">
+        <header class="bg-accent-chrome px-4 py-3 text-on-inverse">
+          <p class="eyebrow !text-on-inverse/70">Приёмка завершена · 10:24</p>
+          <h3 class="truncate text-[15px] font-semibold leading-snug">Реклама кофейни «Зерно»</h3>
+          <p class="text-[12px] text-on-inverse/70">Продакшн «Сфера» · принял Иван</p>
+        </header>
+        <div class="space-y-3 px-3 pb-4 pt-3">
+          <div class="rounded-lg border border-emerald-border bg-emerald-soft px-3 py-3">
+            <p class="text-[15px] font-semibold text-emerald">✓ Принято 16 ед.</p>
+            <p class="mt-0.5 text-[12px] text-ink-2">Уже свободно для других броней. Основная бронь СМ-2026-0231 — «Возвращена частично».</p>
+          </div>
+
+          <section class="overflow-hidden rounded-lg border border-teal-border bg-surface">
+            <div class="border-b border-teal-border bg-teal-soft/40 px-3 py-2 dark:bg-teal-soft">
+              <p class="text-[13px] font-semibold text-teal">Осталось у клиента → продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span></p>
+              <p class="text-[11.5px] text-ink-2">4 позиции · 6 ед. · выдано сразу, без согласования</p>
+            </div>
+            <ul class="divide-y divide-border text-[12.5px]">
+              <li class="flex items-start justify-between gap-2 px-3 py-2"><span class="min-w-0 text-ink">Aputure STORM 400x · 2<span class="block text-[11px] text-indigo">по плану, оплачено</span></span><span class="mono-num shrink-0 text-right text-ink-2">ср 10:00</span></li>
+              <li class="flex items-start justify-between gap-2 px-3 py-2"><span class="min-w-0 text-ink">Nanlux Evoke 1200 · 1<span class="block text-[11px] text-amber">+1 смена · под ответственность</span></span><span class="mono-num shrink-0 text-right text-ink-2">чт 10:00</span></li>
+              <li class="flex items-start justify-between gap-2 px-3 py-2"><span class="min-w-0 text-ink">Aputure LS 60x · 2 из 4<span class="block text-[11px] text-ink-3">+1 смена</span></span><span class="mono-num shrink-0 text-right text-ink-2">ср 10:00</span></li>
+              <li class="flex items-start justify-between gap-2 px-3 py-2"><span class="min-w-0 text-ink">Astera Titan Tube · 1<span class="block text-[11px] text-ink-3">+1 смена</span></span><span class="mono-num shrink-0 text-right text-ink-2">ср 10:00</span></li>
+            </ul>
+            <div class="flex items-baseline justify-between gap-2 border-t border-border bg-surface-subtle px-3 py-2">
+              <span class="text-[12.5px] text-ink-2">Дополнительная смета · до 20 окт.</span>
+              <span class="mono-num text-[14px] font-bold text-ink">11 663 ₽</span>
+            </div>
+          </section>
+
+          <p class="px-1 text-[12px] text-ink-3">Продолжение уже во вкладке «В работе»: по нему примут остаток одной кнопкой.</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" class="inline-flex h-11 items-center justify-center rounded-lg border border-border bg-surface px-3 text-[13px] font-medium text-ink">К возвратам</button>
+            <button type="button" class="inline-flex h-11 items-center justify-center rounded-lg border border-teal bg-teal px-3 text-[13px] font-semibold text-surface">В работе →</button>
+          </div>
+        </div>
+        <!--@include tabbar-->
+      </div>
+    </section>
+
+    <!-- ═════════════ ЭКРАН 4 · ЗАБЫЛИ НА ПЛОЩАДКЕ ═════════════ -->
+    <section aria-labelledby="k4" class="w-full max-w-[380px]">
+      <p class="eyebrow">Экран 4 · другой случай</p>
+      <h2 id="k4" class="mt-1 text-[15px] font-semibold text-ink">«Забыли на площадке — без оплаты»</h2>
+      <div class="mt-3 overflow-hidden rounded-[22px] border border-border-strong bg-surface-muted shadow-sm">
+        <div class="space-y-3 px-3 pb-4 pt-3">
+          <p class="eyebrow px-1.5 pt-1">Грип</p>
+          <div class="rounded-lg border border-l-4 border-border border-l-rose bg-rose-soft/30 p-3">
+            <div class="mb-2 flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-[13px] font-semibold text-ink">Стойка C-Stand 40"</p>
+                <p class="mt-0.5 text-[11px] text-ink-3">все 8 отмечены</p>
+              </div>
+              <div class="flex shrink-0 gap-1">
+                <span class="rounded-full bg-emerald-soft px-2 py-0.5 text-[11px] font-semibold text-emerald">✓ 7</span>
+                <span class="rounded-full bg-rose-soft px-2 py-0.5 text-[11px] font-semibold text-rose">✗ 1</span>
+              </div>
+            </div>
+            <div class="space-y-2 border-t border-border pt-3">
+              <p class="text-[11px] font-semibold text-rose">✗ Проблема (на 1 шт)</p>
+              <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Причина">
+                <button type="button" role="radio" aria-checked="true" class="inline-flex h-10 items-center rounded-full border border-rose bg-rose px-3 text-[12px] font-semibold text-surface">Забыли на площадке — без оплаты</button>
+                <button type="button" role="radio" aria-checked="false" class="inline-flex h-10 items-center rounded-full border border-rose-border bg-surface px-3 text-[12px] text-rose">Потерян</button>
+                <button type="button" role="radio" aria-checked="false" class="inline-flex h-10 items-center rounded-full border border-rose-border bg-surface px-3 text-[12px] text-rose">Сломан безвозвратно</button>
+                <button type="button" role="radio" aria-checked="false" class="inline-flex h-10 items-center rounded-full border border-rose-border bg-surface px-3 text-[12px] text-rose">Украден</button>
+              </div>
+              <textarea rows="2" aria-label="Комментарий" class="w-full resize-none rounded border border-border-strong bg-surface px-2.5 py-1.5 text-[13px] text-ink">Осталась на площадке, гафер привезёт в четверг</textarea>
+              <label class="flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-2">Когда привезут
+                <span class="inline-flex h-10 items-center rounded border border-border bg-surface px-3 font-mono text-[12.5px] text-ink">15.10.2026</span></label>
+              <p class="text-[11.5px] text-rose">→ в «Потеряшки» со статусом «Ждём». Денег не начисляем.</p>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-border bg-surface p-3 text-[12.5px]">
+            <p class="font-semibold text-ink">Чем отличается от «Остаётся у клиента»</p>
+            <ul class="mt-1.5 space-y-1.5 text-ink-2">
+              <li><span class="font-semibold text-teal">Остаётся у клиента</span> — клиент работает дальше. Продолжение брони, дополнительная смета, срок возврата.</li>
+              <li><span class="font-semibold text-rose">Забыли на площадке</span> — случайно, никто не работает. Потеряшка «Ждём», без денег. Раньше называлось «Оставлен на площадке», и его путали с первым.</li>
+            </ul>
+          </div>
+        </div>
+        <!--@include tabbar-->
+      </div>
+    </section>
+  </div>
+
+  <!-- ═════════════ РЕШЕНИЯ ═════════════ -->
+  <section id="decisions" class="mt-12">
+    <p class="eyebrow">Решения по мокапу</p>
+    <div class="mt-3 grid gap-3 lg:grid-cols-3">
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Обычная приёмка — как сейчас</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">Нет позиций по плану и никто не нажал «Остаётся у клиента» — экран не меняется: «Принять всё разом» и «Готово». Блок «По плану» появляется только у броней с такими позициями. У строк по количеству — тихая ссылка «Остаётся у клиента…», которая раскрывает степпер.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Чипы срока</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">У позиций по плану первый чип — «до конца оплаченного». У остальных оплачено только до конца брони, который уже прошёл, поэтому их ряд начинается с «+1 смена». Выбранный чип показывает дату; «дата…» открывает календарь. Сумма за лишние смены видна сразу под строкой.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Держатель — предупреждение, не запрет</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">Прибор и так у клиента, склад его не удержит. Карточка называет бронь, которой он нужен, и даёт два выхода: «Оставить под ответственность» (пишется в журнал) или срок «до ср 10:00». Кнопка внизу считает единицы: «Принять 16 ед.», а не «Завершить приёмку».</p>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

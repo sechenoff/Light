@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Смены по позициям и частичная сдача · эскизы · Light Rental</title>
+<!--
+  ============================================================================
+  ЭСКИЗЫ К ПЛАНУ · СМЕНЫ ПО ПОЗИЦИЯМ И ЧАСТИЧНАЯ СДАЧА (05.10.2026)
+
+  Это черновые эскизы к плану работ, а не утверждённые мокапы: показывают,
+  что увидит сотрудник, чтобы владельцу было проще принять решения. Точные
+  мокапы всех экранов — первый этап самого плана.
+
+  Экран 1 — «Состав заявки» в форме брони: колонка «Смен» становится счётчиком.
+  Экран 2 — приёмка с карточки брони: «Вернули всё» / «Вернули не всё».
+  Экран 3 — карточка брони после частичной сдачи.
+
+  Классы и токены — из apps/web/tailwind.config.js и app/globals.css.
+  Брони, клиенты и суммы вымышлены. Сегодня по сюжету — 11 октября 2026.
+  ============================================================================
+-->
+<style>/*__TAILWIND__*/</style>
+</head>
+<body>
+<main class="mx-auto max-w-[1040px] space-y-10 p-6">
+
+<!-- ═════════════ ЭКРАН 1 ═════════════ -->
+<section id="s1">
+  <p class="eyebrow mb-1">Эскиз 1 · форма брони</p>
+  <h2 class="text-lg font-semibold text-ink">Состав заявки: смены задаются по позициям</h2>
+  <p class="mb-3 mt-1 max-w-[720px] text-sm text-ink-2">Бронь на 1 смену, два прибора берут на двое суток. В колонке «Смен» — счётчик. По умолчанию там смены брони; изменённые позиции отмечены, рядом — когда их ждём обратно.</p>
+
+  <div class="overflow-hidden rounded-md border border-border bg-surface shadow-xs">
+    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 pb-2.5 pt-2.5">
+      <span class="font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-3">Состав заявки<span class="ml-1 font-mono text-emerald">· 6</span></span>
+      <button class="inline-flex min-h-9 items-center justify-center rounded-md border border-accent-border bg-accent-soft px-3.5 text-[13px] font-semibold text-accent">+ Добавить собственную позицию</button>
+    </div>
+
+    <!-- НОВОЕ: пояснение, когда смены у позиций разные -->
+    <div class="mx-5 mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-indigo-border bg-indigo-soft px-3 py-2 text-[12.5px] text-indigo">
+      <span class="font-semibold">2 позиции взяты на 2 смены.</span>
+      <span>Основную бронь ждём 11 окт. к 10:00, эти позиции — 12 окт. к 10:00.</span>
+    </div>
+
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-y border-border bg-surface-subtle">
+          <th class="eyebrow whitespace-nowrap py-2 pl-5 pr-3 text-left">Позиция</th>
+          <th class="eyebrow whitespace-nowrap px-3 py-2 text-right">Кол-во</th>
+          <th class="eyebrow whitespace-nowrap px-3 py-2 text-right">Цена/смена</th>
+          <th class="eyebrow whitespace-nowrap px-3 py-2 text-right">Смен</th>
+          <th class="eyebrow whitespace-nowrap px-3 py-2 text-right">Сумма</th>
+          <th class="w-11 py-2 pl-3 pr-5"></th>
+        </tr>
+      </thead>
+      <tbody id="cart"></tbody>
+      <tfoot>
+        <tr class="border-t-2 border-ink">
+          <th colspan="4" class="py-2.5 pl-5 pr-3 text-left font-semibold text-ink">Сумма позиций</th>
+          <td class="mono-num whitespace-nowrap px-3 py-2.5 text-right text-[15px] font-bold text-ink">39 820 ₽</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- телефон: та же позиция в две полосы -->
+  <p class="mb-2 mt-5 text-xs text-ink-3">На телефоне — та же позиция в две полосы:</p>
+  <div class="w-[343px] rounded-md border border-border bg-surface px-3 py-2 shadow-xs">
+    <div class="grid grid-cols-[6px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 gap-y-1 px-2 py-1.5">
+      <span class="h-1.5 w-1.5 rounded-full bg-emerald"></span>
+      <div class="min-w-0">
+        <span class="text-[13px] font-medium leading-snug text-ink">Aputure STORM 400x</span>
+        <div class="text-[11px] text-indigo">2 смены · ждём 12 окт. к 10:00</div>
+      </div>
+      <span class="inline-flex items-center overflow-hidden rounded border border-emerald-border bg-surface">
+        <span class="flex h-9 w-9 items-center justify-center text-ink-2">−</span>
+        <span class="flex h-9 w-8 items-center justify-center border-x border-emerald-border font-mono text-[12px] font-semibold text-emerald">2</span>
+        <span class="flex h-9 w-9 items-center justify-center text-ink-2">+</span>
+      </span>
+      <span class="flex h-9 w-9 items-center justify-center text-ink-3">×</span>
+      <span class="col-start-2 col-end-[-1] row-start-2 flex flex-wrap items-center gap-1.5 whitespace-nowrap font-mono text-[12px] text-ink-2">
+        <span class="font-semibold text-ink">4 000</span>
+        <span class="text-ink-3">/см × 2 ×</span>
+        <span class="inline-flex items-center overflow-hidden rounded border border-indigo-border bg-surface">
+          <span class="flex h-8 w-8 items-center justify-center text-ink-2">−</span>
+          <span class="flex h-8 w-7 items-center justify-center border-x border-indigo-border text-[12px] font-semibold text-indigo">2</span>
+          <span class="flex h-8 w-8 items-center justify-center text-ink-2">+</span>
+        </span>
+        <span class="text-ink-3">см =</span>
+        <span class="font-semibold text-ink">16 000 ₽</span>
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ ЭКРАН 2 ═════════════ -->
+<section id="s2">
+  <p class="eyebrow mb-1">Эскиз 2 · приёмка с карточки брони</p>
+  <h2 class="text-lg font-semibold text-ink">«Принять возврат»: вернули не всё</h2>
+  <p class="mb-3 mt-1 max-w-[720px] text-sm text-ink-2">Обычный случай остаётся в одно нажатие — «Вернули всё». Позиции, взятые на 2 смены, уже отмечены «остаются по плану». Если клиент оставил что-то ещё, сотрудник отмечает, сколько вернули; сверх оплаченного — сразу видна сумма дополнительной сметы.</p>
+
+  <div class="max-w-[760px] rounded-lg border border-border bg-surface shadow-sm">
+    <div class="border-b border-border px-5 py-4">
+      <p class="eyebrow mb-1">Приёмка · СМ-2026-0231</p>
+      <h3 class="text-base font-semibold text-ink">Реклама кофейни «Зерно»</h3>
+      <p class="mt-0.5 text-xs text-ink-2">Продакшн «Сфера» · бронь 10 окт. 10:00 → 11 окт. 10:00 · сейчас 11 окт., 10:20</p>
+      <div class="mt-3 inline-flex gap-1 rounded-lg border border-border bg-surface-subtle p-1">
+        <span class="min-h-9 rounded px-3 py-1.5 text-sm text-ink-2">Вернули всё</span>
+        <span class="min-h-9 rounded bg-surface px-3 py-1.5 text-sm font-semibold text-accent shadow-sm">Вернули не всё</span>
+      </div>
+    </div>
+
+    <div id="ret" class="divide-y divide-border"></div>
+
+    <div class="border-t border-border bg-surface-subtle px-5 py-4">
+      <dl class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1.5 text-sm">
+        <dt class="text-ink-2">Принимаем на склад сейчас</dt><dd class="text-right font-semibold text-ink">16 ед.</dd>
+        <dt class="text-ink-2">Остаётся у клиента по плану <span class="text-ink-3">(уже в смете)</span></dt><dd class="text-right font-semibold text-ink">3 ед. · до 12 окт., 10:00</dd>
+        <dt class="text-ink-2">Остаётся сверх плана <span class="text-ink-3">(+1 смена)</span></dt><dd class="text-right font-semibold text-ink">2 ед. · до 12 окт., 10:00</dd>
+        <dt class="border-t border-border pt-2 font-semibold text-ink">Дополнительная смета СМ-2026-0231-1</dt>
+        <dd class="border-t border-border pt-2 text-right"><span class="mono-num text-[15px] font-bold text-ink">1 200 ₽</span><span class="block text-[11px] text-ink-3">2 × 1 200 × 1 смена = 2 400, скидка брони 50 %</span></dd>
+      </dl>
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p class="max-w-[400px] text-xs text-ink-3">Основная бронь закроется как «Возвращена частично». Оставленное перейдёт в продолжение СМ-2026-0231-1 со своей сметой и оплатой. Принятое сразу свободно для других броней.</p>
+        <div class="flex gap-2">
+          <button class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-2">Отмена</button>
+          <button class="inline-flex min-h-10 items-center rounded border border-accent bg-accent px-4 text-sm font-semibold text-surface">Принять 16 ед.</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ ЭКРАН 3 ═════════════ -->
+<section id="s3">
+  <p class="eyebrow mb-1">Эскиз 3 · карточка брони после частичной сдачи</p>
+  <h2 class="text-lg font-semibold text-ink">Основная бронь и её продолжение</h2>
+  <p class="mb-3 mt-1 max-w-[720px] text-sm text-ink-2">Основная бронь закрыта как «Возвращена частично». То, что осталось у клиента, — в продолжении СМ-2026-0231-1: своя дополнительная смета, свой срок оплаты, своя строка в долгах. «Принять остаток» — одна кнопка.</p>
+
+  <div class="max-w-[760px] space-y-3">
+    <div class="rounded-lg border border-border bg-surface p-4 shadow-xs">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-sm font-semibold text-ink">СМ-2026-0231 · Реклама кофейни «Зерно»</span>
+        <span class="inline-flex items-center whitespace-nowrap rounded border border-amber-border bg-amber-soft px-2 py-0.5 text-xs font-semibold text-amber">Возвращена частично · у клиента 5 ед.</span>
+        <button class="ml-auto inline-flex min-h-9 items-center rounded border border-accent bg-accent px-3 text-xs font-semibold text-surface">Принять остаток</button>
+      </div>
+      <table class="mt-3 w-full text-sm">
+        <thead>
+          <tr class="border-y border-border bg-surface-subtle">
+            <th class="eyebrow py-2 pl-3 pr-3 text-left">В продолжении СМ-2026-0231-1</th>
+            <th class="eyebrow px-3 py-2 text-right">Кол-во</th>
+            <th class="eyebrow px-3 py-2 text-left">Ждём</th>
+            <th class="eyebrow py-2 pl-3 pr-3 text-left">Основание</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          <tr><td class="py-2 pl-3 pr-3 font-medium text-ink">Aputure STORM 400x</td><td class="mono-num px-3 py-2 text-right">2</td><td class="px-3 py-2 text-ink-2">12 окт., 10:00</td><td class="py-2 pl-3 pr-3"><span class="rounded bg-indigo-soft px-1.5 py-0.5 text-[11px] text-indigo">по плану · 2 смены</span></td></tr>
+          <tr><td class="py-2 pl-3 pr-3 font-medium text-ink">Nanlux Evoke 1200</td><td class="mono-num px-3 py-2 text-right">1</td><td class="px-3 py-2 text-ink-2">12 окт., 10:00</td><td class="py-2 pl-3 pr-3"><span class="rounded bg-indigo-soft px-1.5 py-0.5 text-[11px] text-indigo">по плану · 2 смены</span></td></tr>
+          <tr><td class="py-2 pl-3 pr-3 font-medium text-ink">Aputure LS 60x</td><td class="mono-num px-3 py-2 text-right">2 <span class="text-ink-3">из 4</span></td><td class="px-3 py-2 text-ink-2">12 окт., 10:00</td><td class="py-2 pl-3 pr-3"><span class="rounded bg-amber-soft px-1.5 py-0.5 text-[11px] text-amber">продление · +1 смена</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="rounded-lg border border-border bg-surface p-4 shadow-xs">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p class="eyebrow">Дополнительная смета № СМ-2026-0231-1</p>
+          <p class="mt-0.5 text-xs text-ink-3">от 11 окт. · продолжение к смете № СМ-2026-0231 · оплата до 18 окт.</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="inline-flex min-h-9 items-center rounded border border-border bg-surface px-3 text-xs font-medium text-ink-2">Скачать PDF</button>
+          <button class="inline-flex min-h-9 items-center rounded border border-border bg-surface px-3 text-xs font-medium text-ink-2">Печать</button>
+        </div>
+      </div>
+      <table class="mt-3 w-full text-sm">
+        <thead>
+          <tr class="border-y border-border bg-surface-subtle">
+            <th class="eyebrow py-2 pl-3 pr-3 text-left">Позиция</th>
+            <th class="eyebrow px-3 py-2 text-right">Кол-во</th>
+            <th class="eyebrow px-3 py-2 text-right">Цена/смена</th>
+            <th class="eyebrow px-3 py-2 text-right">Смен</th>
+            <th class="eyebrow py-2 pl-3 pr-3 text-right">Сумма</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-border"><td class="py-2 pl-3 pr-3 font-medium text-ink">Aputure STORM 400x <span class="font-normal text-ink-3">· оплачено в основной смете</span></td><td class="mono-num px-3 py-2 text-right">2</td><td class="mono-num px-3 py-2 text-right text-ink-3">—</td><td class="mono-num px-3 py-2 text-right text-ink-3">0</td><td class="mono-num py-2 pl-3 pr-3 text-right text-ink-3">0</td></tr>
+          <tr class="border-b border-border"><td class="py-2 pl-3 pr-3 font-medium text-ink">Nanlux Evoke 1200 <span class="font-normal text-ink-3">· оплачено в основной смете</span></td><td class="mono-num px-3 py-2 text-right">1</td><td class="mono-num px-3 py-2 text-right text-ink-3">—</td><td class="mono-num px-3 py-2 text-right text-ink-3">0</td><td class="mono-num py-2 pl-3 pr-3 text-right text-ink-3">0</td></tr>
+          <tr class="border-b border-border"><td class="py-2 pl-3 pr-3 font-medium text-ink">Aputure LS 60x <span class="font-normal text-ink-3">· 11 → 12 окт.</span></td><td class="mono-num px-3 py-2 text-right">2</td><td class="mono-num px-3 py-2 text-right">1 200</td><td class="mono-num px-3 py-2 text-right">1</td><td class="mono-num py-2 pl-3 pr-3 text-right font-semibold">2 400</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><th colspan="4" class="py-1.5 pl-3 pr-3 text-right text-xs font-normal text-ink-2">Скидка брони 50 %</th><td class="mono-num py-1.5 pl-3 pr-3 text-right text-ink-2">−1 200</td></tr>
+          <tr class="border-t-2 border-ink"><th colspan="4" class="py-2 pl-3 pr-3 text-right font-semibold text-ink">К оплате по дополнительной смете</th><td class="mono-num py-2 pl-3 pr-3 text-right text-[15px] font-bold text-ink">1 200 ₽</td></tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+/* ── Экран 1: строки состава ───────────────────────────────────────────── */
+const fmt = (n) => new Intl.NumberFormat("ru-RU").format(n).replace(/ /g, " ");
+const qtyStepper = (n) => `<span class="inline-flex shrink-0 items-center overflow-hidden rounded border border-emerald-border bg-surface">
+  <span class="flex h-7 w-7 items-center justify-center text-ink-2">−</span>
+  <span class="flex h-7 w-8 items-center justify-center border-x border-emerald-border font-mono text-[12px] font-semibold text-emerald">${n}</span>
+  <span class="flex h-7 w-7 items-center justify-center text-ink-2">+</span></span>`;
+// Счётчик смен: тихий, пока смены как у брони; индиго — когда задано вручную (тот же язык, что у договорной цены).
+const shiftStepper = (n, changed) => `<span class="inline-flex items-center justify-end gap-1">
+  ${changed ? `<span title="Вернуть смены брони" class="flex h-7 w-6 items-center justify-center rounded text-[13px] text-indigo">↺</span>` : ""}
+  <span class="inline-flex shrink-0 items-center overflow-hidden rounded border ${changed ? "border-indigo-border" : "border-border"} bg-surface">
+    <span class="flex h-7 w-6 items-center justify-center text-ink-3">−</span>
+    <span class="flex h-7 w-7 items-center justify-center border-x ${changed ? "border-indigo-border font-semibold text-indigo" : "border-border text-ink-2"} font-mono text-[12px]">${n}</span>
+    <span class="flex h-7 w-6 items-center justify-center text-ink-3">+</span></span></span>`;
+const band = (t, n) => `<tr class="border-b border-border bg-surface-subtle"><th colspan="6" class="py-1.5 pl-5 pr-5 text-left font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-3">${t}<span class="ml-1 font-mono">· ${n}</span></th></tr>`;
+const row = (name, qty, rate, shifts, changed, note) => `<tr class="border-b border-border ${changed ? "bg-indigo-soft/40" : ""}">
+  <td class="py-2 pl-5 pr-3"><span class="font-medium text-ink">${name}</span>${note ? `<div class="text-[11px] text-indigo">${note}</div>` : ""}</td>
+  <td class="px-3 py-2 text-right">${qtyStepper(qty)}</td>
+  <td class="mono-num px-3 py-2 text-right font-semibold text-ink">${fmt(rate)}</td>
+  <td class="px-3 py-2 text-right">${shiftStepper(shifts, changed)}</td>
+  <td class="mono-num whitespace-nowrap px-3 py-2 text-right font-semibold text-ink">${fmt(qty * rate * shifts)}</td>
+  <td class="py-2 pl-3 pr-5 text-ink-3">×</td></tr>`;
+const custom = (name, qty, price) => `<tr class="border-b border-border">
+  <td class="py-2 pl-5 pr-3"><span class="font-medium text-ink">${name}</span> <span class="rounded bg-indigo-soft px-1.5 py-0.5 text-[10.5px] text-indigo">своя</span></td>
+  <td class="px-3 py-2 text-right">${qtyStepper(qty)}</td>
+  <td class="mono-num px-3 py-2 text-right font-semibold text-ink">${fmt(price)}</td>
+  <td class="mono-num px-3 py-2 text-right text-ink-3">—</td>
+  <td class="mono-num px-3 py-2 text-right font-semibold text-ink">${fmt(qty * price)}</td>
+  <td class="py-2 pl-3 pr-5 text-ink-3">×</td></tr>`;
+document.getElementById("cart").innerHTML = [
+  band("COB Light", 3),
+  row("Aputure STORM 400x", 2, 4000, 2, true, "2 смены вместо 1 · ждём 12 окт. к 10:00"),
+  row("Aputure LS 60x", 4, 1200, 1, false),
+  row("Nanlux Evoke 1200", 1, 7000, 2, true, "2 смены вместо 1 · ждём 12 окт. к 10:00"),
+  band("Грип", 2),
+  row("Зажим Super Clamp с пальцем", 6, 120, 1, false),
+  row("Стойка C-Stand 40\"", 8, 350, 1, false),
+  band("Произвольные позиции", 1),
+  custom("Расходники", 1, 1500),
+].join("");
+
+/* ── Экран 2: строки приёмки ───────────────────────────────────────────── */
+const backStepper = (n, of) => `<span class="inline-flex items-center gap-2 whitespace-nowrap text-xs text-ink-2">вернули
+  <span class="inline-flex items-center overflow-hidden rounded border border-border bg-surface">
+    <span class="flex h-8 w-8 items-center justify-center text-ink-2">−</span>
+    <span class="flex h-8 w-8 items-center justify-center border-x border-border font-mono text-[12px] font-semibold text-ink">${n}</span>
+    <span class="flex h-8 w-8 items-center justify-center text-ink-2">+</span></span>
+  из ${of}</span>`;
+const retRow = (name, back, of, rest) => `<div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 px-5 py-3">
+  <div class="min-w-0"><span class="text-sm font-medium text-ink">${name}</span>${rest || ""}</div>
+  ${backStepper(back, of)}</div>`;
+const planned = (n, until) => `<div class="mt-1 flex flex-wrap items-center gap-2 text-xs"><span class="rounded bg-indigo-soft px-1.5 py-0.5 text-indigo">остаётся по плану · ${n} ед.</span><span class="text-ink-3">до ${until} · уже оплачено</span></div>`;
+const extra = (n, until, money) => `<div class="mt-1 flex flex-wrap items-center gap-2 text-xs"><span class="rounded bg-amber-soft px-1.5 py-0.5 text-amber">остаётся сверх плана · ${n} ед.</span>
+  <span class="inline-flex min-h-8 items-center gap-1 rounded border border-border bg-surface px-2 text-ink">до ${until} <span class="text-ink-3">· +1 смена ▾</span></span>
+  <span class="font-semibold text-ink">→ ${money} в доп. смету</span></div>`;
+const done = `<div class="mt-0.5 text-xs text-emerald">✓ вернули всё</div>`;
+document.getElementById("ret").innerHTML = [
+  retRow("Aputure STORM 400x", 0, 2, planned(2, "12 окт., 10:00")),
+  retRow("Nanlux Evoke 1200", 0, 1, planned(1, "12 окт., 10:00")),
+  retRow("Aputure LS 60x", 2, 4, extra(2, "12 окт., 10:00", "+1 200 ₽ со скидкой")),
+  retRow("Зажим Super Clamp с пальцем", 6, 6, done),
+  retRow("Стойка C-Stand 40\"", 8, 8, done),
+].join("");
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!-- Общая шапка мокапов: переход между M1–M5 и переключатель темы. Не часть интерфейса. -->
+<header class="border-b border-border bg-surface">
+  <div class="mx-auto flex max-w-[1240px] items-center gap-2 px-4 py-2">
+    <nav aria-label="Мокапы" class="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <a data-nav href="index.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">Все мокапы</a>
+      <a data-nav href="m1-form-shifts.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M1 · Форма</a>
+      <a data-nav href="m2-smeta-documents.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M2 · Сметы</a>
+      <a data-nav href="m3-kiosk-return.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M3 · Киоск</a>
+      <a data-nav href="m4-return-dialog.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M4 · Окно приёмки</a>
+      <a data-nav href="m5-booking-family.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M5 · Семья броней</a>
+    </nav>
+    <button id="themeBtn" type="button" class="inline-flex min-h-9 shrink-0 items-center rounded border border-border bg-surface px-3 text-xs font-medium text-ink-2 hover:bg-surface-subtle">Ночная тема</button>
+  </div>
+</header>
+<script>
+(() => {
+  const here = location.pathname.split("/").pop() || "index.html";
+  document.querySelectorAll("[data-nav]").forEach((a) => {
+    if (a.getAttribute("href") === here) a.classList.add("bg-accent-soft", "!text-accent", "font-semibold");
+  });
+  const btn = document.getElementById("themeBtn");
+  const label = () => { btn.textContent = document.documentElement.dataset.theme === "dark" ? "Светлая тема" : "Ночная тема"; };
+  try { const saved = localStorage.getItem("lr:mockup-theme"); if (saved === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) {}
+  label();
+  btn.addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("lr:mockup-theme", next); } catch (e) {}
+    label();
+  });
+  new MutationObserver(label).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>

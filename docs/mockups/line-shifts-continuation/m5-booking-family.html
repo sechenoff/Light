@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M5 · Бронь и её продолжение</title>
+<!--
+  МОКАП M5 · СЕМЬЯ БРОНЕЙ: ОСНОВНАЯ БРОНЬ И ПРОДОЛЖЕНИЕ
+  Карточка основной брони, карточка продолжения, строка реестра, «В работе» в киоске,
+  личный кабинет клиента и платёж «Разнести по продолжениям».
+  Бронь СМ-2026-0231 (итог 28 340, оплачено 20 000) и продолжение СМ-2026-0231-1
+  (11 663, не оплачено). Сегодня ср 14 октября 2026, 08:30. Всё вымышлено.
+  Решение по реестру: продолжение — вложенная строка сразу под основной бронью.
+  Заливка по оплате — у каждой брони своя, как в docs/mockups/bookings-payment-tint.
+-->
+<style>@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");*,:after,:before{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }
+
+/*! tailwindcss v3.4.19 | MIT License | https://tailwindcss.com*/*,:after,:before{box-sizing:border-box;border:0 solid #e5e7eb}:after,:before{--tw-content:""}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:IBM Plex Sans,system-ui,sans-serif;font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:IBM Plex Mono,IBM Plex Sans,ui-monospace,monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0}fieldset,legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::-moz-placeholder,textarea::-moz-placeholder{opacity:1;color:#9ca3af}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}body{font-family:IBM Plex Sans,system-ui,sans-serif;font-size:13.5px;line-height:1.6;--tw-bg-opacity:1;background-color:rgb(var(--c-surface-muted)/var(--tw-bg-opacity,1));--tw-text-opacity:1;color:rgb(var(--c-ink)/var(--tw-text-opacity,1));-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}@supports (-webkit-touch-callout:none){input[type=date],input[type=datetime-local],input[type=month],input[type=time]{-webkit-appearance:none;-moz-appearance:none;appearance:none;min-width:0;max-width:100%}input::-webkit-date-and-time-value{text-align:left;min-height:1.25em}}.eyebrow{font-family:IBM Plex Sans Condensed,system-ui,sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;--tw-text-opacity:1;color:rgb(var(--c-ink-3)/var(--tw-text-opacity,1))}.mono-num{font-family:IBM Plex Mono,IBM Plex Sans,ui-monospace,monospace;font-variant-numeric:tabular-nums}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0}.absolute{position:absolute}.relative{position:relative}.inset-0{inset:0}.bottom-full{bottom:100%}.left-0{left:0}.left-\[22\%\]{left:22%}.right-0{right:0}.right-1{right:.25rem}.right-\[22\%\]{right:22%}.top-0{top:0}.z-10{z-index:10}.col-span-3{grid-column:span 3/span 3}.col-start-2{grid-column-start:2}.col-end-\[-1\]{grid-column-end:-1}.row-start-2{grid-row-start:2}.mx-3{margin-left:.75rem;margin-right:.75rem}.mx-5{margin-left:1.25rem;margin-right:1.25rem}.mx-auto{margin-left:auto;margin-right:auto}.my-3{margin-top:.75rem;margin-bottom:.75rem}.-ml-1{margin-left:-.25rem}.-mr-1{margin-right:-.25rem}.-mr-2{margin-right:-.5rem}.-mt-1{margin-top:-.25rem}.-mt-24{margin-top:-6rem}.mb-0\.5{margin-bottom:.125rem}.mb-1{margin-bottom:.25rem}.mb-1\.5{margin-bottom:.375rem}.mb-2{margin-bottom:.5rem}.mb-2\.5{margin-bottom:.625rem}.mb-3{margin-bottom:.75rem}.ml-0\.5{margin-left:.125rem}.ml-1{margin-left:.25rem}.ml-2{margin-left:.5rem}.ml-3{margin-left:.75rem}.ml-auto{margin-left:auto}.mt-0\.5{margin-top:.125rem}.mt-1{margin-top:.25rem}.mt-1\.5{margin-top:.375rem}.mt-10{margin-top:2.5rem}.mt-12{margin-top:3rem}.mt-2{margin-top:.5rem}.mt-2\.5{margin-top:.625rem}.mt-3{margin-top:.75rem}.mt-4{margin-top:1rem}.mt-5{margin-top:1.25rem}.mt-6{margin-top:1.5rem}.mt-8{margin-top:2rem}.block{display:block}.flex{display:flex}.inline-flex{display:inline-flex}.table{display:table}.grid{display:grid}.inline-grid{display:inline-grid}.hidden{display:none}.h-0\.5{height:.125rem}.h-1{height:.25rem}.h-1\.5{height:.375rem}.h-10{height:2.5rem}.h-11{height:2.75rem}.h-12{height:3rem}.h-16{height:4rem}.h-2{height:.5rem}.h-4{height:1rem}.h-5{height:1.25rem}.h-7{height:1.75rem}.h-8{height:2rem}.h-9{height:2.25rem}.h-\[16px\]{height:16px}.h-\[18px\]{height:18px}.h-\[21px\]{height:21px}.h-\[3px\]{height:3px}.h-full{height:100%}.min-h-10{min-height:2.5rem}.min-h-8{min-height:2rem}.min-h-9{min-height:2.25rem}.min-h-\[36px\]{min-height:36px}.min-h-\[52px\]{min-height:52px}.min-h-screen{min-height:100vh}.w-1\.5{width:.375rem}.w-10{width:2.5rem}.w-11{width:2.75rem}.w-12{width:3rem}.w-14{width:3.5rem}.w-2{width:.5rem}.w-4{width:1rem}.w-5{width:1.25rem}.w-6{width:1.5rem}.w-7{width:1.75rem}.w-8{width:2rem}.w-9{width:2.25rem}.w-\[104px\]{width:104px}.w-\[110px\]{width:110px}.w-\[112px\]{width:112px}.w-\[120px\]{width:120px}.w-\[150px\]{width:150px}.w-\[16px\]{width:16px}.w-\[18px\]{width:18px}.w-\[21px\]{width:21px}.w-\[28px\]{width:28px}.w-\[32px\]{width:32px}.w-\[343px\]{width:343px}.w-\[380px\]{width:380px}.w-\[40px\]{width:40px}.w-\[56px\]{width:56px}.w-\[64px\]{width:64px}.w-\[720px\]{width:720px}.w-\[72px\]{width:72px}.w-\[73\%\]{width:73%}.w-\[794px\]{width:794px}.w-\[96px\]{width:96px}.w-full{width:100%}.min-w-0{min-width:0}.min-w-\[1040px\]{min-width:1040px}.min-w-\[120px\]{min-width:120px}.min-w-\[220px\]{min-width:220px}.min-w-\[260px\]{min-width:260px}.min-w-\[420px\]{min-width:420px}.min-w-\[44px\]{min-width:44px}.min-w-\[48px\]{min-width:48px}.min-w-\[560px\]{min-width:560px}.min-w-\[620px\]{min-width:620px}.min-w-\[680px\]{min-width:680px}.min-w-\[860px\]{min-width:860px}.max-w-\[1040px\]{max-width:1040px}.max-w-\[1240px\]{max-width:1240px}.max-w-\[300px\]{max-width:300px}.max-w-\[375px\]{max-width:375px}.max-w-\[380px\]{max-width:380px}.max-w-\[400px\]{max-width:400px}.max-w-\[520px\]{max-width:520px}.max-w-\[560px\]{max-width:560px}.max-w-\[720px\]{max-width:720px}.max-w-\[760px\]{max-width:760px}.max-w-\[880px\]{max-width:880px}.max-w-sm{max-width:24rem}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}.basis-56{flex-basis:14rem}.table-fixed{table-layout:fixed}.border-collapse{border-collapse:collapse}.resize-none{resize:none}.resize{resize:both}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.grid-cols-5{grid-template-columns:repeat(5,minmax(0,1fr))}.grid-cols-\[1\.5fr_1fr_1fr_1fr\]{grid-template-columns:1.5fr 1fr 1fr 1fr}.grid-cols-\[170px_minmax\(0\2c 1fr\)\]{grid-template-columns:170px minmax(0,1fr)}.grid-cols-\[6px_minmax\(0\2c 1fr\)_auto_auto\]{grid-template-columns:6px minmax(0,1fr) auto auto}.grid-cols-\[auto_auto\]{grid-template-columns:auto auto}.grid-cols-\[auto_minmax\(0\2c 1fr\)\]{grid-template-columns:auto minmax(0,1fr)}.grid-cols-\[minmax\(0\2c 1fr\)_auto\]{grid-template-columns:minmax(0,1fr) auto}.grid-cols-\[minmax\(0\2c 1fr\)_auto_auto\]{grid-template-columns:minmax(0,1fr) auto auto}.flex-col{flex-direction:column}.flex-col-reverse{flex-direction:column-reverse}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-end{align-items:flex-end}.items-center{align-items:center}.items-baseline{align-items:baseline}.justify-end{justify-content:flex-end}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.justify-items-center{justify-items:center}.gap-0\.5{gap:.125rem}.gap-1{gap:.25rem}.gap-1\.5{gap:.375rem}.gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}.gap-5{gap:1.25rem}.gap-6{gap:1.5rem}.gap-x-1\.5{-moz-column-gap:.375rem;column-gap:.375rem}.gap-x-2{-moz-column-gap:.5rem;column-gap:.5rem}.gap-x-2\.5{-moz-column-gap:.625rem;column-gap:.625rem}.gap-x-3{-moz-column-gap:.75rem;column-gap:.75rem}.gap-x-4{-moz-column-gap:1rem;column-gap:1rem}.gap-x-6{-moz-column-gap:1.5rem;column-gap:1.5rem}.gap-y-0\.5{row-gap:.125rem}.gap-y-1{row-gap:.25rem}.gap-y-1\.5{row-gap:.375rem}.gap-y-2{row-gap:.5rem}.space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}.space-y-1\.5>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.375rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.375rem*var(--tw-space-y-reverse))}.space-y-10>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(2.5rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(2.5rem*var(--tw-space-y-reverse))}.space-y-2>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.5rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.5rem*var(--tw-space-y-reverse))}.space-y-3>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.75rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.75rem*var(--tw-space-y-reverse))}.space-y-4>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem*var(--tw-space-y-reverse))}.divide-y>:not([hidden])~:not([hidden]){--tw-divide-y-reverse:0;border-top-width:calc(1px*(1 - var(--tw-divide-y-reverse)));border-bottom-width:calc(1px*var(--tw-divide-y-reverse))}.divide-border>:not([hidden])~:not([hidden]){--tw-divide-opacity:1;border-color:rgb(var(--c-border)/var(--tw-divide-opacity,1))}.self-start{align-self:flex-start}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.truncate{overflow:hidden;text-overflow:ellipsis}.truncate,.whitespace-nowrap{white-space:nowrap}.break-words{overflow-wrap:break-word}.rounded{border-radius:4px}.rounded-\[22px\]{border-radius:22px}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:6px}.rounded-md{border-radius:.375rem}.rounded-b{border-bottom-right-radius:4px;border-bottom-left-radius:4px}.rounded-t{border-top-left-radius:4px;border-top-right-radius:4px}.rounded-t-2xl{border-top-left-radius:1rem;border-top-right-radius:1rem}.border{border-width:1px}.border-2{border-width:2px}.border-x{border-left-width:1px;border-right-width:1px}.border-y{border-top-width:1px}.border-b,.border-y{border-bottom-width:1px}.border-b-0{border-bottom-width:0}.border-l-2{border-left-width:2px}.border-l-4{border-left-width:4px}.border-t{border-top-width:1px}.border-t-2{border-top-width:2px}.\!border-dashed{border-style:dashed!important}.border-dashed{border-style:dashed}.border-accent{--tw-border-opacity:1;border-color:rgb(var(--c-accent)/var(--tw-border-opacity,1))}.border-accent-border{--tw-border-opacity:1;border-color:rgb(var(--c-accent-border)/var(--tw-border-opacity,1))}.border-accent-bright{--tw-border-opacity:1;border-color:rgb(var(--c-accent-bright)/var(--tw-border-opacity,1))}.border-amber{--tw-border-opacity:1;border-color:rgb(var(--c-amber)/var(--tw-border-opacity,1))}.border-amber-border{--tw-border-opacity:1;border-color:rgb(var(--c-amber-border)/var(--tw-border-opacity,1))}.border-border{--tw-border-opacity:1;border-color:rgb(var(--c-border)/var(--tw-border-opacity,1))}.border-border-strong{--tw-border-opacity:1;border-color:rgb(var(--c-border-strong)/var(--tw-border-opacity,1))}.border-emerald-border{--tw-border-opacity:1;border-color:rgb(var(--c-emerald-border)/var(--tw-border-opacity,1))}.border-indigo{--tw-border-opacity:1;border-color:rgb(var(--c-indigo)/var(--tw-border-opacity,1))}.border-indigo-border{--tw-border-opacity:1;border-color:rgb(var(--c-indigo-border)/var(--tw-border-opacity,1))}.border-ink{--tw-border-opacity:1;border-color:rgb(var(--c-ink)/var(--tw-border-opacity,1))}.border-ink-2{--tw-border-opacity:1;border-color:rgb(var(--c-ink-2)/var(--tw-border-opacity,1))}.border-inverse{--tw-border-opacity:1;border-color:rgb(var(--c-inverse)/var(--tw-border-opacity,1))}.border-on-inverse\/30{border-color:rgb(var(--c-on-inverse)/.3)}.border-rose{--tw-border-opacity:1;border-color:rgb(var(--c-rose)/var(--tw-border-opacity,1))}.border-rose-border{--tw-border-opacity:1;border-color:rgb(var(--c-rose-border)/var(--tw-border-opacity,1))}.border-teal{--tw-border-opacity:1;border-color:rgb(var(--c-teal)/var(--tw-border-opacity,1))}.border-teal-border{--tw-border-opacity:1;border-color:rgb(var(--c-teal-border)/var(--tw-border-opacity,1))}.border-transparent{border-color:transparent}.border-b-border-strong{--tw-border-opacity:1;border-bottom-color:rgb(var(--c-border-strong)/var(--tw-border-opacity,1))}.border-l-emerald{--tw-border-opacity:1;border-left-color:rgb(var(--c-emerald)/var(--tw-border-opacity,1))}.border-l-rose{--tw-border-opacity:1;border-left-color:rgb(var(--c-rose)/var(--tw-border-opacity,1))}.border-l-teal{--tw-border-opacity:1;border-left-color:rgb(var(--c-teal)/var(--tw-border-opacity,1))}.bg-accent{--tw-bg-opacity:1;background-color:rgb(var(--c-accent)/var(--tw-bg-opacity,1))}.bg-accent-bright{--tw-bg-opacity:1;background-color:rgb(var(--c-accent-bright)/var(--tw-bg-opacity,1))}.bg-accent-chrome{--tw-bg-opacity:1;background-color:rgb(var(--c-accent-chrome)/var(--tw-bg-opacity,1))}.bg-accent-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-accent-soft)/var(--tw-bg-opacity,1))}.bg-accent-soft\/40{background-color:rgb(var(--c-accent-soft)/.4)}.bg-accent-soft\/50{background-color:rgb(var(--c-accent-soft)/.5)}.bg-amber-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-amber-soft)/var(--tw-bg-opacity,1))}.bg-border-strong{--tw-bg-opacity:1;background-color:rgb(var(--c-border-strong)/var(--tw-bg-opacity,1))}.bg-emerald{--tw-bg-opacity:1;background-color:rgb(var(--c-emerald)/var(--tw-bg-opacity,1))}.bg-emerald-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-emerald-soft)/var(--tw-bg-opacity,1))}.bg-emerald-soft\/30{background-color:rgb(var(--c-emerald-soft)/.3)}.bg-emerald-soft\/60{background-color:rgb(var(--c-emerald-soft)/.6)}.bg-indigo{--tw-bg-opacity:1;background-color:rgb(var(--c-indigo)/var(--tw-bg-opacity,1))}.bg-indigo-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-indigo-soft)/var(--tw-bg-opacity,1))}.bg-indigo-soft\/40{background-color:rgb(var(--c-indigo-soft)/.4)}.bg-inverse{--tw-bg-opacity:1;background-color:rgb(var(--c-inverse)/var(--tw-bg-opacity,1))}.bg-ok-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-ok-soft)/var(--tw-bg-opacity,1))}.bg-on-inverse{--tw-bg-opacity:1;background-color:rgb(var(--c-on-inverse)/var(--tw-bg-opacity,1))}.bg-on-inverse\/15{background-color:rgb(var(--c-on-inverse)/.15)}.bg-on-inverse\/20{background-color:rgb(var(--c-on-inverse)/.2)}.bg-rose{--tw-bg-opacity:1;background-color:rgb(var(--c-rose)/var(--tw-bg-opacity,1))}.bg-rose-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-rose-soft)/var(--tw-bg-opacity,1))}.bg-rose-soft\/30{background-color:rgb(var(--c-rose-soft)/.3)}.bg-rose-soft\/50{background-color:rgb(var(--c-rose-soft)/.5)}.bg-rose-soft\/70{background-color:rgb(var(--c-rose-soft)/.7)}.bg-scrim\/50{background-color:rgb(var(--c-scrim)/.5)}.bg-surface{--tw-bg-opacity:1;background-color:rgb(var(--c-surface)/var(--tw-bg-opacity,1))}.bg-surface-muted{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-muted)/var(--tw-bg-opacity,1))}.bg-surface-subtle{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-subtle)/var(--tw-bg-opacity,1))}.bg-teal{--tw-bg-opacity:1;background-color:rgb(var(--c-teal)/var(--tw-bg-opacity,1))}.bg-teal-soft{--tw-bg-opacity:1;background-color:rgb(var(--c-teal-soft)/var(--tw-bg-opacity,1))}.bg-teal-soft\/20{background-color:rgb(var(--c-teal-soft)/.2)}.bg-teal-soft\/40{background-color:rgb(var(--c-teal-soft)/.4)}.bg-gradient-to-b{background-image:linear-gradient(to bottom,var(--tw-gradient-stops))}.from-rose-soft{--tw-gradient-from:rgb(var(--c-rose-soft)/1) var(--tw-gradient-from-position);--tw-gradient-to:rgb(var(--c-rose-soft)/0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to)}.to-surface{--tw-gradient-to:rgb(var(--c-surface)/1) var(--tw-gradient-to-position)}.p-1{padding:.25rem}.p-2{padding:.5rem}.p-3{padding:.75rem}.p-4{padding:1rem}.p-5{padding:1.25rem}.p-6{padding:1.5rem}.px-1{padding-left:.25rem;padding-right:.25rem}.px-1\.5{padding-left:.375rem;padding-right:.375rem}.px-2{padding-left:.5rem;padding-right:.5rem}.px-2\.5{padding-left:.625rem;padding-right:.625rem}.px-3{padding-left:.75rem;padding-right:.75rem}.px-3\.5{padding-left:.875rem;padding-right:.875rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.px-\[56px\]{padding-left:56px;padding-right:56px}.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.py-1{padding-top:.25rem;padding-bottom:.25rem}.py-1\.5{padding-top:.375rem;padding-bottom:.375rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}.py-2\.5{padding-top:.625rem;padding-bottom:.625rem}.py-3{padding-top:.75rem;padding-bottom:.75rem}.py-4{padding-top:1rem;padding-bottom:1rem}.py-6{padding-top:1.5rem;padding-bottom:1.5rem}.py-\[3px\]{padding-top:3px;padding-bottom:3px}.py-px{padding-top:1px;padding-bottom:1px}.pb-0\.5{padding-bottom:.125rem}.pb-1{padding-bottom:.25rem}.pb-1\.5{padding-bottom:.375rem}.pb-16{padding-bottom:4rem}.pb-2{padding-bottom:.5rem}.pb-2\.5{padding-bottom:.625rem}.pb-3{padding-bottom:.75rem}.pb-4{padding-bottom:1rem}.pb-\[48px\]{padding-bottom:48px}.pl-2{padding-left:.5rem}.pl-3{padding-left:.75rem}.pl-5{padding-left:1.25rem}.pl-6{padding-left:1.5rem}.pl-7{padding-left:1.75rem}.pr-2{padding-right:.5rem}.pr-3{padding-right:.75rem}.pr-4{padding-right:1rem}.pr-5{padding-right:1.25rem}.pt-0\.5{padding-top:.125rem}.pt-1{padding-top:.25rem}.pt-1\.5{padding-top:.375rem}.pt-16{padding-top:4rem}.pt-2{padding-top:.5rem}.pt-2\.5{padding-top:.625rem}.pt-3{padding-top:.75rem}.pt-6{padding-top:1.5rem}.pt-\[52px\]{padding-top:52px}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.align-top{vertical-align:top}.align-middle{vertical-align:middle}.align-\[1px\]{vertical-align:1px}.font-cond{font-family:IBM Plex Sans Condensed,system-ui,sans-serif}.font-mono{font-family:IBM Plex Mono,IBM Plex Sans,ui-monospace,monospace}.font-sans{font-family:IBM Plex Sans,system-ui,sans-serif}.text-2xl{font-size:1.5rem;line-height:2rem}.text-3xl{font-size:1.875rem;line-height:2.25rem}.text-\[10\.5px\]{font-size:10.5px}.text-\[10px\]{font-size:10px}.text-\[11\.5px\]{font-size:11.5px}.text-\[11px\]{font-size:11px}.text-\[12\.5px\]{font-size:12.5px}.text-\[12px\]{font-size:12px}.text-\[13\.5px\]{font-size:13.5px}.text-\[13px\]{font-size:13px}.text-\[14px\]{font-size:14px}.text-\[15px\]{font-size:15px}.text-\[18px\]{font-size:18px}.text-\[21px\]{font-size:21px}.text-\[22px\]{font-size:22px}.text-\[9px\]{font-size:9px}.text-base{font-size:1rem;line-height:1.5rem}.text-lg{font-size:1.125rem;line-height:1.75rem}.text-sm{font-size:.875rem;line-height:1.25rem}.text-xl{font-size:1.25rem;line-height:1.75rem}.text-xs{font-size:.75rem;line-height:1rem}.font-bold{font-weight:700}.font-medium{font-weight:500}.font-normal{font-weight:400}.font-semibold{font-weight:600}.uppercase{text-transform:uppercase}.normal-case{text-transform:none}.tabular-nums{--tw-numeric-spacing:tabular-nums;font-variant-numeric:var(--tw-ordinal) var(--tw-slashed-zero) var(--tw-numeric-figure) var(--tw-numeric-spacing) var(--tw-numeric-fraction)}.leading-5{line-height:1.25rem}.leading-\[1\.35\]{line-height:1.35}.leading-none{line-height:1}.leading-snug{line-height:1.375}.leading-tight{line-height:1.25}.tracking-\[0\.08em\]{letter-spacing:.08em}.tracking-normal{letter-spacing:0}.tracking-tight{letter-spacing:-.025em}.tracking-wide{letter-spacing:.025em}.tracking-wider{letter-spacing:.05em}.\!text-accent{color:rgb(var(--c-accent)/var(--tw-text-opacity,1))!important}.\!text-accent,.\!text-ink{--tw-text-opacity:1!important}.\!text-ink{color:rgb(var(--c-ink)/var(--tw-text-opacity,1))!important}.\!text-ink-2{--tw-text-opacity:1!important;color:rgb(var(--c-ink-2)/var(--tw-text-opacity,1))!important}.\!text-on-inverse\/70{color:rgb(var(--c-on-inverse)/.7)!important}.text-accent{--tw-text-opacity:1;color:rgb(var(--c-accent)/var(--tw-text-opacity,1))}.text-accent-bright{--tw-text-opacity:1;color:rgb(var(--c-accent-bright)/var(--tw-text-opacity,1))}.text-amber{--tw-text-opacity:1;color:rgb(var(--c-amber)/var(--tw-text-opacity,1))}.text-border-strong{--tw-text-opacity:1;color:rgb(var(--c-border-strong)/var(--tw-text-opacity,1))}.text-emerald{--tw-text-opacity:1;color:rgb(var(--c-emerald)/var(--tw-text-opacity,1))}.text-indigo{--tw-text-opacity:1;color:rgb(var(--c-indigo)/var(--tw-text-opacity,1))}.text-ink{--tw-text-opacity:1;color:rgb(var(--c-ink)/var(--tw-text-opacity,1))}.text-ink-2{--tw-text-opacity:1;color:rgb(var(--c-ink-2)/var(--tw-text-opacity,1))}.text-ink-3{--tw-text-opacity:1;color:rgb(var(--c-ink-3)/var(--tw-text-opacity,1))}.text-ok{--tw-text-opacity:1;color:rgb(var(--c-ok)/var(--tw-text-opacity,1))}.text-on-inverse{--tw-text-opacity:1;color:rgb(var(--c-on-inverse)/var(--tw-text-opacity,1))}.text-on-inverse\/70{color:rgb(var(--c-on-inverse)/.7)}.text-on-inverse\/80{color:rgb(var(--c-on-inverse)/.8)}.text-rose{--tw-text-opacity:1;color:rgb(var(--c-rose)/var(--tw-text-opacity,1))}.text-surface{--tw-text-opacity:1;color:rgb(var(--c-surface)/var(--tw-text-opacity,1))}.text-teal{--tw-text-opacity:1;color:rgb(var(--c-teal)/var(--tw-text-opacity,1))}.underline{text-decoration-line:underline}.decoration-dotted{text-decoration-style:dotted}.underline-offset-2{text-underline-offset:2px}.underline-offset-4{text-underline-offset:4px}.accent-accent{accent-color:rgb(var(--c-accent)/1)}.opacity-40{opacity:.4}.opacity-60{opacity:.6}.opacity-70{opacity:.7}.opacity-80{opacity:.8}.shadow-sm{--tw-shadow:0 1px 2px rgba(9,9,11,.05),0 0 0 1px rgba(9,9,11,.02);--tw-shadow-colored:0 1px 2px var(--tw-shadow-color),0 0 0 1px var(--tw-shadow-color)}.shadow-sm,.shadow-xs{box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}.shadow-xs{--tw-shadow:0 1px 0 rgba(9,9,11,.03);--tw-shadow-colored:0 1px 0 var(--tw-shadow-color)}.outline-none{outline:2px solid transparent;outline-offset:2px}.ring-\[3px\]{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow,0 0 #0000)}.ring-accent-soft{--tw-ring-opacity:1;--tw-ring-color:rgb(var(--c-accent-soft)/var(--tw-ring-opacity,1))}.transition-colors{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.\[scrollbar-width\:none\]{scrollbar-width:none}:root{color-scheme:light;--c-ink:9 9 11;--c-ink-2:82 82 91;--c-ink-3:161 161 170;--c-surface:255 255 255;--c-surface-muted:250 250 250;--c-surface-subtle:244 244 245;--c-border:228 228 231;--c-border-strong:212 212 216;--c-accent:30 58 138;--c-accent-bright:29 78 216;--c-accent-soft:239 246 255;--c-accent-border:191 219 254;--c-teal:15 118 110;--c-teal-soft:204 251 241;--c-teal-border:153 246 228;--c-amber:161 98 7;--c-amber-soft:254 243 199;--c-amber-border:253 230 138;--c-rose:159 18 57;--c-rose-soft:255 228 230;--c-rose-border:254 205 211;--c-indigo:67 56 202;--c-indigo-soft:224 231 255;--c-indigo-border:199 210 254;--c-slate:51 65 85;--c-slate-soft:241 245 249;--c-slate-border:203 213 225;--c-emerald:4 120 87;--c-emerald-soft:209 250 229;--c-emerald-border:167 243 208;--c-ok:21 128 61;--c-ok-soft:220 252 231;--c-ok-border:187 247 208;--c-warn:161 98 7;--c-warn-soft:254 249 195;--c-inverse:9 9 11;--c-on-inverse:255 255 255;--c-accent-chrome:30 58 138;--c-scrim:9 9 11}:root[data-theme=dark]{color-scheme:dark;--c-ink:230 232 236;--c-ink-2:155 161 172;--c-ink-3:122 128 138;--c-surface:24 29 39;--c-surface-muted:15 19 27;--c-surface-subtle:32 39 51;--c-border:44 52 64;--c-border-strong:62 71 85;--c-accent:96 148 255;--c-accent-bright:111 160 255;--c-accent-soft:23 36 62;--c-accent-border:47 75 125;--c-teal:45 212 191;--c-teal-soft:12 42 38;--c-teal-border:23 70 64;--c-amber:245 191 66;--c-amber-soft:44 34 10;--c-amber-border:74 58 18;--c-rose:251 138 155;--c-rose-soft:46 18 26;--c-rose-border:77 32 44;--c-indigo:165 180 252;--c-indigo-soft:30 33 60;--c-indigo-border:53 58 98;--c-slate:148 163 184;--c-slate-soft:30 37 49;--c-slate-border:60 72 92;--c-emerald:52 211 153;--c-emerald-soft:13 43 31;--c-emerald-border:30 74 56;--c-ok:74 222 128;--c-ok-soft:15 41 26;--c-ok-border:32 72 46;--c-warn:245 191 66;--c-warn-soft:44 38 10;--c-inverse:51 60 76;--c-on-inverse:237 239 243;--c-accent-chrome:26 42 84;--c-scrim:3 5 9}.placeholder\:text-ink-3::-moz-placeholder{--tw-text-opacity:1;color:rgb(var(--c-ink-3)/var(--tw-text-opacity,1))}.placeholder\:text-ink-3::placeholder{--tw-text-opacity:1;color:rgb(var(--c-ink-3)/var(--tw-text-opacity,1))}.hover\:border-accent-border:hover{--tw-border-opacity:1;border-color:rgb(var(--c-accent-border)/var(--tw-border-opacity,1))}.hover\:border-border-strong:hover{--tw-border-opacity:1;border-color:rgb(var(--c-border-strong)/var(--tw-border-opacity,1))}.hover\:bg-accent-border\/40:hover{background-color:rgb(var(--c-accent-border)/.4)}.hover\:bg-accent-bright:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-accent-bright)/var(--tw-bg-opacity,1))}.hover\:bg-accent-soft\/40:hover{background-color:rgb(var(--c-accent-soft)/.4)}.hover\:bg-emerald-soft:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-emerald-soft)/var(--tw-bg-opacity,1))}.hover\:bg-rose-soft:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-rose-soft)/var(--tw-bg-opacity,1))}.hover\:bg-surface-muted:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-muted)/var(--tw-bg-opacity,1))}.hover\:bg-surface-subtle:hover{--tw-bg-opacity:1;background-color:rgb(var(--c-surface-subtle)/var(--tw-bg-opacity,1))}.hover\:bg-surface-subtle\/50:hover{background-color:rgb(var(--c-surface-subtle)/.5)}.hover\:text-accent:hover{--tw-text-opacity:1;color:rgb(var(--c-accent)/var(--tw-text-opacity,1))}.hover\:text-ink:hover{--tw-text-opacity:1;color:rgb(var(--c-ink)/var(--tw-text-opacity,1))}.hover\:text-rose:hover{--tw-text-opacity:1;color:rgb(var(--c-rose)/var(--tw-text-opacity,1))}.hover\:underline:hover{text-decoration-line:underline}.hover\:decoration-solid:hover{text-decoration-style:solid}.focus\:border-accent:focus{--tw-border-opacity:1;border-color:rgb(var(--c-accent)/var(--tw-border-opacity,1))}.focus\:border-accent-bright:focus{--tw-border-opacity:1;border-color:rgb(var(--c-accent-bright)/var(--tw-border-opacity,1))}.focus\:outline-none:focus{outline:2px solid transparent;outline-offset:2px}.focus-visible\:outline:focus-visible{outline-style:solid}.focus-visible\:outline-2:focus-visible{outline-width:2px}.focus-visible\:outline-accent:focus-visible{outline-color:rgb(var(--c-accent)/1)}.group:hover .group-hover\:text-accent{--tw-text-opacity:1;color:rgb(var(--c-accent)/var(--tw-text-opacity,1))}.dark\:bg-emerald-soft:is([data-theme=dark] *){--tw-bg-opacity:1;background-color:rgb(var(--c-emerald-soft)/var(--tw-bg-opacity,1))}.dark\:bg-rose-soft:is([data-theme=dark] *){--tw-bg-opacity:1;background-color:rgb(var(--c-rose-soft)/var(--tw-bg-opacity,1))}.dark\:bg-teal-soft:is([data-theme=dark] *){--tw-bg-opacity:1;background-color:rgb(var(--c-teal-soft)/var(--tw-bg-opacity,1))}.dark\:hover\:bg-emerald-border\/60:hover:is([data-theme=dark] *){background-color:rgb(var(--c-emerald-border)/.6)}.dark\:hover\:bg-rose-border\/60:hover:is([data-theme=dark] *){background-color:rgb(var(--c-rose-border)/.6)}@media (min-width:640px){.sm\:ml-6{margin-left:1.5rem}.sm\:inline{display:inline}.sm\:h-8{height:2rem}.sm\:max-w-\[360px\]{max-width:360px}.sm\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.sm\:flex-row{flex-direction:row}.sm\:items-end{align-items:flex-end}.sm\:items-center{align-items:center}.sm\:justify-end{justify-content:flex-end}.sm\:justify-between{justify-content:space-between}.sm\:self-auto{align-self:auto}.sm\:p-6{padding:1.5rem}.sm\:p-8{padding:2rem}.sm\:px-5{padding-left:1.25rem;padding-right:1.25rem}.sm\:pt-10{padding-top:2.5rem}.sm\:pt-8{padding-top:2rem}.sm\:text-3xl{font-size:1.875rem;line-height:2.25rem}.sm\:text-4xl{font-size:2.25rem;line-height:2.5rem}}@media (min-width:768px){.md\:col-span-2{grid-column:span 2/span 2}.md\:hidden{display:none}.md\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.md\:flex-row{flex-direction:row}.md\:items-center{align-items:center}.md\:self-auto{align-self:auto}.md\:text-right{text-align:right}}@media (min-width:1024px){.lg\:mt-4{margin-top:1rem}.lg\:hidden{display:none}.lg\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.lg\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.lg\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.lg\:grid-cols-5{grid-template-columns:repeat(5,minmax(0,1fr))}.lg\:flex-row{flex-direction:row}.lg\:items-end{align-items:flex-end}.lg\:justify-between{justify-content:space-between}}@media (min-width:1280px){.xl\:mt-4{margin-top:1rem}.xl\:hidden{display:none}.xl\:h-8{height:2rem}.xl\:w-8{width:2rem}.xl\:grid-cols-\[794px_minmax\(0\2c 1fr\)\]{grid-template-columns:794px minmax(0,1fr)}}.\[\&\:\:-webkit-scrollbar\]\:hidden::-webkit-scrollbar{display:none}</style>
+</head>
+<body class="min-h-screen bg-surface-muted">
+<!-- Общая шапка мокапов: переход между M1–M5 и переключатель темы. Не часть интерфейса. -->
+<header class="border-b border-border bg-surface">
+  <div class="mx-auto flex max-w-[1240px] items-center gap-2 px-4 py-2">
+    <nav aria-label="Мокапы" class="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <a data-nav href="index.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">Все мокапы</a>
+      <a data-nav href="m1-form-shifts.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M1 · Форма</a>
+      <a data-nav href="m2-smeta-documents.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M2 · Сметы</a>
+      <a data-nav href="m3-kiosk-return.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M3 · Киоск</a>
+      <a data-nav href="m4-return-dialog.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M4 · Окно приёмки</a>
+      <a data-nav href="m5-booking-family.html" class="inline-flex min-h-9 shrink-0 items-center rounded px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-subtle">M5 · Семья броней</a>
+    </nav>
+    <button id="themeBtn" type="button" class="inline-flex min-h-9 shrink-0 items-center rounded border border-border bg-surface px-3 text-xs font-medium text-ink-2 hover:bg-surface-subtle">Ночная тема</button>
+  </div>
+</header>
+<script>
+(() => {
+  const here = location.pathname.split("/").pop() || "index.html";
+  document.querySelectorAll("[data-nav]").forEach((a) => {
+    if (a.getAttribute("href") === here) a.classList.add("bg-accent-soft", "!text-accent", "font-semibold");
+  });
+  const btn = document.getElementById("themeBtn");
+  const label = () => { btn.textContent = document.documentElement.dataset.theme === "dark" ? "Светлая тема" : "Ночная тема"; };
+  try { const saved = localStorage.getItem("lr:mockup-theme"); if (saved === "dark") document.documentElement.dataset.theme = "dark"; } catch (e) {}
+  label();
+  btn.addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("lr:mockup-theme", next); } catch (e) {}
+    label();
+  });
+  new MutationObserver(label).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>
+
+
+<main class="mx-auto max-w-[1240px] px-4 pb-16 pt-6 sm:pt-8">
+  <p class="eyebrow">Мокап M5 · семья броней</p>
+  <h1 class="mt-1 font-cond text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Основная бронь и её продолжение</h1>
+  <p class="mt-2 max-w-[760px] text-sm text-ink-2">После частичной приёмки у клиента две брони: основная закрыта как «Возвращена частично», продолжение выдано. У каждой свои деньги и документы, но везде видна связь и общий итог.</p>
+
+  <!-- ═════════════ 1 · ОСНОВНАЯ БРОНЬ ═════════════ -->
+  <section id="parent" class="mt-8">
+    <p class="eyebrow">1 · карточка основной брони · /bookings/…</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Основная бронь: баннер продолжения и общий итог</h2>
+
+    <div class="mt-4 rounded-lg border border-border-strong bg-surface-muted p-4 shadow-sm sm:p-6">
+      <a href="#" class="inline-flex min-h-9 items-center text-xs text-ink-2 hover:text-accent">← Список броней</a>
+      <div class="mt-2 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div class="min-w-0">
+          <p class="eyebrow">Бронь · 12 октября 2026 · СМ-2026-0231</p>
+          <h3 class="mt-1 break-words font-cond text-2xl leading-tight tracking-tight text-ink sm:text-3xl">Реклама кофейни «Зерно»</h3>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-3">
+            <span class="inline-flex items-center whitespace-nowrap rounded border border-emerald-border bg-ok-soft px-2 py-0.5 text-xs font-semibold text-ok">Возвращена частично</span>
+            <span class="inline-flex items-center whitespace-nowrap rounded-full bg-amber-soft px-2 py-0.5 text-[11px] font-medium text-amber">Частично оплачено</span>
+            <span>Продакшн «Сфера»</span><span class="text-border-strong">·</span><span class="mono-num">12–13 окт. · 1 смена</span>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-2">Смета PDF</button>
+          <button type="button" disabled title="Когда вернут остаток и оплатят" class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-3 opacity-60">Акт PDF</button>
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-accent bg-accent px-3 text-sm font-semibold text-surface">Записать платёж</button>
+        </div>
+      </div>
+
+      <!-- Баннер продолжения -->
+      <div class="mt-4 flex flex-col gap-3 rounded-lg border border-teal-border bg-teal-soft/40 px-4 py-3 dark:bg-teal-soft md:flex-row md:items-center">
+        <div class="min-w-0 flex-1 text-[13px] text-ink-2">
+          <p class="font-semibold text-teal">Возвращена частично · продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span></p>
+          <p class="mt-0.5">4 позиции у клиента до ср 10:00 и чт 10:00 · <span class="whitespace-nowrap">к оплате 11 663 ₽</span> до 20 окт.</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap gap-2">
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-teal bg-teal px-3 text-sm font-semibold text-surface">Принять остаток</button>
+          <a href="#child" class="inline-flex min-h-10 items-center rounded border border-teal-border bg-surface px-3 text-sm font-medium text-teal">Открыть продолжение →</a>
+        </div>
+      </div>
+      <div class="mt-2 rounded-lg border border-dashed border-border-strong p-3">
+        <p class="text-[11.5px] text-ink-3">Тот же баннер, если у клиента осталось только взятое по плану:</p>
+        <div class="mt-1.5 flex flex-col gap-2 rounded-lg border border-teal-border bg-teal-soft/40 px-4 py-2.5 dark:bg-teal-soft md:flex-row md:items-center">
+          <p class="min-w-0 flex-1 text-[13px] font-semibold text-teal">Возвращена частично · продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span> · 2 позиции до ср 10:00 · оплачено</p>
+          <button type="button" class="inline-flex min-h-10 shrink-0 items-center self-start rounded border border-teal bg-teal px-3 text-sm font-semibold text-surface md:self-auto">Принять остаток</button>
+        </div>
+      </div>
+
+      <!-- KPI основной брони -->
+      <div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div class="rounded-lg border border-border bg-surface p-3 shadow-xs"><p class="eyebrow">Итого</p><p class="mono-num mt-1.5 font-cond text-2xl font-semibold text-ink">28 340 ₽</p><p class="mt-0.5 text-[11px] text-ink-3">эта бронь</p></div>
+        <div class="rounded-lg border border-border bg-surface p-3 shadow-xs"><p class="eyebrow">Оплачено</p><p class="mono-num mt-1.5 font-cond text-2xl font-semibold text-ink">20 000 ₽</p><p class="mt-0.5 text-[11px] text-ink-3">09.10 · перевод</p></div>
+        <div class="rounded-lg border border-rose-border bg-gradient-to-b from-rose-soft to-surface p-3 shadow-xs"><p class="eyebrow">Остаток</p><p class="mono-num mt-1.5 font-cond text-2xl font-semibold text-rose">8 340 ₽</p><p class="mt-0.5 text-[11px] text-ink-3">срок 16 окт.</p></div>
+        <div class="rounded-lg border border-border bg-surface p-3 shadow-xs"><p class="eyebrow">Скидка</p><p class="mono-num mt-1.5 font-cond text-2xl font-semibold text-rose">−50 %</p><p class="mt-0.5 text-[11px] text-ink-3">−20 000 ₽</p></div>
+      </div>
+
+      <!-- Вместе с продолжениями -->
+      <section class="mt-3 overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border bg-surface-subtle px-4 py-2.5">
+          <p class="eyebrow !text-ink-2">Вместе с продолжениями</p>
+          <p class="text-[13px] text-ink-2">итог <b class="mono-num font-semibold text-ink">40 003 ₽</b> <span class="text-ink-3">/</span> оплачено <b class="mono-num font-semibold text-emerald">20 000 ₽</b> <span class="text-ink-3">/</span> остаток <b class="mono-num font-semibold text-rose">20 003 ₽</b></p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[560px] text-[13px]">
+            <thead><tr class="border-b border-border"><th class="eyebrow px-4 py-2 text-left">Бронь</th><th class="eyebrow px-3 py-2 text-right">Итог</th><th class="eyebrow px-3 py-2 text-right">Оплачено</th><th class="eyebrow px-3 py-2 text-right">Остаток</th><th class="eyebrow px-4 py-2 text-right">Срок оплаты</th></tr></thead>
+            <tbody class="divide-y divide-border">
+              <tr><td class="px-4 py-2"><span class="font-medium text-ink">СМ-2026-0231</span> <span class="text-ink-3">· основная</span></td><td class="mono-num px-3 py-2 text-right">28 340</td><td class="mono-num px-3 py-2 text-right text-emerald">20 000</td><td class="mono-num px-3 py-2 text-right text-rose">8 340</td><td class="px-4 py-2 text-right text-ink-2">16 окт.</td></tr>
+              <tr><td class="px-4 py-2"><a href="#child" class="font-medium text-accent hover:underline">СМ-2026-0231-1</a> <span class="text-ink-3">· продолжение</span></td><td class="mono-num px-3 py-2 text-right">11 663</td><td class="mono-num px-3 py-2 text-right text-ink-3">0</td><td class="mono-num px-3 py-2 text-right text-rose">11 663</td><td class="px-4 py-2 text-right text-ink-2">20 окт.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Состав основной брони -->
+      <section class="mt-3 overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+          <p class="eyebrow !text-ink">Оборудование</p>
+          <p class="text-[12px] text-ink-3">7 позиций · принято 16 ед. вт 13 окт., 10:24</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[620px] text-[13px]">
+            <thead><tr class="border-b border-border bg-surface-subtle"><th class="eyebrow px-4 py-2 text-left">Позиция</th><th class="eyebrow px-3 py-2 text-right">Кол-во</th><th class="eyebrow px-3 py-2 text-right">Смен</th><th class="eyebrow px-4 py-2 text-left">Где сейчас</th></tr></thead>
+            <tbody class="divide-y divide-border">
+              <tr><td class="px-4 py-2 text-ink">Aputure STORM 400x</td><td class="mono-num px-3 py-2 text-right">2</td><td class="mono-num px-3 py-2 text-right font-semibold text-indigo">2</td><td class="px-4 py-2"><span class="rounded bg-teal-soft px-1.5 py-0.5 text-[11.5px] text-teal">в продолжении · до ср 10:00</span> <span class="text-[11.5px] text-indigo">по плану</span></td></tr>
+              <tr><td class="px-4 py-2 text-ink">Nanlux Evoke 1200</td><td class="mono-num px-3 py-2 text-right">1</td><td class="mono-num px-3 py-2 text-right font-semibold text-indigo">2</td><td class="px-4 py-2"><span class="rounded bg-teal-soft px-1.5 py-0.5 text-[11.5px] text-teal">в продолжении · до чт 10:00</span></td></tr>
+              <tr><td class="px-4 py-2 text-ink">Aputure LS 60x</td><td class="mono-num px-3 py-2 text-right">4</td><td class="mono-num px-3 py-2 text-right text-ink-2">1</td><td class="px-4 py-2"><span class="text-[11.5px] text-emerald">принято 2</span> <span class="text-ink-3">·</span> <span class="rounded bg-teal-soft px-1.5 py-0.5 text-[11.5px] text-teal">2 в продолжении · до ср 10:00</span></td></tr>
+              <tr><td class="px-4 py-2 text-ink">Astera Titan Tube, комплект</td><td class="mono-num px-3 py-2 text-right">1</td><td class="mono-num px-3 py-2 text-right text-ink-2">1</td><td class="px-4 py-2"><span class="rounded bg-teal-soft px-1.5 py-0.5 text-[11.5px] text-teal">в продолжении · до ср 10:00</span></td></tr>
+              <tr><td class="px-4 py-2 text-ink">Зажим Super Clamp с пальцем</td><td class="mono-num px-3 py-2 text-right">6</td><td class="mono-num px-3 py-2 text-right text-ink-2">1</td><td class="px-4 py-2 text-[11.5px] text-emerald">принято</td></tr>
+              <tr><td class="px-4 py-2 text-ink">Стойка C-Stand 40"</td><td class="mono-num px-3 py-2 text-right">8</td><td class="mono-num px-3 py-2 text-right text-ink-2">1</td><td class="px-4 py-2 text-[11.5px] text-emerald">принято</td></tr>
+              <tr><td class="px-4 py-2 text-ink">Расходники: гели, скотч <span class="rounded border border-indigo-border bg-indigo-soft px-1 py-px text-[10.5px] text-indigo">своя</span></td><td class="mono-num px-3 py-2 text-right">1</td><td class="mono-num px-3 py-2 text-right text-ink-3">—</td><td class="px-4 py-2 text-[11.5px] text-ink-3">не возвращается</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="border-t border-border bg-surface-subtle px-4 py-2 text-[12px] text-ink-3">У брони есть продолжение: даты и состав больше не меняются, архив и удаление недоступны. Комментарий, скидку и договорной итог править можно.</p>
+      </section>
+    </div>
+  </section>
+
+  <!-- ═════════════ 2 · ПРОДОЛЖЕНИЕ ═════════════ -->
+  <section id="child" class="mt-12">
+    <p class="eyebrow">2 · карточка продолжения</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Продолжение: что, до какого срока и за сколько</h2>
+
+    <div class="mt-4 rounded-lg border border-border-strong bg-surface-muted p-4 shadow-sm sm:p-6">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div class="min-w-0">
+          <p class="eyebrow">Продолжение · 13 октября 2026 · СМ-2026-0231-1</p>
+          <h3 class="mt-1 break-words font-cond text-2xl leading-tight tracking-tight text-ink sm:text-3xl">Реклама кофейни «Зерно»</h3>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-3">
+            <span class="inline-flex items-center whitespace-nowrap rounded border border-teal-border bg-teal-soft px-2 py-0.5 text-xs font-semibold text-teal">Выдана · у клиента 6 ед.</span>
+            <span class="inline-flex items-center whitespace-nowrap rounded-full bg-surface-subtle px-2 py-0.5 text-[11px] font-medium text-ink-2">Не оплачено</span>
+            <span>Продакшн «Сфера»</span><span class="text-border-strong">·</span><span class="mono-num">13–15 окт.</span>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-2">Дополнительная смета PDF</button>
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-accent bg-accent px-3 text-sm font-semibold text-surface">Принять остаток</button>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-xs md:flex-row md:items-center">
+        <div class="min-w-0 flex-1 text-[13px] text-ink-2">
+          <p class="font-semibold text-ink">Продолжение брони <a href="#parent" class="whitespace-nowrap text-accent hover:underline">СМ-2026-0231</a></p>
+          <p class="mt-0.5">Сюда перешло то, что клиент оставил при приёмке вт 13 окт., 10:24 (Иван, киоск). Создано сразу выданным, без согласования.</p>
+        </div>
+        <div class="shrink-0 text-left md:text-right">
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-rose-border bg-surface px-3 text-sm font-medium text-rose hover:bg-rose-soft">Отменить продолжение</button>
+          <p class="mt-1 text-[11px] text-ink-3">только руководитель · позиции вернутся в основную бронь</p>
+        </div>
+      </div>
+
+      <section class="mt-3 overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+          <p class="eyebrow !text-ink">У клиента</p>
+          <p class="text-[12px] text-ink-3">4 позиции · 6 ед.</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[680px] text-[13px]">
+            <thead><tr class="border-b border-border bg-surface-subtle"><th class="eyebrow px-4 py-2 text-left">Позиция</th><th class="eyebrow px-3 py-2 text-right">Кол-во</th><th class="eyebrow px-3 py-2 text-left">Вернут</th><th class="eyebrow px-3 py-2 text-left">Основание</th><th class="eyebrow px-4 py-2 text-right">Сумма</th></tr></thead>
+            <tbody class="divide-y divide-border">
+              <tr><td class="px-4 py-2 text-ink">Aputure STORM 400x</td><td class="mono-num px-3 py-2 text-right">2</td><td class="whitespace-nowrap px-3 py-2 text-ink-2">ср 14 окт., 10:00</td><td class="px-3 py-2"><span class="rounded bg-indigo-soft px-1.5 py-0.5 text-[11.5px] text-indigo">по плану · оплачено в основной</span></td><td class="mono-num px-4 py-2 text-right text-ink-3">0</td></tr>
+              <tr><td class="px-4 py-2 text-ink">Nanlux Evoke 1200</td><td class="mono-num px-3 py-2 text-right">1</td><td class="whitespace-nowrap px-3 py-2 text-ink-2">чт 15 окт., 10:00</td><td class="px-3 py-2"><span class="rounded bg-amber-soft px-1.5 py-0.5 text-[11.5px] text-amber">+1 смена · под ответственность</span><span class="mt-0.5 block text-[11px] text-ink-3">нужен брони Петрова со ср 12:00</span></td><td class="mono-num px-4 py-2 text-right">7 000</td></tr>
+              <tr><td class="px-4 py-2 text-ink">Aputure LS 60x</td><td class="mono-num px-3 py-2 text-right">2</td><td class="whitespace-nowrap px-3 py-2 text-ink-2">ср 14 окт., 10:00</td><td class="px-3 py-2"><span class="rounded bg-amber-soft px-1.5 py-0.5 text-[11.5px] text-amber">+1 смена</span></td><td class="mono-num px-4 py-2 text-right">2 400</td></tr>
+              <tr><td class="px-4 py-2 text-ink">Astera Titan Tube, комплект</td><td class="mono-num px-3 py-2 text-right">1</td><td class="whitespace-nowrap px-3 py-2 text-ink-2">ср 14 окт., 10:00</td><td class="px-3 py-2"><span class="rounded bg-amber-soft px-1.5 py-0.5 text-[11.5px] text-amber">+1 смена</span> <span class="text-[11.5px] text-indigo">договорная</span></td><td class="mono-num px-4 py-2 text-right">6 000</td></tr>
+            </tbody>
+            <tfoot>
+              <tr class="border-t border-border"><td colspan="4" class="px-4 py-1.5 text-right text-[12px] text-ink-2">Скидка 50 % · безналичный расчёт +9 %</td><td class="mono-num px-4 py-1.5 text-right text-[12px] text-ink-2">−4 700 · +963</td></tr>
+              <tr class="border-t-2 border-ink"><td colspan="4" class="px-4 py-2 text-right font-semibold text-ink">Дополнительная смета, к оплате до 20 окт.</td><td class="mono-num px-4 py-2 text-right text-[15px] font-bold text-ink">11 663 ₽</td></tr>
+            </tfoot>
+          </table>
+        </div>
+        <p class="border-t border-border bg-surface-subtle px-4 py-2 text-[12px] text-ink-3">Пока продолжение выдано, нельзя менять начало, делать добор, отменять и архивировать. Новое оборудование — новая бронь.</p>
+      </section>
+    </div>
+  </section>
+
+  <!-- ═════════════ 3 · РЕЕСТР ═════════════ -->
+  <section id="register" class="mt-12">
+    <p class="eyebrow">3 · реестр броней · /bookings</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Строка реестра: продолжение вложено под основной бронью</h2>
+    <p class="mt-1 max-w-[760px] text-sm text-ink-2">Продолжение всегда стоит сразу под своей бронью, с отступом и «↳». Заливка по оплате у каждой своя. Если фильтр скрывает основную бронь, над продолжением остаётся её тонкая серая строка — чтобы было видно, чьё это.</p>
+
+    <p class="mt-3 text-[12px] text-ink-3 xl:hidden">На узком окне таблица листается вбок; карточки телефона — ниже.</p>
+    <div class="mt-2 overflow-x-auto rounded-lg border border-border bg-surface xl:mt-4">
+      <table class="w-full min-w-[1040px] text-center">
+        <thead class="border-b border-border bg-surface-subtle text-[11px] uppercase tracking-wide text-ink-3">
+          <tr>
+            <th class="w-10 px-3 py-3"><input type="checkbox" aria-label="Выбрать все" class="mx-auto block h-4 w-4 accent-accent"></th>
+            <th class="px-3 py-3 text-left">Проект / клиент</th>
+            <th class="px-3 py-3">Аренда · МСК</th>
+            <th class="px-3 py-3">Оборудование</th>
+            <th class="min-w-[260px] px-3 py-3">Сумма / оплата</th>
+            <th class="px-3 py-3">Срок оплаты</th>
+            <th class="px-3 py-3">Действия</th>
+          </tr>
+        </thead>
+        <tbody id="regRows" class="divide-y divide-border"></tbody>
+      </table>
+    </div>
+    <p class="mt-4 text-[12px] text-ink-3">Фильтр «На руках»: основная бронь под него не подходит, но над продолжением остаётся её строка-контекст.</p>
+    <div class="mt-2 overflow-x-auto rounded-lg border border-border bg-surface">
+      <table class="w-full min-w-[1040px] text-center">
+        <tbody id="regFiltered" class="divide-y divide-border"></tbody>
+      </table>
+    </div>
+
+    <div class="mt-6 flex flex-wrap items-start gap-6">
+      <div class="w-full max-w-[375px]">
+        <p class="mb-2 text-[12px] text-ink-3">Телефон · карточки</p>
+        <div id="regCards" class="space-y-3 rounded-[22px] border border-border-strong bg-surface-muted p-3 shadow-sm"></div>
+      </div>
+
+      <!-- ═════════════ 4 · КИОСК «В РАБОТЕ» ═════════════ -->
+      <div id="kiosk" class="w-full max-w-[375px]">
+        <p class="mb-2 text-[12px] text-ink-3">4 · киоск · «В работе»</p>
+        <div class="overflow-hidden rounded-[22px] border border-border-strong bg-surface-muted shadow-sm">
+          <header class="bg-accent-chrome px-4 py-3 text-on-inverse">
+            <p class="eyebrow !text-on-inverse/70">Склад · В работе</p>
+            <h3 class="text-[15px] font-semibold leading-snug">У клиентов сейчас · 5</h3>
+          </header>
+          <div class="flex flex-wrap gap-1.5 px-3 py-2.5">
+            <span class="inline-flex min-h-8 items-center rounded-full border border-border bg-surface px-3 text-[11.5px] font-semibold text-ink-2">Сегодня 1</span>
+            <span class="inline-flex min-h-8 items-center rounded-full border border-border bg-surface px-3 text-[11.5px] font-semibold text-ink-2">Завтра 2</span>
+            <span class="inline-flex min-h-8 items-center rounded-full border border-inverse bg-inverse px-3 text-[11.5px] font-semibold text-on-inverse">Все 5</span>
+          </div>
+          <div class="mx-3 mb-3 overflow-hidden rounded-lg border border-border bg-surface">
+            <div class="border-b border-border px-3 py-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="text-[13.5px] font-semibold text-ink">Сфера · «Зерно»</p>
+                  <p class="mt-0.5 text-[11.5px] text-teal">продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span></p>
+                </div>
+                <div class="shrink-0 text-right"><p class="mono-num text-[12.5px] font-semibold text-amber">сегодня 10:00</p><p class="text-[10.5px] text-ink-3">и чт 10:00</p></div>
+              </div>
+              <ul class="mt-2 space-y-1 text-[12px]">
+                <li class="flex justify-between gap-2"><span class="text-ink-2">5 ед. · STORM 400x, LS 60x, Astera</span><span class="mono-num shrink-0 text-ink">ср 10:00</span></li>
+                <li class="flex justify-between gap-2"><span class="text-ink-2">1 ед. · Evoke 1200 <span class="text-amber">под ответственность</span></span><span class="mono-num shrink-0 text-ink">чт 10:00</span></li>
+              </ul>
+              <div class="mt-2.5 flex flex-wrap gap-1.5">
+                <button type="button" class="inline-flex min-h-10 items-center gap-1 rounded border border-teal bg-teal px-3 text-[12px] font-semibold text-surface">Принять остаток</button>
+                <button type="button" class="inline-flex min-h-10 items-center rounded border border-border-strong bg-surface px-3 text-[12px] font-semibold text-ink">Позвонить</button>
+              </div>
+            </div>
+            <div class="px-3 py-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0"><p class="text-[13.5px] font-semibold text-ink">Лебедева · «Лён»</p><p class="mt-0.5 text-[11.5px] text-ink-3">8 ед. · обычная бронь</p></div>
+                <div class="shrink-0 text-right"><p class="mono-num text-[12.5px] font-semibold text-ink">завтра 09:00</p></div>
+              </div>
+              <div class="mt-2.5 flex flex-wrap gap-1.5">
+                <button type="button" class="inline-flex min-h-10 items-center rounded border border-teal bg-teal px-3 text-[12px] font-semibold text-surface">Принять возврат</button>
+                <button type="button" class="inline-flex min-h-10 items-center rounded border border-border-strong bg-surface px-3 text-[12px] font-semibold text-ink">Позвонить</button>
+              </div>
+            </div>
+          </div>
+          <p class="px-4 pb-3 text-[11.5px] text-ink-3">Основная бронь «Зерно» отсюда ушла — она закрыта. В работе только продолжение, со своими сроками по строкам.</p>
+          <nav aria-label="Разделы склада" class="grid grid-cols-5 border-t border-border bg-surface">
+            <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+            <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача</a>
+            <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка</a>
+            <a href="#" aria-current="page" class="relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-accent-bright"><span class="absolute left-[22%] right-[22%] top-0 h-0.5 rounded-b bg-accent-bright"></span><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе</a>
+            <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ 5 · ЛИЧНЫЙ КАБИНЕТ ═════════════ -->
+  <section id="portal" class="mt-12">
+    <p class="eyebrow">5 · личный кабинет клиента · /lk/bookings/…</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Клиент видит заказ и вложенное продолжение</h2>
+
+    <div class="mt-4 overflow-hidden rounded-lg border border-border-strong bg-surface shadow-sm">
+      <header class="bg-inverse text-on-inverse">
+        <div class="flex items-center justify-between gap-4 px-4 py-3">
+          <span class="inline-flex min-h-10 items-center font-medium tracking-tight">Личный кабинет</span>
+          <div class="flex items-center gap-3 text-sm text-on-inverse/80">
+            <span class="hidden sm:inline">Продакшн «Сфера»</span>
+            <button type="button" class="inline-flex h-10 items-center rounded border border-on-inverse/30 px-3 sm:h-8">Выйти</button>
+          </div>
+        </div>
+        <nav class="flex gap-1 overflow-x-auto px-4 pb-2 text-sm [scrollbar-width:none]">
+          <a href="#" class="shrink-0 rounded bg-on-inverse/15 px-3 py-1.5 font-medium">Заказы</a>
+          <a href="#" class="shrink-0 rounded px-3 py-1.5 text-on-inverse/70">Сметы</a>
+          <a href="#" class="shrink-0 rounded px-3 py-1.5 text-on-inverse/70">Долг</a>
+          <a href="#" class="shrink-0 rounded px-3 py-1.5 text-on-inverse/70">Статистика</a>
+        </nav>
+      </header>
+      <div class="mx-auto max-w-[880px] px-4 py-6">
+        <a href="#" class="inline-flex min-h-9 items-center text-xs text-ink-2">← Все заказы</a>
+        <div class="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div class="min-w-0">
+            <p class="eyebrow">Заказ СМ-2026-0231 · 12–13 октября</p>
+            <h3 class="mt-1 text-xl font-semibold text-ink">Реклама кофейни «Зерно»</h3>
+            <span class="mt-1.5 inline-flex rounded border border-emerald-border bg-ok-soft px-2 py-0.5 text-xs font-semibold text-ok">Возвращён частично</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-2">Скачать смету</button>
+            <button type="button" disabled class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-3 opacity-60">Акт — после возврата всего</button>
+          </div>
+        </div>
+        <dl class="mt-4 grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-lg border border-border p-3"><dt class="text-[11.5px] text-ink-3">Сумма</dt><dd class="mono-num mt-0.5 font-semibold text-ink">28 340 ₽</dd></div>
+          <div class="rounded-lg border border-border p-3"><dt class="text-[11.5px] text-ink-3">Оплачено</dt><dd class="mono-num mt-0.5 font-semibold text-emerald">20 000 ₽</dd></div>
+          <div class="rounded-lg border border-rose-border bg-rose-soft/50 p-3"><dt class="text-[11.5px] text-ink-3">К оплате</dt><dd class="mono-num mt-0.5 font-semibold text-rose">8 340 ₽</dd></div>
+        </dl>
+
+        <section class="mt-4 rounded-lg border border-teal-border bg-surface sm:ml-6">
+          <div class="flex flex-col gap-2 border-b border-teal-border bg-teal-soft/40 px-4 py-3 dark:bg-teal-soft sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0">
+              <p class="text-[13px] font-semibold text-teal">↳ Продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span></p>
+              <p class="text-[12px] text-ink-2">Это осталось у вас после возврата 13 октября</p>
+            </div>
+            <button type="button" class="inline-flex min-h-10 shrink-0 items-center self-start rounded border border-teal bg-surface px-3 text-sm font-semibold text-teal sm:self-auto">Скачать дополнительную смету</button>
+          </div>
+          <ul class="divide-y divide-border text-[13px]">
+            <li class="flex flex-wrap justify-between gap-x-3 gap-y-0.5 px-4 py-2"><span class="text-ink">Aputure STORM 400x · 2 шт <span class="text-[12px] text-ink-3">оплачено в основной смете</span></span><span class="text-ink-2">вернуть до ср 14 окт., 10:00</span></li>
+            <li class="flex flex-wrap justify-between gap-x-3 gap-y-0.5 px-4 py-2"><span class="text-ink">Nanlux Evoke 1200 · 1 шт</span><span class="text-ink-2">вернуть до чт 15 окт., 10:00</span></li>
+            <li class="flex flex-wrap justify-between gap-x-3 gap-y-0.5 px-4 py-2"><span class="text-ink">Aputure LS 60x · 2 шт</span><span class="text-ink-2">вернуть до ср 14 окт., 10:00</span></li>
+            <li class="flex flex-wrap justify-between gap-x-3 gap-y-0.5 px-4 py-2"><span class="text-ink">Astera Titan Tube, комплект · 1 шт</span><span class="text-ink-2">вернуть до ср 14 окт., 10:00</span></li>
+          </ul>
+          <div class="flex flex-wrap items-baseline justify-between gap-2 border-t border-border bg-surface-subtle px-4 py-2.5 text-[13px]">
+            <span class="text-ink-2">Дополнительная смета · оплатить до 20 окт.</span>
+            <span class="mono-num font-semibold text-rose">11 663 ₽</span>
+          </div>
+        </section>
+
+        <p class="mt-4 rounded-lg border border-border bg-surface-subtle px-4 py-3 text-[13px] text-ink-2">Всего по заказу с продолжением: <b class="mono-num font-semibold text-ink">40 003 ₽</b> · оплачено <b class="mono-num font-semibold text-emerald">20 000 ₽</b> · к оплате <b class="mono-num font-semibold text-rose">20 003 ₽</b></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ 6 · ПЛАТЁЖ ═════════════ -->
+  <section id="payment" class="mt-12">
+    <p class="eyebrow">6 · окно «Записать платёж»</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">«Разнести по продолжениям»: сначала старшая бронь</h2>
+    <p class="mt-1 max-w-[760px] text-sm text-ink-2">Клиент платит одним переводом за всё. Переключатель включён по умолчанию, если у брони есть продолжения с долгом. Деньги ложатся от старшей брони к младшей; каждая бронь закрывается своей частью.</p>
+
+    <div class="mt-4 rounded-lg border border-border-strong bg-scrim/50 p-3 sm:p-8">
+      <div role="dialog" aria-label="Записать платёж" class="mx-auto w-full max-w-[520px] overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+        <div class="flex items-start justify-between border-b border-border px-5 py-4">
+          <div><p class="eyebrow mb-0.5">Финансы</p><h3 class="text-base font-semibold text-ink">Записать платёж</h3></div>
+          <button type="button" aria-label="Закрыть" class="-mr-2 -mt-1 flex h-10 w-10 items-center justify-center text-xl leading-none text-ink-3">×</button>
+        </div>
+        <div class="border-b border-border bg-surface-subtle px-5 pb-3 pt-3">
+          <p class="text-sm font-medium text-ink">Продакшн «Сфера»</p>
+          <p class="mt-0.5 text-xs text-ink-2">Реклама кофейни «Зерно» · СМ-2026-0231 с продолжением</p>
+          <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2">
+            <span>Итого: <span class="mono-num font-medium text-ink">40 003 ₽</span></span>
+            <span>Оплачено: <span class="mono-num font-medium text-emerald">20 000 ₽</span></span>
+            <span>Остаток: <span class="mono-num font-medium text-rose">20 003 ₽</span></span>
+          </div>
+        </div>
+        <div class="space-y-4 px-5 py-4">
+          <label class="block"><span class="eyebrow mb-1 block">Сумма</span>
+            <input value="15 000" inputmode="decimal" class="mono-num w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-lg font-semibold text-ink focus:border-accent-bright focus:outline-none"></label>
+
+          <div class="rounded-lg border border-accent-border bg-accent-soft/50 p-3">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[13px] font-semibold text-ink">Разнести по продолжениям</p>
+                <p class="text-[12px] text-ink-2">Сначала основная бронь, затем продолжения по порядку</p>
+              </div>
+              <button type="button" role="switch" aria-checked="true" aria-label="Разнести по продолжениям" class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full bg-accent-bright">
+                <span class="absolute right-1 h-5 w-5 rounded-full bg-surface shadow-sm"></span>
+              </button>
+            </div>
+            <div class="mt-3 overflow-x-auto rounded border border-border bg-surface">
+              <table class="w-full min-w-[420px] text-[12.5px]">
+                <thead><tr class="border-b border-border"><th class="eyebrow px-3 py-1.5 text-left">Бронь</th><th class="eyebrow px-2 py-1.5 text-right">Долг</th><th class="eyebrow px-2 py-1.5 text-right">Платёж</th><th class="eyebrow px-3 py-1.5 text-right">Останется</th></tr></thead>
+                <tbody class="divide-y divide-border">
+                  <tr><td class="px-3 py-2"><span class="text-ink-3">1.</span> СМ-2026-0231 <span class="block text-[11px] text-ink-3">основная · срок 16 окт.</span></td><td class="mono-num px-2 py-2 text-right text-ink-2">8 340</td><td class="mono-num px-2 py-2 text-right font-semibold text-ink">8 340</td><td class="px-3 py-2 text-right text-[12px] font-medium text-emerald">0 · закрыта</td></tr>
+                  <tr><td class="px-3 py-2"><span class="text-ink-3">2.</span> СМ-2026-0231-1 <span class="block text-[11px] text-ink-3">продолжение · срок 20 окт.</span></td><td class="mono-num px-2 py-2 text-right text-ink-2">11 663</td><td class="mono-num px-2 py-2 text-right font-semibold text-ink">6 660</td><td class="mono-num px-3 py-2 text-right text-rose">5 003</td></tr>
+                </tbody>
+                <tfoot><tr class="border-t border-border bg-surface-subtle"><td class="px-3 py-1.5 font-semibold text-ink">Всего</td><td class="mono-num px-2 py-1.5 text-right text-ink-2">20 003</td><td class="mono-num px-2 py-1.5 text-right font-bold text-ink">15 000</td><td class="mono-num px-3 py-1.5 text-right text-rose">5 003</td></tr></tfoot>
+              </table>
+            </div>
+            <p class="mt-2 text-[11.5px] text-ink-3">Выключено — весь платёж ляжет на СМ-2026-0231, и 6 660 ₽ станут переплатой по ней.</p>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="block"><span class="eyebrow mb-1 block">Способ оплаты</span>
+              <select class="min-h-10 w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink"><option>Перевод на счёт</option></select></label>
+            <label class="block"><span class="eyebrow mb-1 block">Дата получения (МСК)</span>
+              <input value="14.10.2026" class="min-h-10 w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink"></label>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 border-t border-border px-5 py-4">
+          <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-border px-4 text-sm text-ink-2">Отмена</button>
+          <button type="button" class="inline-flex min-h-10 items-center rounded-lg bg-accent-bright px-5 text-sm font-medium text-surface">Записать 15 000 ₽</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ РЕШЕНИЯ ═════════════ -->
+  <section id="decisions" class="mt-12">
+    <p class="eyebrow">Решения по мокапу</p>
+    <div class="mt-3 grid gap-3 lg:grid-cols-3">
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Реестр: вложенная строка, а не отдельная с бейджем</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">Отдельная строка с бейджем уезжает от родителя при сортировке по началу аренды (продолжение начинается позже) и теряется на следующей странице. Вложенная строка всегда рядом, читается как одна семья, но остаётся самостоятельной: свой чекбокс, своя заливка, свои кнопки. Под фильтром основная бронь остаётся тонкой серой строкой-контекстом.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Деньги — по каждой броне, итог — на семью</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">KPI карточки — только этой брони, как сейчас. Общая картина — отдельной строкой «Вместе с продолжениями» и в сумме строки реестра. Продолжение за 0 ₽ считается оплаченным и в долги не попадает.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Цвета семьи</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">Бирюзовый — «у клиента» (как статус «Выдана»): баннер, продолжение, «Принять остаток». «Возвращена частично» — зелёная пилюля статуса: основная бронь своё отработала. Индиго — «по плану», янтарь — «сверх оплаченного» и «под ответственность».</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* Реестр: те же классы и заливка, что в bookings-payment-tint. */
+const ROW_TONE = {
+  paid: "bg-emerald-soft/60 hover:bg-emerald-soft dark:bg-emerald-soft dark:hover:bg-emerald-border/60",
+  unpaid: "bg-rose-soft/70 hover:bg-rose-soft dark:bg-rose-soft dark:hover:bg-rose-border/60",
+};
+const CARD_TONE = {
+  paid: "border-emerald-border bg-emerald-soft/60 dark:bg-emerald-soft",
+  unpaid: "border-rose-border bg-rose-soft/70 dark:bg-rose-soft",
+  none: "border-border bg-surface",
+};
+const PILL = {
+  view: "bg-surface-subtle text-ink-2 border-border-strong",
+  info: "bg-accent-soft text-accent border-accent-border",
+  edit: "bg-teal-soft text-teal border-teal-border",
+  ok: "bg-ok-soft text-ok border-emerald-border",
+};
+const BUTTON = "inline-flex min-h-10 items-center justify-center gap-2 rounded border border-border bg-surface px-3 py-2 text-xs font-medium text-ink-2 hover:bg-surface-subtle whitespace-nowrap";
+
+const ROWS = [
+  { id: "a", doc: "СМ-2026-0236", project: "Клип «Ночной рейс»", client: "Пётр Петров", status: ["Подтверждена", "info"],
+    from: "14 окт. 2026, 12:00", to: "15 окт. 2026, 12:00", total: "46 000 ₽", badge: ["Оплачено", "paid"], paid: "46 000 ₽", tone: "paid",
+    note: `<p class="text-xs text-amber">Ждёт Evoke 1200<br>из <span class="whitespace-nowrap">СМ-2026-0231-1</span></p>`, due: "Долга нет", action: "Выдать" },
+  { id: "p", doc: "СМ-2026-0231", project: "Реклама кофейни «Зерно»", client: "Продакшн «Сфера»", status: ["Возвращена частично", "ok"],
+    from: "12 окт. 2026, 10:00", to: "13 окт. 2026, 10:00", total: "28 340 ₽", badge: ["Частично оплачено", "partial"], paid: "20 000 ₽", out: "8 340 ₽", tone: "unpaid",
+    family: true, due: "16 окт. 2026", action: "Принять остаток" },
+  { id: "c", child: true, doc: "СМ-2026-0231-1", project: "Продолжение", client: "у клиента 6 ед.", status: ["Выдана", "edit"],
+    from: "13 окт. 2026, 10:00", to: "15 окт. 2026, 10:00", total: "11 663 ₽", badge: ["Не оплачено", "none"], paid: "0 ₽", out: "11 663 ₽", tone: "unpaid",
+    note: `<p class="text-xs text-ink-2">На руках: 6 ед.</p><p class="text-[11px] text-ink-3">ср 10:00 · чт 10:00</p>`, due: "20 окт. 2026", action: "Принять остаток" },
+  { id: "d", doc: "СМ-2026-0233", project: "Каталог одежды «Лён»", client: "Мария Лебедева", status: ["Выдана", "edit"],
+    from: "13 окт. 2026, 09:00", to: "15 окт. 2026, 09:00", total: "27 000 ₽", badge: ["Оплачено", "paid"], paid: "27 000 ₽", tone: "paid",
+    note: `<p class="text-xs text-ink-2">На руках: 8 ед.</p>`, due: "Долга нет", action: "Принять возврат" },
+  { id: "e", doc: "СМ-2026-0249", project: "Короткий метр «Сквозняк»", client: "Анна Белова", status: ["Черновик", "view"],
+    from: "19 окт. 2026, 10:00", to: "21 окт. 2026, 10:00", total: "76 400 ₽", badge: ["Не оплачено", "none"], paid: "0 ₽", out: "76 400 ₽", tone: null, due: "Не задан", action: "Открыть" },
+];
+
+const badge = ([label, kind]) => {
+  const cls = kind === "paid" ? "bg-emerald-soft text-emerald" : kind === "partial" ? "bg-amber-soft text-amber" : "bg-surface-subtle text-ink-2";
+  return `<span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}">${kind === "paid" ? "✓ " : ""}${label}</span>`;
+};
+const identity = (r, centered) => r.child
+  ? `<div class="relative min-w-0 pl-6 text-left">
+      <span aria-hidden="true" class="absolute left-0 top-0 text-base leading-5 text-teal">↳</span>
+      <p class="text-sm font-semibold text-ink">Продолжение брони</p>
+      <p class="mt-1 whitespace-nowrap font-mono text-[12px] font-medium text-teal">${r.doc}</p>
+      <p class="mt-1 text-xs text-ink-2">к СМ-2026-0231 · ${r.client}</p>
+    </div>`
+  : `<div class="min-w-0 ${centered ? "text-center" : "text-left"}">
+      <p class="break-words text-sm font-semibold text-ink">${r.project}</p>
+      <p class="mt-1 truncate text-xs text-ink-2">${r.client}</p>
+      <p class="mt-1 text-[11px] text-ink-3">${r.doc}${r.family ? ` · <span class="text-teal">есть продолжение</span>` : ""}</p>
+    </div>`;
+const dates = (r) => `<div class="inline-grid grid-cols-[auto_auto] items-baseline gap-x-1.5 gap-y-1 whitespace-nowrap text-left text-xs text-ink-2">
+  <span class="text-right text-ink-3">с</span><span>${r.from}</span><span class="text-right text-ink-3">по</span><span>${r.to}</span></div>`;
+const state = (r) => `<div class="space-y-1"><span class="inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-semibold ${PILL[r.status[1]]}">${r.status[0]}</span>${r.note || ""}</div>`;
+const money = (r) => `<div class="mx-auto max-w-sm px-2 py-1 text-center">
+  <span class="block text-[11px] text-ink-3">Сумма проекта</span>
+  <span class="mt-0.5 block font-mono text-base font-semibold tabular-nums ${r.tone === "paid" ? "text-emerald" : "text-ink"}">${r.total}</span>
+  <span class="mt-1 block">${badge(r.badge)}</span>
+  <span class="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-ink-2"><span>Получено <span class="whitespace-nowrap font-mono">${r.paid}</span></span>${r.out ? `<span>Осталось <span class="whitespace-nowrap font-mono">${r.out}</span></span>` : ""}</span>
+  ${r.family ? `<span class="mt-2 block border-t border-dashed border-rose-border pt-1.5 text-[11px] text-ink-2"><span class="block">Вместе с продолжением <span class="whitespace-nowrap font-mono font-semibold text-ink">40 003 ₽</span></span><span class="block">осталось <span class="whitespace-nowrap font-mono font-semibold text-rose">20 003 ₽</span></span></span>` : ""}
+</div>`;
+const actions = (r) => `<div class="flex items-center justify-center gap-1"><button type="button" class="${BUTTON}">${r.action}</button>
+  <button type="button" aria-label="Действия" class="flex h-10 w-10 items-center justify-center rounded text-ink-3 hover:bg-surface-muted xl:h-8 xl:w-8"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button></div>`;
+
+const tableRow = (r) => `<tr class="${r.tone ? ROW_TONE[r.tone] : "hover:bg-surface-subtle/50"} ${r.child ? "!border-dashed" : ""}">
+  <td class="px-3 py-4 align-middle"><input type="checkbox" aria-label="Выбрать" class="mx-auto block h-4 w-4 accent-accent"></td>
+  <td class="min-w-[220px] max-w-[300px] px-3 ${r.child ? "py-3 pl-7" : "py-4"} text-left align-middle">${identity(r, false)}</td>
+  <td class="px-3 py-4 align-middle">${dates(r)}</td>
+  <td class="px-3 py-4 align-middle">${state(r)}</td>
+  <td class="min-w-[260px] px-3 py-4 align-middle">${money(r)}</td>
+  <td class="min-w-[120px] px-3 py-4 align-middle text-xs text-ink-2">${r.due}</td>
+  <td class="px-3 py-4 align-middle">${actions(r)}</td>
+</tr>`;
+document.getElementById("regRows").innerHTML = ROWS.map(tableRow).join("");
+document.getElementById("regFiltered").innerHTML = `<tr class="bg-surface-subtle">
+  <td class="w-10 px-3 py-1.5"></td>
+  <td colspan="6" class="px-3 py-1.5 text-left text-[12px] text-ink-3">СМ-2026-0231 · Реклама кофейни «Зерно» · Продакшн «Сфера» · Возвращена частично <span class="text-ink-3">— не подходит под фильтр, показана для связи</span> <a href="#" class="ml-1 text-accent hover:underline">Открыть</a></td>
+</tr>${tableRow(ROWS[2])}`;
+
+const card = (r) => `<article class="flex min-w-0 flex-col rounded-lg border p-4 text-center shadow-xs ${CARD_TONE[r.tone || "none"]}">
+  ${r.child ? identity(r, true) : identity(r, true)}
+  <div class="mt-3 grid justify-items-center gap-2">${dates(r)}${state(r)}</div>
+  <div class="my-3 border-y py-2 ${r.tone === "paid" ? "border-emerald-border" : r.tone === "unpaid" ? "border-rose-border" : "border-border"}">${money(r)}<p class="mt-1 text-xs text-ink-2"><span class="text-ink-3">Срок оплаты · </span>${r.due}</p></div>
+  <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">${actions(r)}<a class="inline-flex min-h-10 items-center text-xs text-accent" href="#">Карточка →</a></div>
+</article>`;
+const [, parent, child] = ROWS;
+document.getElementById("regCards").innerHTML = `${card(parent)}
+  <div class="-mt-1 ml-3 border-l-2 border-dashed border-border-strong pl-3 pt-2">${card(child)}</div>`;
+</script>
+</body>
+</html>

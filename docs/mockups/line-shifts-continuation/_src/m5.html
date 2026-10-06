@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M5 · Бронь и её продолжение</title>
+<!--
+  МОКАП M5 · СЕМЬЯ БРОНЕЙ: ОСНОВНАЯ БРОНЬ И ПРОДОЛЖЕНИЕ
+  Карточка основной брони, карточка продолжения, строка реестра, «В работе» в киоске,
+  личный кабинет клиента и платёж «Разнести по продолжениям».
+  Бронь СМ-2026-0231 (итог 28 340, оплачено 20 000) и продолжение СМ-2026-0231-1
+  (11 663, не оплачено). Сегодня ср 14 октября 2026, 08:30. Всё вымышлено.
+  Решение по реестру: продолжение — вложенная строка сразу под основной бронью.
+  Заливка по оплате — у каждой брони своя, как в docs/mockups/bookings-payment-tint.
+-->
+<style>/*__TAILWIND__*/</style>
+</head>
+<body class="min-h-screen bg-surface-muted">
+<!--@include chrome-->
+
+<main class="mx-auto max-w-[1240px] px-4 pb-16 pt-6 sm:pt-8">
+  <p class="eyebrow">Мокап M5 · семья броней</p>
+  <h1 class="mt-1 font-cond text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Основная бронь и её продолжение</h1>
+  <p class="mt-2 max-w-[760px] text-sm text-ink-2">После частичной приёмки у клиента две брони: основная закрыта как «Возвращена частично», продолжение выдано. У каждой свои деньги и документы, но везде видна связь и общий итог.</p>
+
+  <!-- ═════════════ 1 · ОСНОВНАЯ БРОНЬ ═════════════ -->
+  <section id="parent" class="mt-8">
+    <p class="eyebrow">1 · карточка основной брони · /bookings/…</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Основная бронь: баннер продолжения и общий итог</h2>
+
+    <div class="mt-4 rounded-lg border border-border-strong bg-surface-muted p-4 shadow-sm sm:p-6">
+      <a href="#" class="inline-flex min-h-9 items-center text-xs text-ink-2 hover:text-accent">← Список броней</a>
+      <div class="mt-2 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div class="min-w-0">
+          <p class="eyebrow">Бронь · 12 октября 2026 · СМ-2026-0231</p>
+          <h3 class="mt-1 break-words font-cond text-2xl leading-tight tracking-tight text-ink sm:text-3xl">Реклама кофейни «Зерно»</h3>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-3">
+            <span class="inline-flex items-center whitespace-nowrap rounded border border-emerald-border bg-ok-soft px-2 py-0.5 text-xs font-semibold text-ok">Возвращена частично</span>
+            <span class="inline-flex items-center whitespace-nowrap rounded-full bg-amber-soft px-2 py-0.5 text-[11px] font-medium text-amber">Частично оплачено</span>
+            <span>Продакшн «Сфера»</span><span class="text-border-strong">·</span><span class="mono-num">12–13 окт. · 1 смена</span>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-2">Смета PDF</button>
+          <button type="button" disabled title="Когда вернут остаток и оплатят" class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-3 opacity-60">Акт PDF</button>
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-accent bg-accent px-3 text-sm font-semibold text-surface">Записать платёж</button>
+        </div>
+      </div>
+
+      <!-- Баннер продолжения -->
+      <div class="mt-4 flex flex-col gap-3 rounded-lg border border-teal-border bg-teal-soft/40 px-4 py-3 dark:bg-teal-soft md:flex-row md:items-center">
+        <div class="min-w-0 flex-1 text-[13px] text-ink-2">
+          <p class="font-semibold text-teal">Возвращена частично · продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span></p>
+          <p class="mt-0.5">4 позиции у клиента до ср 10:00 и чт 10:00 · <span class="whitespace-nowrap">к оплате 11 663 ₽</span> до 20 окт.</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap gap-2">
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-teal bg-teal px-3 text-sm font-semibold text-surface">Принять остаток</button>
+          <a href="#child" class="inline-flex min-h-10 items-center rounded border border-teal-border bg-surface px-3 text-sm font-medium text-teal">Открыть продолжение →</a>
+        </div>
+      </div>
+      <div class="mt-2 rounded-lg border border-dashed border-border-strong p-3">
+        <p class="text-[11.5px] text-ink-3">Тот же баннер, если у клиента осталось только взятое по плану:</p>
+        <div class="mt-1.5 flex flex-col gap-2 rounded-lg border border-teal-border bg-teal-soft/40 px-4 py-2.5 dark:bg-teal-soft md:flex-row md:items-center">
+          <p class="min-w-0 flex-1 text-[13px] font-semibold text-teal">Возвращена частично · продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span> · 2 позиции до ср 10:00 · оплачено</p>
+          <button type="button" class="inline-flex min-h-10 shrink-0 items-center self-start rounded border border-teal bg-teal px-3 text-sm font-semibold text-surface md:self-auto">Принять остаток</button>
+        </div>
+      </div>
+
+      <!-- KPI основной брони -->
+      <div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div class="rounded-lg border border-border bg-surface p-3 shadow-xs"><p class="eyebrow">Итого</p><p class="mono-num mt-1.5 font-cond text-2xl font-semibold text-ink">28 340 ₽</p><p class="mt-0.5 text-[11px] text-ink-3">эта бронь</p></div>
+        <div class="rounded-lg border border-border bg-surface p-3 shadow-xs"><p class="eyebrow">Оплачено</p><p class="mono-num mt-1.5 font-cond text-2xl font-semibold text-ink">20 000 ₽</p><p class="mt-0.5 text-[11px] text-ink-3">09.10 · перевод</p></div>
+        <div class="rounded-lg border border-rose-border bg-gradient-to-b from-rose-soft to-surface p-3 shadow-xs"><p class="eyebrow">Остаток</p><p class="mono-num mt-1.5 font-cond text-2xl font-semibold text-rose">8 340 ₽</p><p class="mt-0.5 text-[11px] text-ink-3">срок 16 окт.</p></div>
+        <div class="rounded-lg border border-border bg-surface p-3 shadow-xs"><p class="eyebrow">Скидка</p><p class="mono-num mt-1.5 font-cond text-2xl font-semibold text-rose">−50 %</p><p class="mt-0.5 text-[11px] text-ink-3">−20 000 ₽</p></div>
+      </div>
+
+      <!-- Вместе с продолжениями -->
+      <section class="mt-3 overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border bg-surface-subtle px-4 py-2.5">
+          <p class="eyebrow !text-ink-2">Вместе с продолжениями</p>
+          <p class="text-[13px] text-ink-2">итог <b class="mono-num font-semibold text-ink">40 003 ₽</b> <span class="text-ink-3">/</span> оплачено <b class="mono-num font-semibold text-emerald">20 000 ₽</b> <span class="text-ink-3">/</span> остаток <b class="mono-num font-semibold text-rose">20 003 ₽</b></p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[560px] text-[13px]">
+            <thead><tr class="border-b border-border"><th class="eyebrow px-4 py-2 text-left">Бронь</th><th class="eyebrow px-3 py-2 text-right">Итог</th><th class="eyebrow px-3 py-2 text-right">Оплачено</th><th class="eyebrow px-3 py-2 text-right">Остаток</th><th class="eyebrow px-4 py-2 text-right">Срок оплаты</th></tr></thead>
+            <tbody class="divide-y divide-border">
+              <tr><td class="px-4 py-2"><span class="font-medium text-ink">СМ-2026-0231</span> <span class="text-ink-3">· основная</span></td><td class="mono-num px-3 py-2 text-right">28 340</td><td class="mono-num px-3 py-2 text-right text-emerald">20 000</td><td class="mono-num px-3 py-2 text-right text-rose">8 340</td><td class="px-4 py-2 text-right text-ink-2">16 окт.</td></tr>
+              <tr><td class="px-4 py-2"><a href="#child" class="font-medium text-accent hover:underline">СМ-2026-0231-1</a> <span class="text-ink-3">· продолжение</span></td><td class="mono-num px-3 py-2 text-right">11 663</td><td class="mono-num px-3 py-2 text-right text-ink-3">0</td><td class="mono-num px-3 py-2 text-right text-rose">11 663</td><td class="px-4 py-2 text-right text-ink-2">20 окт.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Состав основной брони -->
+      <section class="mt-3 overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+          <p class="eyebrow !text-ink">Оборудование</p>
+          <p class="text-[12px] text-ink-3">7 позиций · принято 16 ед. вт 13 окт., 10:24</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[620px] text-[13px]">
+            <thead><tr class="border-b border-border bg-surface-subtle"><th class="eyebrow px-4 py-2 text-left">Позиция</th><th class="eyebrow px-3 py-2 text-right">Кол-во</th><th class="eyebrow px-3 py-2 text-right">Смен</th><th class="eyebrow px-4 py-2 text-left">Где сейчас</th></tr></thead>
+            <tbody class="divide-y divide-border">
+              <tr><td class="px-4 py-2 text-ink">Aputure STORM 400x</td><td class="mono-num px-3 py-2 text-right">2</td><td class="mono-num px-3 py-2 text-right font-semibold text-indigo">2</td><td class="px-4 py-2"><span class="rounded bg-teal-soft px-1.5 py-0.5 text-[11.5px] text-teal">в продолжении · до ср 10:00</span> <span class="text-[11.5px] text-indigo">по плану</span></td></tr>
+              <tr><td class="px-4 py-2 text-ink">Nanlux Evoke 1200</td><td class="mono-num px-3 py-2 text-right">1</td><td class="mono-num px-3 py-2 text-right font-semibold text-indigo">2</td><td class="px-4 py-2"><span class="rounded bg-teal-soft px-1.5 py-0.5 text-[11.5px] text-teal">в продолжении · до чт 10:00</span></td></tr>
+              <tr><td class="px-4 py-2 text-ink">Aputure LS 60x</td><td class="mono-num px-3 py-2 text-right">4</td><td class="mono-num px-3 py-2 text-right text-ink-2">1</td><td class="px-4 py-2"><span class="text-[11.5px] text-emerald">принято 2</span> <span class="text-ink-3">·</span> <span class="rounded bg-teal-soft px-1.5 py-0.5 text-[11.5px] text-teal">2 в продолжении · до ср 10:00</span></td></tr>
+              <tr><td class="px-4 py-2 text-ink">Astera Titan Tube, комплект</td><td class="mono-num px-3 py-2 text-right">1</td><td class="mono-num px-3 py-2 text-right text-ink-2">1</td><td class="px-4 py-2"><span class="rounded bg-teal-soft px-1.5 py-0.5 text-[11.5px] text-teal">в продолжении · до ср 10:00</span></td></tr>
+              <tr><td class="px-4 py-2 text-ink">Зажим Super Clamp с пальцем</td><td class="mono-num px-3 py-2 text-right">6</td><td class="mono-num px-3 py-2 text-right text-ink-2">1</td><td class="px-4 py-2 text-[11.5px] text-emerald">принято</td></tr>
+              <tr><td class="px-4 py-2 text-ink">Стойка C-Stand 40"</td><td class="mono-num px-3 py-2 text-right">8</td><td class="mono-num px-3 py-2 text-right text-ink-2">1</td><td class="px-4 py-2 text-[11.5px] text-emerald">принято</td></tr>
+              <tr><td class="px-4 py-2 text-ink">Расходники: гели, скотч <span class="rounded border border-indigo-border bg-indigo-soft px-1 py-px text-[10.5px] text-indigo">своя</span></td><td class="mono-num px-3 py-2 text-right">1</td><td class="mono-num px-3 py-2 text-right text-ink-3">—</td><td class="px-4 py-2 text-[11.5px] text-ink-3">не возвращается</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="border-t border-border bg-surface-subtle px-4 py-2 text-[12px] text-ink-3">У брони есть продолжение: даты и состав больше не меняются, архив и удаление недоступны. Комментарий, скидку и договорной итог править можно.</p>
+      </section>
+    </div>
+  </section>
+
+  <!-- ═════════════ 2 · ПРОДОЛЖЕНИЕ ═════════════ -->
+  <section id="child" class="mt-12">
+    <p class="eyebrow">2 · карточка продолжения</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Продолжение: что, до какого срока и за сколько</h2>
+
+    <div class="mt-4 rounded-lg border border-border-strong bg-surface-muted p-4 shadow-sm sm:p-6">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div class="min-w-0">
+          <p class="eyebrow">Продолжение · 13 октября 2026 · СМ-2026-0231-1</p>
+          <h3 class="mt-1 break-words font-cond text-2xl leading-tight tracking-tight text-ink sm:text-3xl">Реклама кофейни «Зерно»</h3>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-3">
+            <span class="inline-flex items-center whitespace-nowrap rounded border border-teal-border bg-teal-soft px-2 py-0.5 text-xs font-semibold text-teal">Выдана · у клиента 6 ед.</span>
+            <span class="inline-flex items-center whitespace-nowrap rounded-full bg-surface-subtle px-2 py-0.5 text-[11px] font-medium text-ink-2">Не оплачено</span>
+            <span>Продакшн «Сфера»</span><span class="text-border-strong">·</span><span class="mono-num">13–15 окт.</span>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-2">Дополнительная смета PDF</button>
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-accent bg-accent px-3 text-sm font-semibold text-surface">Принять остаток</button>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-xs md:flex-row md:items-center">
+        <div class="min-w-0 flex-1 text-[13px] text-ink-2">
+          <p class="font-semibold text-ink">Продолжение брони <a href="#parent" class="whitespace-nowrap text-accent hover:underline">СМ-2026-0231</a></p>
+          <p class="mt-0.5">Сюда перешло то, что клиент оставил при приёмке вт 13 окт., 10:24 (Иван, киоск). Создано сразу выданным, без согласования.</p>
+        </div>
+        <div class="shrink-0 text-left md:text-right">
+          <button type="button" class="inline-flex min-h-10 items-center rounded border border-rose-border bg-surface px-3 text-sm font-medium text-rose hover:bg-rose-soft">Отменить продолжение</button>
+          <p class="mt-1 text-[11px] text-ink-3">только руководитель · позиции вернутся в основную бронь</p>
+        </div>
+      </div>
+
+      <section class="mt-3 overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+          <p class="eyebrow !text-ink">У клиента</p>
+          <p class="text-[12px] text-ink-3">4 позиции · 6 ед.</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[680px] text-[13px]">
+            <thead><tr class="border-b border-border bg-surface-subtle"><th class="eyebrow px-4 py-2 text-left">Позиция</th><th class="eyebrow px-3 py-2 text-right">Кол-во</th><th class="eyebrow px-3 py-2 text-left">Вернут</th><th class="eyebrow px-3 py-2 text-left">Основание</th><th class="eyebrow px-4 py-2 text-right">Сумма</th></tr></thead>
+            <tbody class="divide-y divide-border">
+              <tr><td class="px-4 py-2 text-ink">Aputure STORM 400x</td><td class="mono-num px-3 py-2 text-right">2</td><td class="whitespace-nowrap px-3 py-2 text-ink-2">ср 14 окт., 10:00</td><td class="px-3 py-2"><span class="rounded bg-indigo-soft px-1.5 py-0.5 text-[11.5px] text-indigo">по плану · оплачено в основной</span></td><td class="mono-num px-4 py-2 text-right text-ink-3">0</td></tr>
+              <tr><td class="px-4 py-2 text-ink">Nanlux Evoke 1200</td><td class="mono-num px-3 py-2 text-right">1</td><td class="whitespace-nowrap px-3 py-2 text-ink-2">чт 15 окт., 10:00</td><td class="px-3 py-2"><span class="rounded bg-amber-soft px-1.5 py-0.5 text-[11.5px] text-amber">+1 смена · под ответственность</span><span class="mt-0.5 block text-[11px] text-ink-3">нужен брони Петрова со ср 12:00</span></td><td class="mono-num px-4 py-2 text-right">7 000</td></tr>
+              <tr><td class="px-4 py-2 text-ink">Aputure LS 60x</td><td class="mono-num px-3 py-2 text-right">2</td><td class="whitespace-nowrap px-3 py-2 text-ink-2">ср 14 окт., 10:00</td><td class="px-3 py-2"><span class="rounded bg-amber-soft px-1.5 py-0.5 text-[11.5px] text-amber">+1 смена</span></td><td class="mono-num px-4 py-2 text-right">2 400</td></tr>
+              <tr><td class="px-4 py-2 text-ink">Astera Titan Tube, комплект</td><td class="mono-num px-3 py-2 text-right">1</td><td class="whitespace-nowrap px-3 py-2 text-ink-2">ср 14 окт., 10:00</td><td class="px-3 py-2"><span class="rounded bg-amber-soft px-1.5 py-0.5 text-[11.5px] text-amber">+1 смена</span> <span class="text-[11.5px] text-indigo">договорная</span></td><td class="mono-num px-4 py-2 text-right">6 000</td></tr>
+            </tbody>
+            <tfoot>
+              <tr class="border-t border-border"><td colspan="4" class="px-4 py-1.5 text-right text-[12px] text-ink-2">Скидка 50 % · безналичный расчёт +9 %</td><td class="mono-num px-4 py-1.5 text-right text-[12px] text-ink-2">−4 700 · +963</td></tr>
+              <tr class="border-t-2 border-ink"><td colspan="4" class="px-4 py-2 text-right font-semibold text-ink">Дополнительная смета, к оплате до 20 окт.</td><td class="mono-num px-4 py-2 text-right text-[15px] font-bold text-ink">11 663 ₽</td></tr>
+            </tfoot>
+          </table>
+        </div>
+        <p class="border-t border-border bg-surface-subtle px-4 py-2 text-[12px] text-ink-3">Пока продолжение выдано, нельзя менять начало, делать добор, отменять и архивировать. Новое оборудование — новая бронь.</p>
+      </section>
+    </div>
+  </section>
+
+  <!-- ═════════════ 3 · РЕЕСТР ═════════════ -->
+  <section id="register" class="mt-12">
+    <p class="eyebrow">3 · реестр броней · /bookings</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Строка реестра: продолжение вложено под основной бронью</h2>
+    <p class="mt-1 max-w-[760px] text-sm text-ink-2">Продолжение всегда стоит сразу под своей бронью, с отступом и «↳». Заливка по оплате у каждой своя. Если фильтр скрывает основную бронь, над продолжением остаётся её тонкая серая строка — чтобы было видно, чьё это.</p>
+
+    <p class="mt-3 text-[12px] text-ink-3 xl:hidden">На узком окне таблица листается вбок; карточки телефона — ниже.</p>
+    <div class="mt-2 overflow-x-auto rounded-lg border border-border bg-surface xl:mt-4">
+      <table class="w-full min-w-[1040px] text-center">
+        <thead class="border-b border-border bg-surface-subtle text-[11px] uppercase tracking-wide text-ink-3">
+          <tr>
+            <th class="w-10 px-3 py-3"><input type="checkbox" aria-label="Выбрать все" class="mx-auto block h-4 w-4 accent-accent"></th>
+            <th class="px-3 py-3 text-left">Проект / клиент</th>
+            <th class="px-3 py-3">Аренда · МСК</th>
+            <th class="px-3 py-3">Оборудование</th>
+            <th class="min-w-[260px] px-3 py-3">Сумма / оплата</th>
+            <th class="px-3 py-3">Срок оплаты</th>
+            <th class="px-3 py-3">Действия</th>
+          </tr>
+        </thead>
+        <tbody id="regRows" class="divide-y divide-border"></tbody>
+      </table>
+    </div>
+    <p class="mt-4 text-[12px] text-ink-3">Фильтр «На руках»: основная бронь под него не подходит, но над продолжением остаётся её строка-контекст.</p>
+    <div class="mt-2 overflow-x-auto rounded-lg border border-border bg-surface">
+      <table class="w-full min-w-[1040px] text-center">
+        <tbody id="regFiltered" class="divide-y divide-border"></tbody>
+      </table>
+    </div>
+
+    <div class="mt-6 flex flex-wrap items-start gap-6">
+      <div class="w-full max-w-[375px]">
+        <p class="mb-2 text-[12px] text-ink-3">Телефон · карточки</p>
+        <div id="regCards" class="space-y-3 rounded-[22px] border border-border-strong bg-surface-muted p-3 shadow-sm"></div>
+      </div>
+
+      <!-- ═════════════ 4 · КИОСК «В РАБОТЕ» ═════════════ -->
+      <div id="kiosk" class="w-full max-w-[375px]">
+        <p class="mb-2 text-[12px] text-ink-3">4 · киоск · «В работе»</p>
+        <div class="overflow-hidden rounded-[22px] border border-border-strong bg-surface-muted shadow-sm">
+          <header class="bg-accent-chrome px-4 py-3 text-on-inverse">
+            <p class="eyebrow !text-on-inverse/70">Склад · В работе</p>
+            <h3 class="text-[15px] font-semibold leading-snug">У клиентов сейчас · 5</h3>
+          </header>
+          <div class="flex flex-wrap gap-1.5 px-3 py-2.5">
+            <span class="inline-flex min-h-8 items-center rounded-full border border-border bg-surface px-3 text-[11.5px] font-semibold text-ink-2">Сегодня 1</span>
+            <span class="inline-flex min-h-8 items-center rounded-full border border-border bg-surface px-3 text-[11.5px] font-semibold text-ink-2">Завтра 2</span>
+            <span class="inline-flex min-h-8 items-center rounded-full border border-inverse bg-inverse px-3 text-[11.5px] font-semibold text-on-inverse">Все 5</span>
+          </div>
+          <div class="mx-3 mb-3 overflow-hidden rounded-lg border border-border bg-surface">
+            <div class="border-b border-border px-3 py-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="text-[13.5px] font-semibold text-ink">Сфера · «Зерно»</p>
+                  <p class="mt-0.5 text-[11.5px] text-teal">продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span></p>
+                </div>
+                <div class="shrink-0 text-right"><p class="mono-num text-[12.5px] font-semibold text-amber">сегодня 10:00</p><p class="text-[10.5px] text-ink-3">и чт 10:00</p></div>
+              </div>
+              <ul class="mt-2 space-y-1 text-[12px]">
+                <li class="flex justify-between gap-2"><span class="text-ink-2">5 ед. · STORM 400x, LS 60x, Astera</span><span class="mono-num shrink-0 text-ink">ср 10:00</span></li>
+                <li class="flex justify-between gap-2"><span class="text-ink-2">1 ед. · Evoke 1200 <span class="text-amber">под ответственность</span></span><span class="mono-num shrink-0 text-ink">чт 10:00</span></li>
+              </ul>
+              <div class="mt-2.5 flex flex-wrap gap-1.5">
+                <button type="button" class="inline-flex min-h-10 items-center gap-1 rounded border border-teal bg-teal px-3 text-[12px] font-semibold text-surface">Принять остаток</button>
+                <button type="button" class="inline-flex min-h-10 items-center rounded border border-border-strong bg-surface px-3 text-[12px] font-semibold text-ink">Позвонить</button>
+              </div>
+            </div>
+            <div class="px-3 py-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0"><p class="text-[13.5px] font-semibold text-ink">Лебедева · «Лён»</p><p class="mt-0.5 text-[11.5px] text-ink-3">8 ед. · обычная бронь</p></div>
+                <div class="shrink-0 text-right"><p class="mono-num text-[12.5px] font-semibold text-ink">завтра 09:00</p></div>
+              </div>
+              <div class="mt-2.5 flex flex-wrap gap-1.5">
+                <button type="button" class="inline-flex min-h-10 items-center rounded border border-teal bg-teal px-3 text-[12px] font-semibold text-surface">Принять возврат</button>
+                <button type="button" class="inline-flex min-h-10 items-center rounded border border-border-strong bg-surface px-3 text-[12px] font-semibold text-ink">Позвонить</button>
+              </div>
+            </div>
+          </div>
+          <p class="px-4 pb-3 text-[11.5px] text-ink-3">Основная бронь «Зерно» отсюда ушла — она закрыта. В работе только продолжение, со своими сроками по строкам.</p>
+          <nav aria-label="Разделы склада" class="grid grid-cols-5 border-t border-border bg-surface">
+            <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+            <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача</a>
+            <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка</a>
+            <a href="#" aria-current="page" class="relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-accent-bright"><span class="absolute left-[22%] right-[22%] top-0 h-0.5 rounded-b bg-accent-bright"></span><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе</a>
+            <a href="#" class="flex min-h-[52px] flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium text-ink-3"><svg aria-hidden="true" class="h-[21px] w-[21px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ 5 · ЛИЧНЫЙ КАБИНЕТ ═════════════ -->
+  <section id="portal" class="mt-12">
+    <p class="eyebrow">5 · личный кабинет клиента · /lk/bookings/…</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Клиент видит заказ и вложенное продолжение</h2>
+
+    <div class="mt-4 overflow-hidden rounded-lg border border-border-strong bg-surface shadow-sm">
+      <header class="bg-inverse text-on-inverse">
+        <div class="flex items-center justify-between gap-4 px-4 py-3">
+          <span class="inline-flex min-h-10 items-center font-medium tracking-tight">Личный кабинет</span>
+          <div class="flex items-center gap-3 text-sm text-on-inverse/80">
+            <span class="hidden sm:inline">Продакшн «Сфера»</span>
+            <button type="button" class="inline-flex h-10 items-center rounded border border-on-inverse/30 px-3 sm:h-8">Выйти</button>
+          </div>
+        </div>
+        <nav class="flex gap-1 overflow-x-auto px-4 pb-2 text-sm [scrollbar-width:none]">
+          <a href="#" class="shrink-0 rounded bg-on-inverse/15 px-3 py-1.5 font-medium">Заказы</a>
+          <a href="#" class="shrink-0 rounded px-3 py-1.5 text-on-inverse/70">Сметы</a>
+          <a href="#" class="shrink-0 rounded px-3 py-1.5 text-on-inverse/70">Долг</a>
+          <a href="#" class="shrink-0 rounded px-3 py-1.5 text-on-inverse/70">Статистика</a>
+        </nav>
+      </header>
+      <div class="mx-auto max-w-[880px] px-4 py-6">
+        <a href="#" class="inline-flex min-h-9 items-center text-xs text-ink-2">← Все заказы</a>
+        <div class="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div class="min-w-0">
+            <p class="eyebrow">Заказ СМ-2026-0231 · 12–13 октября</p>
+            <h3 class="mt-1 text-xl font-semibold text-ink">Реклама кофейни «Зерно»</h3>
+            <span class="mt-1.5 inline-flex rounded border border-emerald-border bg-ok-soft px-2 py-0.5 text-xs font-semibold text-ok">Возвращён частично</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-2">Скачать смету</button>
+            <button type="button" disabled class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-sm font-medium text-ink-3 opacity-60">Акт — после возврата всего</button>
+          </div>
+        </div>
+        <dl class="mt-4 grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-lg border border-border p-3"><dt class="text-[11.5px] text-ink-3">Сумма</dt><dd class="mono-num mt-0.5 font-semibold text-ink">28 340 ₽</dd></div>
+          <div class="rounded-lg border border-border p-3"><dt class="text-[11.5px] text-ink-3">Оплачено</dt><dd class="mono-num mt-0.5 font-semibold text-emerald">20 000 ₽</dd></div>
+          <div class="rounded-lg border border-rose-border bg-rose-soft/50 p-3"><dt class="text-[11.5px] text-ink-3">К оплате</dt><dd class="mono-num mt-0.5 font-semibold text-rose">8 340 ₽</dd></div>
+        </dl>
+
+        <section class="mt-4 rounded-lg border border-teal-border bg-surface sm:ml-6">
+          <div class="flex flex-col gap-2 border-b border-teal-border bg-teal-soft/40 px-4 py-3 dark:bg-teal-soft sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0">
+              <p class="text-[13px] font-semibold text-teal">↳ Продолжение <span class="whitespace-nowrap">СМ-2026-0231-1</span></p>
+              <p class="text-[12px] text-ink-2">Это осталось у вас после возврата 13 октября</p>
+            </div>
+            <button type="button" class="inline-flex min-h-10 shrink-0 items-center self-start rounded border border-teal bg-surface px-3 text-sm font-semibold text-teal sm:self-auto">Скачать дополнительную смету</button>
+          </div>
+          <ul class="divide-y divide-border text-[13px]">
+            <li class="flex flex-wrap justify-between gap-x-3 gap-y-0.5 px-4 py-2"><span class="text-ink">Aputure STORM 400x · 2 шт <span class="text-[12px] text-ink-3">оплачено в основной смете</span></span><span class="text-ink-2">вернуть до ср 14 окт., 10:00</span></li>
+            <li class="flex flex-wrap justify-between gap-x-3 gap-y-0.5 px-4 py-2"><span class="text-ink">Nanlux Evoke 1200 · 1 шт</span><span class="text-ink-2">вернуть до чт 15 окт., 10:00</span></li>
+            <li class="flex flex-wrap justify-between gap-x-3 gap-y-0.5 px-4 py-2"><span class="text-ink">Aputure LS 60x · 2 шт</span><span class="text-ink-2">вернуть до ср 14 окт., 10:00</span></li>
+            <li class="flex flex-wrap justify-between gap-x-3 gap-y-0.5 px-4 py-2"><span class="text-ink">Astera Titan Tube, комплект · 1 шт</span><span class="text-ink-2">вернуть до ср 14 окт., 10:00</span></li>
+          </ul>
+          <div class="flex flex-wrap items-baseline justify-between gap-2 border-t border-border bg-surface-subtle px-4 py-2.5 text-[13px]">
+            <span class="text-ink-2">Дополнительная смета · оплатить до 20 окт.</span>
+            <span class="mono-num font-semibold text-rose">11 663 ₽</span>
+          </div>
+        </section>
+
+        <p class="mt-4 rounded-lg border border-border bg-surface-subtle px-4 py-3 text-[13px] text-ink-2">Всего по заказу с продолжением: <b class="mono-num font-semibold text-ink">40 003 ₽</b> · оплачено <b class="mono-num font-semibold text-emerald">20 000 ₽</b> · к оплате <b class="mono-num font-semibold text-rose">20 003 ₽</b></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ 6 · ПЛАТЁЖ ═════════════ -->
+  <section id="payment" class="mt-12">
+    <p class="eyebrow">6 · окно «Записать платёж»</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">«Разнести по продолжениям»: сначала старшая бронь</h2>
+    <p class="mt-1 max-w-[760px] text-sm text-ink-2">Клиент платит одним переводом за всё. Переключатель включён по умолчанию, если у брони есть продолжения с долгом. Деньги ложатся от старшей брони к младшей; каждая бронь закрывается своей частью.</p>
+
+    <div class="mt-4 rounded-lg border border-border-strong bg-scrim/50 p-3 sm:p-8">
+      <div role="dialog" aria-label="Записать платёж" class="mx-auto w-full max-w-[520px] overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+        <div class="flex items-start justify-between border-b border-border px-5 py-4">
+          <div><p class="eyebrow mb-0.5">Финансы</p><h3 class="text-base font-semibold text-ink">Записать платёж</h3></div>
+          <button type="button" aria-label="Закрыть" class="-mr-2 -mt-1 flex h-10 w-10 items-center justify-center text-xl leading-none text-ink-3">×</button>
+        </div>
+        <div class="border-b border-border bg-surface-subtle px-5 pb-3 pt-3">
+          <p class="text-sm font-medium text-ink">Продакшн «Сфера»</p>
+          <p class="mt-0.5 text-xs text-ink-2">Реклама кофейни «Зерно» · СМ-2026-0231 с продолжением</p>
+          <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2">
+            <span>Итого: <span class="mono-num font-medium text-ink">40 003 ₽</span></span>
+            <span>Оплачено: <span class="mono-num font-medium text-emerald">20 000 ₽</span></span>
+            <span>Остаток: <span class="mono-num font-medium text-rose">20 003 ₽</span></span>
+          </div>
+        </div>
+        <div class="space-y-4 px-5 py-4">
+          <label class="block"><span class="eyebrow mb-1 block">Сумма</span>
+            <input value="15 000" inputmode="decimal" class="mono-num w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-lg font-semibold text-ink focus:border-accent-bright focus:outline-none"></label>
+
+          <div class="rounded-lg border border-accent-border bg-accent-soft/50 p-3">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[13px] font-semibold text-ink">Разнести по продолжениям</p>
+                <p class="text-[12px] text-ink-2">Сначала основная бронь, затем продолжения по порядку</p>
+              </div>
+              <button type="button" role="switch" aria-checked="true" aria-label="Разнести по продолжениям" class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full bg-accent-bright">
+                <span class="absolute right-1 h-5 w-5 rounded-full bg-surface shadow-sm"></span>
+              </button>
+            </div>
+            <div class="mt-3 overflow-x-auto rounded border border-border bg-surface">
+              <table class="w-full min-w-[420px] text-[12.5px]">
+                <thead><tr class="border-b border-border"><th class="eyebrow px-3 py-1.5 text-left">Бронь</th><th class="eyebrow px-2 py-1.5 text-right">Долг</th><th class="eyebrow px-2 py-1.5 text-right">Платёж</th><th class="eyebrow px-3 py-1.5 text-right">Останется</th></tr></thead>
+                <tbody class="divide-y divide-border">
+                  <tr><td class="px-3 py-2"><span class="text-ink-3">1.</span> СМ-2026-0231 <span class="block text-[11px] text-ink-3">основная · срок 16 окт.</span></td><td class="mono-num px-2 py-2 text-right text-ink-2">8 340</td><td class="mono-num px-2 py-2 text-right font-semibold text-ink">8 340</td><td class="px-3 py-2 text-right text-[12px] font-medium text-emerald">0 · закрыта</td></tr>
+                  <tr><td class="px-3 py-2"><span class="text-ink-3">2.</span> СМ-2026-0231-1 <span class="block text-[11px] text-ink-3">продолжение · срок 20 окт.</span></td><td class="mono-num px-2 py-2 text-right text-ink-2">11 663</td><td class="mono-num px-2 py-2 text-right font-semibold text-ink">6 660</td><td class="mono-num px-3 py-2 text-right text-rose">5 003</td></tr>
+                </tbody>
+                <tfoot><tr class="border-t border-border bg-surface-subtle"><td class="px-3 py-1.5 font-semibold text-ink">Всего</td><td class="mono-num px-2 py-1.5 text-right text-ink-2">20 003</td><td class="mono-num px-2 py-1.5 text-right font-bold text-ink">15 000</td><td class="mono-num px-3 py-1.5 text-right text-rose">5 003</td></tr></tfoot>
+              </table>
+            </div>
+            <p class="mt-2 text-[11.5px] text-ink-3">Выключено — весь платёж ляжет на СМ-2026-0231, и 6 660 ₽ станут переплатой по ней.</p>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="block"><span class="eyebrow mb-1 block">Способ оплаты</span>
+              <select class="min-h-10 w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink"><option>Перевод на счёт</option></select></label>
+            <label class="block"><span class="eyebrow mb-1 block">Дата получения (МСК)</span>
+              <input value="14.10.2026" class="min-h-10 w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink"></label>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 border-t border-border px-5 py-4">
+          <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-border px-4 text-sm text-ink-2">Отмена</button>
+          <button type="button" class="inline-flex min-h-10 items-center rounded-lg bg-accent-bright px-5 text-sm font-medium text-surface">Записать 15 000 ₽</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ РЕШЕНИЯ ═════════════ -->
+  <section id="decisions" class="mt-12">
+    <p class="eyebrow">Решения по мокапу</p>
+    <div class="mt-3 grid gap-3 lg:grid-cols-3">
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Реестр: вложенная строка, а не отдельная с бейджем</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">Отдельная строка с бейджем уезжает от родителя при сортировке по началу аренды (продолжение начинается позже) и теряется на следующей странице. Вложенная строка всегда рядом, читается как одна семья, но остаётся самостоятельной: свой чекбокс, своя заливка, свои кнопки. Под фильтром основная бронь остаётся тонкой серой строкой-контекстом.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Деньги — по каждой броне, итог — на семью</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">KPI карточки — только этой брони, как сейчас. Общая картина — отдельной строкой «Вместе с продолжениями» и в сумме строки реестра. Продолжение за 0 ₽ считается оплаченным и в долги не попадает.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Цвета семьи</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">Бирюзовый — «у клиента» (как статус «Выдана»): баннер, продолжение, «Принять остаток». «Возвращена частично» — зелёная пилюля статуса: основная бронь своё отработала. Индиго — «по плану», янтарь — «сверх оплаченного» и «под ответственность».</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* Реестр: те же классы и заливка, что в bookings-payment-tint. */
+const ROW_TONE = {
+  paid: "bg-emerald-soft/60 hover:bg-emerald-soft dark:bg-emerald-soft dark:hover:bg-emerald-border/60",
+  unpaid: "bg-rose-soft/70 hover:bg-rose-soft dark:bg-rose-soft dark:hover:bg-rose-border/60",
+};
+const CARD_TONE = {
+  paid: "border-emerald-border bg-emerald-soft/60 dark:bg-emerald-soft",
+  unpaid: "border-rose-border bg-rose-soft/70 dark:bg-rose-soft",
+  none: "border-border bg-surface",
+};
+const PILL = {
+  view: "bg-surface-subtle text-ink-2 border-border-strong",
+  info: "bg-accent-soft text-accent border-accent-border",
+  edit: "bg-teal-soft text-teal border-teal-border",
+  ok: "bg-ok-soft text-ok border-emerald-border",
+};
+const BUTTON = "inline-flex min-h-10 items-center justify-center gap-2 rounded border border-border bg-surface px-3 py-2 text-xs font-medium text-ink-2 hover:bg-surface-subtle whitespace-nowrap";
+
+const ROWS = [
+  { id: "a", doc: "СМ-2026-0236", project: "Клип «Ночной рейс»", client: "Пётр Петров", status: ["Подтверждена", "info"],
+    from: "14 окт. 2026, 12:00", to: "15 окт. 2026, 12:00", total: "46 000 ₽", badge: ["Оплачено", "paid"], paid: "46 000 ₽", tone: "paid",
+    note: `<p class="text-xs text-amber">Ждёт Evoke 1200<br>из <span class="whitespace-nowrap">СМ-2026-0231-1</span></p>`, due: "Долга нет", action: "Выдать" },
+  { id: "p", doc: "СМ-2026-0231", project: "Реклама кофейни «Зерно»", client: "Продакшн «Сфера»", status: ["Возвращена частично", "ok"],
+    from: "12 окт. 2026, 10:00", to: "13 окт. 2026, 10:00", total: "28 340 ₽", badge: ["Частично оплачено", "partial"], paid: "20 000 ₽", out: "8 340 ₽", tone: "unpaid",
+    family: true, due: "16 окт. 2026", action: "Принять остаток" },
+  { id: "c", child: true, doc: "СМ-2026-0231-1", project: "Продолжение", client: "у клиента 6 ед.", status: ["Выдана", "edit"],
+    from: "13 окт. 2026, 10:00", to: "15 окт. 2026, 10:00", total: "11 663 ₽", badge: ["Не оплачено", "none"], paid: "0 ₽", out: "11 663 ₽", tone: "unpaid",
+    note: `<p class="text-xs text-ink-2">На руках: 6 ед.</p><p class="text-[11px] text-ink-3">ср 10:00 · чт 10:00</p>`, due: "20 окт. 2026", action: "Принять остаток" },
+  { id: "d", doc: "СМ-2026-0233", project: "Каталог одежды «Лён»", client: "Мария Лебедева", status: ["Выдана", "edit"],
+    from: "13 окт. 2026, 09:00", to: "15 окт. 2026, 09:00", total: "27 000 ₽", badge: ["Оплачено", "paid"], paid: "27 000 ₽", tone: "paid",
+    note: `<p class="text-xs text-ink-2">На руках: 8 ед.</p>`, due: "Долга нет", action: "Принять возврат" },
+  { id: "e", doc: "СМ-2026-0249", project: "Короткий метр «Сквозняк»", client: "Анна Белова", status: ["Черновик", "view"],
+    from: "19 окт. 2026, 10:00", to: "21 окт. 2026, 10:00", total: "76 400 ₽", badge: ["Не оплачено", "none"], paid: "0 ₽", out: "76 400 ₽", tone: null, due: "Не задан", action: "Открыть" },
+];
+
+const badge = ([label, kind]) => {
+  const cls = kind === "paid" ? "bg-emerald-soft text-emerald" : kind === "partial" ? "bg-amber-soft text-amber" : "bg-surface-subtle text-ink-2";
+  return `<span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}">${kind === "paid" ? "✓ " : ""}${label}</span>`;
+};
+const identity = (r, centered) => r.child
+  ? `<div class="relative min-w-0 pl-6 text-left">
+      <span aria-hidden="true" class="absolute left-0 top-0 text-base leading-5 text-teal">↳</span>
+      <p class="text-sm font-semibold text-ink">Продолжение брони</p>
+      <p class="mt-1 whitespace-nowrap font-mono text-[12px] font-medium text-teal">${r.doc}</p>
+      <p class="mt-1 text-xs text-ink-2">к СМ-2026-0231 · ${r.client}</p>
+    </div>`
+  : `<div class="min-w-0 ${centered ? "text-center" : "text-left"}">
+      <p class="break-words text-sm font-semibold text-ink">${r.project}</p>
+      <p class="mt-1 truncate text-xs text-ink-2">${r.client}</p>
+      <p class="mt-1 text-[11px] text-ink-3">${r.doc}${r.family ? ` · <span class="text-teal">есть продолжение</span>` : ""}</p>
+    </div>`;
+const dates = (r) => `<div class="inline-grid grid-cols-[auto_auto] items-baseline gap-x-1.5 gap-y-1 whitespace-nowrap text-left text-xs text-ink-2">
+  <span class="text-right text-ink-3">с</span><span>${r.from}</span><span class="text-right text-ink-3">по</span><span>${r.to}</span></div>`;
+const state = (r) => `<div class="space-y-1"><span class="inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-semibold ${PILL[r.status[1]]}">${r.status[0]}</span>${r.note || ""}</div>`;
+const money = (r) => `<div class="mx-auto max-w-sm px-2 py-1 text-center">
+  <span class="block text-[11px] text-ink-3">Сумма проекта</span>
+  <span class="mt-0.5 block font-mono text-base font-semibold tabular-nums ${r.tone === "paid" ? "text-emerald" : "text-ink"}">${r.total}</span>
+  <span class="mt-1 block">${badge(r.badge)}</span>
+  <span class="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-ink-2"><span>Получено <span class="whitespace-nowrap font-mono">${r.paid}</span></span>${r.out ? `<span>Осталось <span class="whitespace-nowrap font-mono">${r.out}</span></span>` : ""}</span>
+  ${r.family ? `<span class="mt-2 block border-t border-dashed border-rose-border pt-1.5 text-[11px] text-ink-2"><span class="block">Вместе с продолжением <span class="whitespace-nowrap font-mono font-semibold text-ink">40 003 ₽</span></span><span class="block">осталось <span class="whitespace-nowrap font-mono font-semibold text-rose">20 003 ₽</span></span></span>` : ""}
+</div>`;
+const actions = (r) => `<div class="flex items-center justify-center gap-1"><button type="button" class="${BUTTON}">${r.action}</button>
+  <button type="button" aria-label="Действия" class="flex h-10 w-10 items-center justify-center rounded text-ink-3 hover:bg-surface-muted xl:h-8 xl:w-8"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button></div>`;
+
+const tableRow = (r) => `<tr class="${r.tone ? ROW_TONE[r.tone] : "hover:bg-surface-subtle/50"} ${r.child ? "!border-dashed" : ""}">
+  <td class="px-3 py-4 align-middle"><input type="checkbox" aria-label="Выбрать" class="mx-auto block h-4 w-4 accent-accent"></td>
+  <td class="min-w-[220px] max-w-[300px] px-3 ${r.child ? "py-3 pl-7" : "py-4"} text-left align-middle">${identity(r, false)}</td>
+  <td class="px-3 py-4 align-middle">${dates(r)}</td>
+  <td class="px-3 py-4 align-middle">${state(r)}</td>
+  <td class="min-w-[260px] px-3 py-4 align-middle">${money(r)}</td>
+  <td class="min-w-[120px] px-3 py-4 align-middle text-xs text-ink-2">${r.due}</td>
+  <td class="px-3 py-4 align-middle">${actions(r)}</td>
+</tr>`;
+document.getElementById("regRows").innerHTML = ROWS.map(tableRow).join("");
+document.getElementById("regFiltered").innerHTML = `<tr class="bg-surface-subtle">
+  <td class="w-10 px-3 py-1.5"></td>
+  <td colspan="6" class="px-3 py-1.5 text-left text-[12px] text-ink-3">СМ-2026-0231 · Реклама кофейни «Зерно» · Продакшн «Сфера» · Возвращена частично <span class="text-ink-3">— не подходит под фильтр, показана для связи</span> <a href="#" class="ml-1 text-accent hover:underline">Открыть</a></td>
+</tr>${tableRow(ROWS[2])}`;
+
+const card = (r) => `<article class="flex min-w-0 flex-col rounded-lg border p-4 text-center shadow-xs ${CARD_TONE[r.tone || "none"]}">
+  ${r.child ? identity(r, true) : identity(r, true)}
+  <div class="mt-3 grid justify-items-center gap-2">${dates(r)}${state(r)}</div>
+  <div class="my-3 border-y py-2 ${r.tone === "paid" ? "border-emerald-border" : r.tone === "unpaid" ? "border-rose-border" : "border-border"}">${money(r)}<p class="mt-1 text-xs text-ink-2"><span class="text-ink-3">Срок оплаты · </span>${r.due}</p></div>
+  <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">${actions(r)}<a class="inline-flex min-h-10 items-center text-xs text-accent" href="#">Карточка →</a></div>
+</article>`;
+const [, parent, child] = ROWS;
+document.getElementById("regCards").innerHTML = `${card(parent)}
+  <div class="-mt-1 ml-3 border-l-2 border-dashed border-border-strong pl-3 pt-2">${card(child)}</div>`;
+</script>
+</body>
+</html>

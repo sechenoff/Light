@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M4 · Окно «Принять возврат»</title>
+<!--
+  МОКАП M4 · ОКНО «ПРИНЯТЬ ВОЗВРАТ» НА КАРТОЧКЕ БРОНИ И В РЕЕСТРЕ
+  Компьютер — модальное окно, телефон — нижняя шторка.
+  Бронь СМ-2026-0244 «Сериал «Северный ветер», 3-й блок»: 55 позиций, 1 смена
+  (пн 12 окт. 10:00 → вт 13 окт. 10:00), две позиции взяты на 2 смены.
+  Привезли с опозданием: сейчас вт 13 окт., 14:20. Всё вымышлено.
+-->
+<style>/*__TAILWIND__*/</style>
+</head>
+<body class="min-h-screen bg-surface-muted">
+<!--@include chrome-->
+
+<main class="mx-auto max-w-[1240px] px-4 pb-16 pt-6 sm:pt-8">
+  <p class="eyebrow">Мокап M4 · карточка брони и реестр</p>
+  <h1 class="mt-1 font-cond text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Окно «Принять возврат»</h1>
+  <p class="mt-2 max-w-[760px] text-sm text-ink-2">Открывается кнопкой «Принять возврат» на карточке брони и в строке реестра. Если позиций по плану нет, окна нет вовсе — бронь принимается одной кнопкой, как сейчас. Если есть — окно уже заполнено по плану, и обычный случай снова решается одним нажатием.</p>
+
+  <!-- ═════════════ A · ПО ПЛАНУ ═════════════ -->
+  <section id="state-a" class="mt-8">
+    <p class="eyebrow">Состояние A · компьютер</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">Заполнено по плану: одна главная кнопка</h2>
+    <div class="mt-4 rounded-lg border border-border-strong bg-scrim/50 p-2 sm:p-8">
+      <div role="dialog" aria-label="Принять возврат" class="mx-auto w-full max-w-[720px] overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+        <div data-head></div>
+        <div class="space-y-4 px-3 py-4 sm:px-5">
+          <div data-planned></div>
+          <p class="text-[13px] text-ink-2">Остальное принимаем на склад: <b class="font-semibold text-ink">53 позиции</b>. Принятое сразу свободно для других броней.</p>
+        </div>
+        <div class="flex flex-col-reverse gap-3 border-t border-border bg-surface-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <button type="button" class="inline-flex min-h-10 items-center self-start text-[13px] font-medium text-accent underline decoration-dotted underline-offset-4 hover:decoration-solid">Вернули не всё…</button>
+          <div class="flex flex-col gap-2 sm:flex-row">
+            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded border border-border bg-surface px-4 text-sm font-medium text-ink-2 hover:bg-surface-subtle">Вернули всё · 55</button>
+            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded border border-accent bg-accent px-4 text-sm font-semibold text-surface hover:bg-accent-bright">Принять 53 позиции</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="mt-2 text-[12px] text-ink-3">«Вернули всё» — длинные позиции тоже привезли: принимаем 55, продолжения нет. «Принять 53 позиции» — по плану: 2 позиции переходят в продолжение СМ-2026-0244-1 за 0 ₽.</p>
+  </section>
+
+  <!-- ═════════════ B · ВЕРНУЛИ НЕ ВСЁ ═════════════ -->
+  <section id="state-b" class="mt-12">
+    <p class="eyebrow">Состояние B · компьютер</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">«Вернули не всё»: сколько осталось и до какого срока</h2>
+    <p class="mt-1 max-w-[760px] text-sm text-ink-2">По каждой строке — «остаётся у клиента N шт» и срок. Цена дополнительной сметы считается сразу. Если оставленное нужно другой брони — карточка держателя, но не запрет.</p>
+    <div class="mt-4 rounded-lg border border-border-strong bg-scrim/50 p-2 sm:p-8">
+      <div role="dialog" aria-label="Принять возврат — вернули не всё" class="mx-auto w-full max-w-[720px] overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+        <div data-head></div>
+        <div class="space-y-4 px-3 py-4 sm:px-5">
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="min-w-0 flex-1 basis-56"><span class="sr-only">Найти позицию</span>
+              <input type="search" placeholder="Найти позицию…" class="min-h-10 w-full rounded border border-border bg-surface px-3 text-sm text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none"></label>
+            <div class="inline-flex gap-1 rounded-lg border border-border bg-surface-subtle p-1">
+              <button type="button" aria-pressed="true" class="min-h-8 rounded bg-surface px-3 text-[12.5px] font-semibold text-accent shadow-sm">Все 55</button>
+              <button type="button" class="min-h-8 rounded px-3 text-[12.5px] text-ink-2">Остаются 3</button>
+            </div>
+          </div>
+          <div data-rows class="divide-y divide-border overflow-hidden rounded-lg border border-border"></div>
+          <div data-price></div>
+        </div>
+        <div data-foot></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ C · КИОСК ═════════════ -->
+  <section id="state-c" class="mt-12 grid gap-6 lg:grid-cols-2">
+    <div class="min-w-0">
+      <p class="eyebrow">Состояние C · киоск уже принимает</p>
+      <h2 class="mt-1 text-lg font-semibold text-ink">В киоске открыта приёмка</h2>
+      <p class="mt-1 text-sm text-ink-2">Двух приёмок одной брони не бывает. Окно предупреждает и даёт выбор: закончить в киоске или принять здесь, закрыв сессию киоска.</p>
+      <div class="mt-4 rounded-lg border border-border-strong bg-scrim/50 p-3 sm:p-6">
+        <div role="dialog" aria-label="Принять возврат — киоск" class="mx-auto w-full max-w-[560px] overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+          <div class="border-b border-border px-4 py-3 sm:px-5">
+            <p class="eyebrow">Принять возврат · СМ-2026-0244</p>
+            <h3 class="mt-0.5 text-base font-semibold text-ink">Сериал «Северный ветер», 3-й блок</h3>
+          </div>
+          <div class="space-y-3 px-4 py-4 sm:px-5">
+            <div class="rounded-md border border-amber-border bg-amber-soft px-3 py-2.5">
+              <p class="text-[13px] font-semibold text-amber">В киоске открыта приёмка (Иван, 14:05)</p>
+              <p class="mt-0.5 text-[12.5px] text-ink-2">Отмечено 31 из 55 позиций, 1 в ремонт. Если принять здесь, приёмка в киоске закроется, а её отметки не сохранятся.</p>
+            </div>
+            <p class="text-[12.5px] text-ink-3">Позиции по плану и «остаётся у клиента» киоск тоже умеет — проще закончить там.</p>
+          </div>
+          <div class="flex flex-col gap-2 border-t border-border bg-surface-subtle px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
+            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded border border-border bg-surface px-4 text-sm font-medium text-ink-2">Закончу в киоске</button>
+            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded border border-amber bg-surface px-4 text-sm font-semibold text-amber">Принять здесь, закрыть киоск</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═════════════ D · ЧАСТЬ НЕ ВЕРНУЛИ ═════════════ -->
+    <div class="min-w-0">
+      <p class="eyebrow">Состояние D · исправление, 7 дней</p>
+      <h2 class="mt-1 text-lg font-semibold text-ink">«Часть не вернули»</h2>
+      <p class="mt-1 text-sm text-ink-2">Бронь приняли целиком, а потом выяснилось, что часть осталась у клиента. Пункт в меню возвращённой брони, 7 дней после приёмки. Создаёт продолжение с момента приёмки.</p>
+      <div class="mt-4 rounded-lg border border-border-strong bg-scrim/50 p-3 sm:p-6">
+        <div role="dialog" aria-label="Часть не вернули" class="mx-auto w-full max-w-[560px] overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+          <div class="border-b border-border px-4 py-3 sm:px-5">
+            <p class="eyebrow">Исправление приёмки · СМ-2026-0239</p>
+            <h3 class="mt-0.5 text-base font-semibold text-ink">Часть не вернули</h3>
+            <p class="mt-0.5 text-[12px] text-ink-3">Приняли вт 13 окт., 18:00 · исправить можно до вт 20 окт.</p>
+          </div>
+          <div class="space-y-3 px-4 py-4 sm:px-5">
+            <div class="space-y-2 rounded-lg border border-border px-3 py-2.5">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="min-w-0 text-[13px] font-medium text-ink">Кабель силовой 25 м</p>
+                <div class="flex items-center gap-2 text-[12.5px] text-ink-2">не вернули
+                  <span class="inline-flex items-center overflow-hidden rounded border border-teal-border bg-surface">
+                    <button type="button" aria-label="Меньше" class="flex h-10 w-10 items-center justify-center text-ink-2">−</button>
+                    <span class="flex h-10 w-9 items-center justify-center border-x border-teal-border font-mono text-[13px] font-semibold text-teal">2</span>
+                    <button type="button" aria-label="Больше" class="flex h-10 w-10 items-center justify-center text-ink-2">+</button>
+                  </span>
+                </div>
+              </div>
+              <p class="text-[11.5px] text-ink-3">Не больше 3: было 4, одна уже в «Потеряшках».</p>
+              <div class="grid grid-cols-4 gap-1" role="radiogroup" aria-label="До какого срока остаётся">
+                <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border border-border bg-surface px-1 py-1 text-center text-[11.5px] leading-tight text-ink-2">+1 смена</button>
+                <button type="button" role="radio" aria-checked="true" class="flex min-h-10 items-center justify-center rounded border border-accent-bright bg-accent-soft px-1 py-1 text-center text-[11.5px] font-semibold leading-tight text-accent">+2 смены</button>
+                <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border border-border bg-surface px-1 py-1 text-center text-[11.5px] leading-tight text-ink-2">+3 смены</button>
+                <button type="button" role="radio" aria-checked="false" class="flex min-h-10 items-center justify-center rounded border border-border bg-surface px-1 py-1 text-center text-[11.5px] leading-tight text-ink-2">дата…</button>
+              </div>
+              <p class="text-[11.5px] text-ink-2">Вернут <b class="font-semibold text-ink">чт 15 окт., 18:00</b> · <span class="whitespace-nowrap text-amber">2 шт × 2 смены → 800 ₽ со скидкой</span></p>
+            </div>
+            <p class="rounded-md border border-border bg-surface-subtle px-3 py-2 text-[12px] text-ink-2">Создастся продолжение СМ-2026-0239-1 с вт 13 окт., 18:00. Склад снова считает эти 2 кабеля занятыми.</p>
+            <p class="text-[12px] text-ink-3">Пока идёт инвентаризация, кнопка серая: «Исправить после завершения инвентаризации».</p>
+          </div>
+          <div class="flex flex-col gap-2 border-t border-border bg-surface-subtle px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
+            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded border border-border bg-surface px-4 text-sm font-medium text-ink-2">Отмена</button>
+            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded border border-accent bg-accent px-4 text-sm font-semibold text-surface">Создать продолжение</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ ТЕЛЕФОН ═════════════ -->
+  <section id="phone" class="mt-12">
+    <p class="eyebrow">Телефон · нижняя шторка</p>
+    <h2 class="mt-1 text-lg font-semibold text-ink">То же окно на телефоне</h2>
+    <p class="mt-1 max-w-[760px] text-sm text-ink-2">Шторка на всю высоту, кнопка — в липком низе. Строки — карточками: название и степпер сверху, срок — сегментами на всю ширину.</p>
+    <div class="mt-4 flex flex-wrap items-start gap-5">
+      <!-- A -->
+      <div class="w-full max-w-[375px]">
+        <p class="mb-2 text-[12px] text-ink-3">По плану</p>
+        <div class="relative overflow-hidden rounded-[22px] border border-border-strong bg-scrim/50 pt-16 shadow-sm">
+          <div class="rounded-t-2xl border-t border-border bg-surface">
+            <div class="mx-auto mt-2 h-1 w-10 rounded-full bg-border-strong"></div>
+            <div data-head-phone></div>
+            <div class="space-y-3 px-4 py-3">
+              <div data-planned></div>
+              <p class="text-[13px] text-ink-2">Остальное принимаем: <b class="font-semibold text-ink">53 позиции</b>.</p>
+            </div>
+            <div class="space-y-2 border-t border-border bg-surface px-4 py-3">
+              <button type="button" class="flex h-11 w-full items-center justify-center rounded-lg border border-accent bg-accent text-sm font-semibold text-surface">Принять 53 позиции</button>
+              <div class="grid grid-cols-2 gap-2">
+                <button type="button" class="flex h-11 items-center justify-center rounded-lg border border-border bg-surface text-[13px] font-medium text-ink-2">Вернули всё · 55</button>
+                <button type="button" class="flex h-11 items-center justify-center rounded-lg border border-border bg-surface text-[13px] font-medium text-accent">Вернули не всё…</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- B -->
+      <div class="w-full max-w-[375px]">
+        <p class="mb-2 text-[12px] text-ink-3">Вернули не всё</p>
+        <div class="relative overflow-hidden rounded-[22px] border border-border-strong bg-scrim/50 pt-6 shadow-sm">
+          <div class="rounded-t-2xl border-t border-border bg-surface">
+            <div class="mx-auto mt-2 h-1 w-10 rounded-full bg-border-strong"></div>
+            <div data-head-phone></div>
+            <div class="space-y-3 px-3 py-3">
+              <div data-rows class="divide-y divide-border overflow-hidden rounded-lg border border-border"></div>
+              <div data-price></div>
+            </div>
+            <div data-foot-phone></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ РЕШЕНИЯ ═════════════ -->
+  <section id="decisions" class="mt-12">
+    <p class="eyebrow">Решения по мокапу</p>
+    <div class="mt-3 grid gap-3 lg:grid-cols-3">
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Главная кнопка считает позиции</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">«Принять 53 позиции» говорит, что произойдёт: принимаем всё, кроме взятого по плану. «Вернули всё» — вторая кнопка, когда длинное привезли раньше. «Вернули не всё» — ссылка: это редкий случай, он не должен спорить с главной кнопкой.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Срок — от приёмки, если опоздали</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">Бронь привезли в 14:20 вместо 10:00. Опоздание не тарифицируется (решение 7), поэтому «+1 смена» у оставленного сверх плана считается от момента приёмки: до ср 14:20. Позиции по плану держат свой срок — ср 10:00, а «+1 смена» у них — до чт 10:00.</p>
+      </div>
+      <div class="rounded-lg border border-border bg-surface p-4">
+        <h3 class="text-sm font-semibold text-ink">Договорной итог не покрывает продолжение</h3>
+        <p class="mt-1.5 text-[13px] text-ink-2">У этой брони итог договорной — 240 000 ₽. Дополнительная смета считается сверху по обычным правилам основной сметы, и окно говорит это прямо, до нажатия. Руководитель потом может поставить продолжению свою сумму (решение 3).</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* Повторяющиеся блоки окна — одним кодом для компьютера и телефона. */
+const head = (phone) => `<div class="flex items-start gap-3 border-b border-border ${phone ? "px-4 pb-3 pt-2" : "px-3 py-3 sm:px-5"}">
+  <div class="min-w-0 flex-1">
+    <p class="eyebrow">Принять возврат · СМ-2026-0244</p>
+    <h3 class="mt-0.5 text-base font-semibold leading-snug text-ink">Сериал «Северный ветер», 3-й блок</h3>
+    <p class="mt-0.5 text-[12px] text-ink-3">Кинокомпания «Полдень» · ${phone ? "до вт 13 окт., 10:00" : "пн 12 окт. 10:00 → вт 13 окт. 10:00"}</p>
+    <p class="mt-0.5 text-[12px] text-ink-3">Сейчас вт 13 окт., 14:20 · опоздание ${phone ? "" : "4 ч 20 мин "}не тарифицируется</p>
+  </div>
+  <button type="button" aria-label="Закрыть" class="-mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded text-xl leading-none text-ink-3 hover:bg-surface-subtle hover:text-ink">×</button>
+</div>`;
+
+const planned = `<section class="overflow-hidden rounded-lg border border-indigo-border">
+  <div class="flex items-center justify-between gap-2 border-b border-indigo-border bg-indigo-soft px-3 py-2">
+    <p class="text-[13px] font-semibold text-indigo">По плану остаются у клиента · оплачено</p>
+    <span class="shrink-0 text-[12px] font-semibold text-indigo">2 позиции</span>
+  </div>
+  <ul class="divide-y divide-border text-[13px]">
+    <li class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3 py-2"><span class="text-ink">Aputure STORM 1200x <span class="text-ink-3">· 2 шт</span></span><span class="text-[12.5px] text-indigo">до ср 14 окт., 10:00</span></li>
+    <li class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3 py-2"><span class="text-ink">Nanlux Evoke 1200 <span class="text-ink-3">· 1 шт</span></span><span class="text-[12.5px] text-indigo">до ср 14 окт., 10:00</span></li>
+  </ul>
+  <p class="border-t border-border bg-surface-subtle px-3 py-2 text-[12px] text-ink-2">Перейдут в продолжение <span class="whitespace-nowrap">СМ-2026-0244-1</span> за 0 ₽ — уже оплачены в основной смете.</p>
+</section>`;
+
+const segs = (labels, sel) => `<div class="grid ${labels === PLAN ? "grid-cols-[1.5fr_1fr_1fr_1fr]" : "grid-cols-4"} gap-1" role="radiogroup" aria-label="До какого срока остаётся">${labels.map((l, i) =>
+  `<button type="button" role="radio" aria-checked="${i === sel}" class="flex min-h-10 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight ${i === sel ? "border-accent-bright bg-accent-soft font-semibold text-accent" : "border-border bg-surface text-ink-2"}">${l}</button>`).join("")}</div>`;
+const PLAN = ["до конца оплаченного", "+1 смена", "+2 смены", "дата…"];
+const EXTRA = ["+1 смена", "+2 смены", "+3 смены", "дата…"];
+
+const stepper = (n, of, dim) => `<div class="flex flex-wrap items-center gap-2 text-[12.5px] ${dim ? "text-ink-3" : "text-ink-2"}">остаётся у клиента
+  <span class="inline-flex items-center overflow-hidden rounded border ${dim ? "border-border" : "border-teal-border"} bg-surface">
+    <button type="button" aria-label="Меньше" class="flex h-10 w-10 items-center justify-center text-ink-2">−</button>
+    <span class="flex h-10 w-9 items-center justify-center border-x ${dim ? "border-border text-ink-3" : "border-teal-border font-semibold text-teal"} font-mono text-[13px]">${n}</span>
+    <button type="button" aria-label="Больше" class="flex h-10 w-10 items-center justify-center text-ink-2">+</button>
+  </span>
+  <span class="whitespace-nowrap">из ${of}</span></div>`;
+
+const holder = `<div class="rounded-md border border-amber-border bg-amber-soft px-3 py-2.5">
+  <p class="text-[12.5px] font-semibold text-amber">Нужен брони Петрова со ср 12:00</p>
+  <p class="mt-0.5 text-[12px] leading-snug text-ink-2">Клип «Ночной рейс» · других свободных Evoke 1200 на ср нет. Прибор у клиента — склад его не удержит, решает руководитель с клиентом.</p>
+  <div class="mt-2 flex flex-wrap gap-2">
+    <button type="button" class="inline-flex min-h-10 items-center rounded border border-amber bg-surface px-3 text-[12.5px] font-semibold text-amber">Оставить под ответственность</button>
+    <button type="button" class="inline-flex min-h-10 items-center rounded border border-border bg-surface px-3 text-[12.5px] text-ink-2">Только до ср 10:00</button>
+  </div>
+</div>`;
+
+const row = ({ name, tag, n, of, seg, result, extra, dim }) => `<div class="space-y-2 bg-surface px-3 py-3 ${dim ? "opacity-80" : ""}">
+  <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+    <div class="min-w-0"><p class="text-[13px] font-medium text-ink">${name}</p>${tag ? `<p class="text-[11.5px] text-indigo">${tag}</p>` : ""}</div>
+    ${stepper(n, of, dim)}
+  </div>
+  ${seg || ""}
+  ${result ? `<p class="text-[11.5px] text-ink-2">${result}</p>` : ""}
+  ${extra || ""}
+</div>`;
+
+const rows = [
+  row({ name: "Nanlux Evoke 1200", tag: "по плану до ср 14 окт., 10:00", n: 1, of: 1, seg: segs(PLAN, 1),
+    result: `Вернут <b class="font-semibold text-ink">чт 15 окт., 10:00</b> · <span class="whitespace-nowrap text-amber">+1 смена → 3 500 ₽ со скидкой</span>`, extra: holder }),
+  row({ name: "Aputure STORM 1200x", tag: "по плану до ср 14 окт., 10:00", n: 2, of: 2, seg: segs(PLAN, 0),
+    result: `Вернут <b class="font-semibold text-ink">ср 14 окт., 10:00</b> · без доплаты` }),
+  row({ name: "Aputure LS 60x", n: 2, of: 4, seg: segs(EXTRA, 0),
+    result: `Вернут <b class="font-semibold text-ink">ср 14 окт., 14:20</b> — смена от приёмки · <span class="whitespace-nowrap text-amber">2 шт × 1 смена → 1 200 ₽ со скидкой</span>` }),
+  row({ name: "Стойка C-Stand 40\"", n: 0, of: 12, dim: true }),
+].join("") + `<div class="bg-surface-subtle px-3 py-2 text-[12px] text-ink-3">Сверху — позиции по плану и уже отмеченные. Ещё 51 позиция — вернули полностью (в мокапе свёрнуто).</div>`;
+
+const price = `<section class="overflow-hidden rounded-lg border border-border">
+  <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-border bg-surface-subtle px-3 py-2">
+    <p class="text-[13px] font-semibold text-ink">Дополнительная смета <span class="whitespace-nowrap">СМ-2026-0244-1</span></p>
+    <p class="text-[11.5px] text-ink-3">считается сейчас</p>
+  </div>
+  <dl class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 px-3 py-2.5 text-[12.5px]">
+    <dt class="text-ink-2">Aputure STORM 1200x · 2 шт · по плану</dt><dd class="mono-num text-right text-ink-3">0</dd>
+    <dt class="text-ink-2">Nanlux Evoke 1200 · +1 смена</dt><dd class="mono-num text-right text-ink">7 000</dd>
+    <dt class="text-ink-2">Aputure LS 60x · 2 шт × 1 смена</dt><dd class="mono-num text-right text-ink">2 400</dd>
+    <dt class="text-ink-2">Скидка брони 50 %</dt><dd class="mono-num text-right text-rose">−4 700</dd>
+    <dt class="text-ink-2">Безналичный расчёт +9 %</dt><dd class="mono-num text-right text-ink">423</dd>
+    <dt class="border-t border-border pt-2 font-semibold text-ink">К оплате</dt><dd class="mono-num border-t border-border pt-2 text-right text-[15px] font-bold text-ink">5 123 ₽</dd>
+  </dl>
+  <p class="border-t border-amber-border bg-amber-soft px-3 py-2 text-[12px] text-amber">У брони договорной итог 240 000 ₽ — дополнительная смета оплачивается отдельно.</p>
+</section>`;
+
+const foot = (phone) => `<div class="${phone ? "space-y-2 px-4 py-3" : "flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"} border-t border-border bg-surface-subtle">
+  <p class="text-[12.5px] text-ink-2 ${phone ? "" : "sm:max-w-[360px]"}">Принимаем <b class="font-semibold text-ink">53 позиции</b>, у LS 60x — 2 из 4. У клиента <b class="font-semibold text-teal">3 позиции</b> → продолжение <span class="whitespace-nowrap">СМ-2026-0244-1</span>.</p>
+  <div class="${phone ? "grid grid-cols-[auto_minmax(0,1fr)] gap-2" : "flex gap-2"}">
+    <button type="button" class="inline-flex ${phone ? "h-11" : "min-h-10"} items-center justify-center rounded border border-border bg-surface px-4 text-sm font-medium text-ink-2">Отмена</button>
+    <button type="button" class="inline-flex ${phone ? "h-11" : "min-h-10"} items-center justify-center whitespace-nowrap rounded border border-accent bg-accent px-4 text-sm font-semibold text-surface">Принять 53 позиции</button>
+  </div>
+</div>`;
+
+const fill = (sel, html) => document.querySelectorAll(sel).forEach((el) => { el.innerHTML = html; });
+fill("[data-head]", head(false));
+fill("[data-head-phone]", head(true));
+fill("[data-planned]", planned);
+fill("[data-rows]", rows);
+fill("[data-price]", price);
+fill("[data-foot]", foot(false));
+fill("[data-foot-phone]", foot(true));
+</script>
+</body>
+</html>
