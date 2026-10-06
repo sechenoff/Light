@@ -1099,7 +1099,7 @@ router.patch("/:id", async (req, res, next) => {
         // до deleteMany и в той же транзакции (см. carryItemOverrides).
         const currentItems = await tx.bookingItem.findMany({
           where: { bookingId: id },
-          select: { equipmentId: true, negotiatedRatePerShift: true },
+          select: { equipmentId: true, negotiatedRatePerShift: true, shifts: true },
         });
         const itemsToWrite = carryItemOverrides(body.items, currentItems);
         writtenItems = itemsToWrite;
@@ -1113,6 +1113,7 @@ router.patch("/:id", async (req, res, next) => {
             customUnitPrice: it.customUnitPrice != null ? new Decimal(it.customUnitPrice) : null,
             negotiatedRatePerShift:
               it.negotiatedRatePerShift != null ? new Decimal(it.negotiatedRatePerShift) : null,
+            shifts: it.equipmentId ? it.shifts : null,
             customCategory: !it.equipmentId && it.customName ? CUSTOM_LINE_CATEGORY : null,
           })),
         });
@@ -1810,13 +1811,7 @@ router.post("/quote", async (req, res, next) => {
       endDate: end,
       clientId: clientIdForQuote,
       discountPercent: body.discountPercent ?? null,
-      items: body.items.map((it) => ({
-        equipmentId: it.equipmentId,
-        customName: it.customName,
-        customUnitPrice: it.customUnitPrice,
-        quantity: it.quantity,
-        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
-      })),
+      items: quoteItemsFromBody(body.items),
       transport: body.transport ?? null,
       skipPartialDay: body.skipPartialDay ?? false,
       paymentForm: body.paymentForm ?? null,
@@ -1906,13 +1901,7 @@ router.post("/quote/export", async (req, res, next) => {
       endDate: end,
       clientId: client.id,
       discountPercent: body.discountPercent ?? null,
-      items: body.items.map((it) => ({
-        equipmentId: it.equipmentId,
-        customName: it.customName,
-        customUnitPrice: it.customUnitPrice,
-        quantity: it.quantity,
-        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
-      })),
+      items: quoteItemsFromBody(body.items),
       skipPartialDay: body.skipPartialDay ?? false,
       paymentForm: body.paymentForm ?? null,
       cashlessSurchargePercent: body.cashlessSurchargePercent ?? null,
@@ -2034,13 +2023,7 @@ router.post("/draft", async (req, res, next) => {
         endDate: end,
         clientId: clientIdForQuote,
         discountPercent: body.discountPercent ?? null,
-        items: body.items.map((it) => ({
-        equipmentId: it.equipmentId,
-        customName: it.customName,
-        customUnitPrice: it.customUnitPrice,
-        quantity: it.quantity,
-        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
-      })),
+        items: quoteItemsFromBody(body.items),
         transport: body.transport ?? null,
         skipPartialDay: body.skipPartialDay ?? false,
         paymentForm: body.paymentForm ?? null,
@@ -2140,13 +2123,7 @@ router.post("/draft", async (req, res, next) => {
       // Перебить процент может только руководитель; остальным — дефолт из настроек.
       cashlessSurchargePercent:
         req.adminUser?.role === "SUPER_ADMIN" ? body.cashlessSurchargePercent ?? null : null,
-      items: body.items.map((it) => ({
-        equipmentId: it.equipmentId,
-        customName: it.customName,
-        customUnitPrice: it.customUnitPrice,
-        quantity: it.quantity,
-        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
-      })),
+      items: quoteItemsFromBody(body.items),
       transport: transportSnapshots,
     });
 

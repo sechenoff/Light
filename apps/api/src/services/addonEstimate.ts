@@ -14,7 +14,7 @@
  * как чисто аудитная таблица.
  *
  * Цены считаются ТЕМИ ЖЕ правилами, что и в основной смете
- * (`resolveCatalogLinePrice` + `splitEquipmentDiscount`):
+ * (`resolveBookingLinePrice` + `splitEquipmentDiscount`):
  *   - `EstimateLine.unitPrice` — цена ЗА ВЕСЬ ПЕРИОД (ставка × смены MAIN).
  *     Экспорт делит unitPrice на число смен, чтобы напечатать «цена/смена»;
  *     раньше сюда писалась ставка за смену, и колонка в PDF доб-сметы
@@ -34,7 +34,7 @@
 import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
-import { resolveCatalogLinePrice, splitEquipmentDiscount } from "./pricing";
+import { resolveBookingLinePrice, splitEquipmentDiscount } from "./pricing";
 
 export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
   const main = await prisma.estimate.findFirst({
@@ -73,6 +73,7 @@ export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
     lineSum: Decimal;
     listUnitPrice: Decimal | null;
     isNegotiated: boolean;
+    shifts: number;
   };
 
   const lines: AddonLineInput[] = [];
@@ -82,9 +83,12 @@ export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
     const inMain = mainQtyByEquipment.get(bi.equipmentId) ?? 0;
     const addonQty = bi.quantity - inMain;
     if (addonQty <= 0) continue;
-    const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+    // Добор считается на смены позиции, как и её строка в основной смете:
+    // иначе «на 2 смены» в MAIN и «на 1» в доборе — два разных тарифа одного прибора.
+    const { unitPrice, listUnitPrice, isNegotiated, shifts: lineShifts } = resolveBookingLinePrice({
       ratePerShift: bi.equipment.rentalRatePerShift.toString(),
-      shifts,
+      bookingShifts: shifts,
+      lineShifts: bi.shifts,
       negotiatedRatePerShift: bi.negotiatedRatePerShift?.toString() ?? null,
     });
     lines.push({
@@ -98,6 +102,7 @@ export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
       lineSum: unitPrice.mul(addonQty),
       listUnitPrice,
       isNegotiated,
+      shifts: lineShifts,
     });
   }
 
@@ -132,6 +137,7 @@ export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
             unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
             lineSum: l.lineSum.toDecimalPlaces(2).toString(),
             listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
+            shifts: l.shifts,
           })),
         },
       },

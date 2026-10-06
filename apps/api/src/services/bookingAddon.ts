@@ -48,7 +48,7 @@ import { findAddonConflict, findHoldersBatch, type AddonConflict } from "./addon
 import { recomputeAddonEstimate } from "./addonEstimate";
 import { getAvailability } from "./availability";
 import { createFinanceEvent, recomputeBookingFinance } from "./finance";
-import { resolveCatalogLinePrice, splitEquipmentDiscount } from "./pricing";
+import { resolveBookingLinePrice, splitEquipmentDiscount } from "./pricing";
 import { findBlockingScanSession, scanSessionActiveError } from "./scanSessionPolicy";
 import { addonWindow, computeAddCaps, overStockError, reserveUnits, type StockWindow } from "./stockCap";
 
@@ -238,6 +238,8 @@ type MainAddition = {
     modelSnapshot: string | null;
     unitPrice: Decimal;
     listUnitPrice: Decimal | null;
+    /** Смены строки снимка; null — как у сметы. */
+    shifts?: number | null;
   };
 };
 
@@ -296,9 +298,10 @@ async function applyAdditionsToMainEstimate(
       if (!bi?.equipment) {
         throw new HttpError(404, "Оборудование не найдено", "EQUIPMENT_NOT_FOUND", { equipmentId: add.equipmentId });
       }
-      const { unitPrice, listUnitPrice } = resolveCatalogLinePrice({
+      const { unitPrice, listUnitPrice, shifts: lineShifts } = resolveBookingLinePrice({
         ratePerShift: bi.equipment.rentalRatePerShift.toString(),
-        shifts,
+        bookingShifts: shifts,
+        lineShifts: bi.shifts,
         negotiatedRatePerShift: bi.negotiatedRatePerShift?.toString() ?? null,
       });
       snapshot = {
@@ -308,6 +311,7 @@ async function applyAdditionsToMainEstimate(
         modelSnapshot: bi.equipment.model ?? null,
         unitPrice,
         listUnitPrice,
+        shifts: lineShifts,
       };
     }
     const lineSum = snapshot.unitPrice.mul(add.quantity);
@@ -323,6 +327,7 @@ async function applyAdditionsToMainEstimate(
         unitPrice: snapshot.unitPrice.toDecimalPlaces(2).toString(),
         lineSum: lineSum.toDecimalPlaces(2).toString(),
         listUnitPrice: snapshot.listUnitPrice ? snapshot.listUnitPrice.toDecimalPlaces(2).toString() : null,
+        shifts: snapshot.shifts ?? null,
       },
     });
     state.push({ equipmentId: add.equipmentId, lineSum, isNegotiated: snapshot.listUnitPrice != null });
@@ -667,6 +672,7 @@ export async function mergeAddonIntoMain(args: {
           modelSnapshot: l.modelSnapshot,
           unitPrice: new Decimal(l.unitPrice.toString()),
           listUnitPrice: l.listUnitPrice ? new Decimal(l.listUnitPrice.toString()) : null,
+          shifts: l.shifts,
         },
       })),
     );

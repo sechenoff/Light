@@ -1,6 +1,7 @@
 import Decimal from "decimal.js";
 
 import type { Equipment } from "@prisma/client";
+import { effectiveLineShifts } from "@light-rental/shared";
 
 export type PricingMode = "SHIFT" | "TWO_SHIFTS" | "PROJECT";
 
@@ -46,6 +47,30 @@ export function resolveCatalogLinePrice(args: {
   }
   const unitPrice = new Decimal(args.negotiatedRatePerShift.toString()).mul(billable);
   return { unitPrice, listUnitPrice, isNegotiated: true };
+}
+
+/**
+ * Цена каталожной строки БРОНИ: на её смены — свои «не меньше N»
+ * (BookingItem.shifts) или смены брони, большее из двух (`effectiveLineShifts`).
+ * Общая для всех построителей сметы, чтобы число смен строки и её цена не
+ * разъехались между ними. `shifts` в ответе пишется в EstimateLine.shifts:
+ * документы делят unitPrice на смены строки, а не брони.
+ */
+export function resolveBookingLinePrice(args: {
+  ratePerShift: Decimal | string | number;
+  bookingShifts: number;
+  lineShifts?: number | null;
+  negotiatedRatePerShift?: Decimal | string | number | null;
+}): ReturnType<typeof resolveCatalogLinePrice> & { shifts: number } {
+  const shifts = effectiveLineShifts(Math.max(1, args.bookingShifts), args.lineShifts);
+  return {
+    ...resolveCatalogLinePrice({
+      ratePerShift: args.ratePerShift,
+      shifts,
+      negotiatedRatePerShift: args.negotiatedRatePerShift,
+    }),
+    shifts,
+  };
 }
 
 /**
