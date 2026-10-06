@@ -112,6 +112,13 @@ describe("платёж «Разнести по продолжениям»", () =
     const { root, child } = await mkFamily(3000, 1200);
     const preview = await request(app).get("/api/payments/family-preview").query({ bookingId: child.id, amount: 4200 }).set(AUTH());
     expect(preview.body.parts.map((p: any) => p.amount)).toEqual(["3000.00", "1200.00"]);
+    // Таблица окна: вся семья по порядку — долг, часть платежа, остаток.
+    expect(preview.body.rows).toEqual([
+      expect.objectContaining({ bookingId: root.id, isContinuation: false, debt: "3000.00", payment: "3000.00", remaining: "0.00" }),
+      expect.objectContaining({ bookingId: child.id, isContinuation: true, debt: "1200.00", payment: "1200.00", remaining: "0.00" }),
+    ]);
+    const partial = await request(app).get("/api/payments/family-preview").query({ bookingId: child.id, amount: 3500 }).set(AUTH());
+    expect(partial.body.rows.map((r: any) => r.remaining)).toEqual(["0.00", "700.00"]);
     const res = await request(app)
       .post("/api/payments")
       .set(AUTH())

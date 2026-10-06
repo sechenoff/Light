@@ -70,19 +70,57 @@ async function familyMembersWithDebt(client: Db, bookingId: string) {
   const family = (await loadFamily(client, booking)).filter((m) => m.status !== "CANCELLED" && m.deletedAt == null);
   const money = await client.booking.findMany({
     where: { id: { in: family.map((m) => m.id) } },
-    select: { id: true, amountOutstanding: true },
+    select: { id: true, amountOutstanding: true, expectedPaymentDate: true, parentBookingId: true },
   });
-  const owed = new Map(money.map((m) => [m.id, m.amountOutstanding]));
+  const byId = new Map(money.map((m) => [m.id, m]));
   return {
     booking,
-    members: family.map((m) => ({ id: m.id, docNumber: m.docNumber, amountOutstanding: owed.get(m.id) ?? new Decimal(0) })),
+    members: family.map((m) => ({
+      id: m.id,
+      docNumber: m.docNumber,
+      amountOutstanding: byId.get(m.id)?.amountOutstanding ?? new Decimal(0),
+      expectedPaymentDate: byId.get(m.id)?.expectedPaymentDate ?? null,
+      isContinuation: byId.get(m.id)?.parentBookingId != null,
+    })),
   };
 }
 
-/** Превью разбивки для окна оплаты. */
+/** Строка таблицы «Разнести по продолжениям»: долг брони, её часть и что останется. */
+export type FamilyPreviewRow = {
+  bookingId: string;
+  docNumber: string | null;
+  /** Продолжение брони; false — основная. */
+  isContinuation: boolean;
+  /** Срок оплаты брони (ISO) или null. */
+  expectedPaymentDate: string | null;
+  debt: string;
+  payment: string;
+  remaining: string;
+};
+
+/**
+ * Превью разбивки для окна оплаты. `rows` — вся семья по порядку с долгом,
+ * частью и остатком: окно рисует таблицу «Долг · Платёж · Останется».
+ */
 export async function previewFamilyPayment(bookingId: string, amount: Decimal) {
   const { members } = await familyMembersWithDebt(prisma, bookingId);
-  return { parts: planFamilyPayment(members, amount, bookingId), members: members.length };
+  const parts = planFamilyPayment(members, amount, bookingId);
+  const partOf = new Map(parts.map((p) => [p.bookingId, new Decimal(p.amount)]));
+  const rows: FamilyPreviewRow[] = members.map((m) => {
+    const debt = Decimal.max(0, new Decimal(m.amountOutstanding.toString()));
+    const payment = partOf.get(m.id) ?? new Decimal(0);
+    return {
+      bookingId: m.id,
+      docNumber: m.docNumber,
+      isContinuation: m.isContinuation,
+      expectedPaymentDate: m.expectedPaymentDate ? m.expectedPaymentDate.toISOString() : null,
+      debt: debt.toFixed(2),
+      payment: payment.toFixed(2),
+      // Переплата — не отрицательный долг, а ноль: она уходит в кредит брони.
+      remaining: Decimal.max(0, debt.sub(payment)).toFixed(2),
+    };
+  });
+  return { parts, members: members.length, rows };
 }
 
 /** Предел частей одного платежа — не больше броней в семье разумного размера. */
