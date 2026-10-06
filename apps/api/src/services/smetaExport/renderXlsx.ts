@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 
 import type { SmetaExportDocument, SmetaFullExportDocument, SmetaOrgInfo } from "./types";
 import { buildAttachmentContentDisposition } from "../../utils/contentDisposition";
+import { lineNote } from "./shiftsNote";
 
 export const RUB_FMT = '#,##0.00" ₽"';
 
@@ -166,7 +167,7 @@ export function addSmetaSheetToWorkbook(
   metaLine("ПРОЕКТ", data.projectName, { boldValue: true });
   metaLine("ВЫДАЧА", `${data.issueDateLabel}, ${data.loadOutTimeLabel}`);
   metaLine("ВОЗВРАТ", `${data.returnDateLabel}, ${data.returnLoadTimeLabel}`);
-  metaLine("СМЕН В ПЕРИОДЕ", `${data.shiftsCount} (по 24 ч)`);
+  metaLine(data.showShiftsColumn ? "СМЕН ПО БРОНИ" : "СМЕН В ПЕРИОДЕ", `${data.shiftsCount} (по 24 ч)`);
   metaLine("СРОК ОПЛАТЫ", data.paymentDueLabel ? `до ${data.paymentDueLabel}` : "по договорённости");
   if (data.hourCalculationText?.trim()) {
     metaLine("ПРОСЧЁТ ЧАСОВ", data.hourCalculationText.trim(), { wrap: true });
@@ -221,9 +222,11 @@ export function addSmetaSheetToWorkbook(
 
       // Персональная цена подписывается второй строкой в той же ячейке —
       // отдельная колонка ради редкого случая раздула бы таблицу на печати.
-      r.getCell(2).value = line.listPricePerShift
-        ? `${line.name}\nперсональная скидка · цена до скидки ${line.listPricePerShift} ₽`
-        : line.name;
+      // Так же второй строкой — срок строки: «на 2 смены», если позицию взяли
+      // дольше брони (в PDF для этого колонка «Смен»), и «цена за весь срок
+      // аренды» у своей позиции многосменной брони.
+      const note = lineNote(line, data, { withCount: true, rub: (v) => `${v} ₽` });
+      r.getCell(2).value = note ? `${line.name}\n${note}` : line.name;
       r.getCell(2).font = { size: 10, color: { argb: XC.ink } };
       r.getCell(2).alignment = { vertical: "middle", wrapText: true };
 
@@ -246,7 +249,9 @@ export function addSmetaSheetToWorkbook(
         cell.border = borderAll(XC.hairline);
         if (i % 2 === 1) cell.fill = fill(XC.zebra);
       }
-      r.height = 18;
+      // Excel не подгоняет явную высоту строки: вторая строка подписи при 18 pt
+      // обрезалась бы.
+      r.height = note ? 30 : 18;
       row++;
     });
   }

@@ -10,6 +10,7 @@ import type {
   SmetaTransportSection,
 } from "./types";
 import { buildAttachmentContentDisposition } from "../../utils/contentDisposition";
+import { lineNote, pluralShifts } from "./shiftsNote";
 
 // ── A4-геометрия ──────────────────────────────────────────────────────────────
 // Пагинация полностью ручная: документ создаётся с нулевыми полями pdfkit,
@@ -46,7 +47,17 @@ const COL_QTY = 54;
 const COL_PRICE = 84;
 const COL_SUM = 94;
 const COL_NAME = CONTENT_W - COL_IDX - COL_QTY - COL_PRICE - COL_SUM;
+/** Колонка «Смен» — только когда у строк разное число смен (у неё ширина за счёт названия). */
+const COL_SHIFTS = 40;
 const CELL_PAD = 6;
+
+/** Ширины колонок таблицы позиций; shifts = 0 — колонки «Смен» нет. */
+type TableCols = { idx: number; name: number; qty: number; shifts: number; price: number; sum: number };
+
+function tableCols(showShifts: boolean): TableCols {
+  const shifts = showShifts ? COL_SHIFTS : 0;
+  return { idx: COL_IDX, name: COL_NAME - shifts, qty: COL_QTY, shifts, price: COL_PRICE, sum: COL_SUM };
+}
 
 type FontSet = { body: string; bold: string };
 type Pdf = InstanceType<typeof PDFDocument>;
@@ -88,14 +99,6 @@ function resolveFonts(doc: Pdf): FontSet {
 }
 
 /** Русская форма слова «смена» для реквизитов документа. */
-function pluralShifts(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "смена";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "смены";
-  return "смен";
-}
-
 function rub(value: string): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return `${value} ₽`;
@@ -143,6 +146,9 @@ class SmetaPdfWriter {
   private y = MARGIN;
   /** Активная категория таблицы — для повтора банда после переноса страницы. */
   private tableContext: { category: string } | null = null;
+  /** Колонки текущей таблицы и её документ — для подписей строк и переноса страницы. */
+  private cols: TableCols = tableCols(false);
+  private tableDoc: Pick<SmetaExportDocument, "shiftsCount" | "showShiftsColumn"> = { shiftsCount: 1, showShiftsColumn: false };
 
   constructor(doc: Pdf) {
     this.doc = doc;
@@ -292,7 +298,8 @@ class SmetaPdfWriter {
       // «5 000 ₽ × 2 = 30 000 ₽» выглядит арифметической ошибкой.
       [
         {
-          label: "Смен в периоде",
+          // Когда у позиций своё число смен, это смены брони, а не каждой строки.
+          label: data.showShiftsColumn ? "Смен по брони" : "Смен в периоде",
           value: `${data.shiftsCount} ${pluralShifts(data.shiftsCount)} (по 24 ч)`,
         },
         {
@@ -369,11 +376,13 @@ class SmetaPdfWriter {
       });
       x += w;
     };
-    head("№", COL_IDX, "center");
-    head("НАИМЕНОВАНИЕ", COL_NAME, "left");
-    head("КОЛ-ВО", COL_QTY, "center");
-    head("ЦЕНА / СМЕНА", COL_PRICE, "right");
-    head("СУММА", COL_SUM, "right");
+    const c = this.cols;
+    head("№", c.idx, "center");
+    head("НАИМЕНОВАНИЕ", c.name, "left");
+    head("КОЛ-ВО", c.qty, "center");
+    if (c.shifts > 0) head("СМЕН", c.shifts, "center");
+    head("ЦЕНА / СМЕНА", c.price, "right");
+    head("СУММА", c.sum, "right");
     this.y += h;
   }
 
@@ -394,14 +403,14 @@ class SmetaPdfWriter {
 
   private drawItemRow(line: SmetaExportLine, zebra: boolean): void {
     const d = this.doc;
+    const c = this.cols;
     d.font(this.fonts.body).fontSize(8.5);
-    const nameW = COL_NAME - CELL_PAD * 2;
+    const nameW = c.name - CELL_PAD * 2;
     const nameH = d.heightOfString(line.name, { width: nameW, lineGap: 1 });
-    // Подпись о персональной цене живёт под названием: так уступка видна
-    // заказчику, а колонка цены остаётся одной цифрой.
-    const noteText = line.listPricePerShift
-      ? `персональная скидка · цена до скидки ${rub(line.listPricePerShift)}`
-      : null;
+    // Подписи живут под названием: так уступка видна заказчику, а колонка цены
+    // остаётся одной цифрой. Своя позиция в многосменной брони подписана «цена
+    // за весь срок»: на смены её цена не делится.
+    const noteText = lineNote(line, this.tableDoc, { withCount: false, rub });
     const noteH = noteText ? d.fontSize(7).heightOfString(noteText, { width: nameW }) + 1.5 : 0;
     d.fontSize(8.5);
     const rowH = Math.max(19, nameH + noteH + 9);
@@ -413,33 +422,44 @@ class SmetaPdfWriter {
 
     d.font(this.fonts.body).fontSize(8).fillColor(C.faint);
     d.text(String(line.index), MARGIN + CELL_PAD, ty + 0.5, {
-      width: COL_IDX - CELL_PAD * 2,
+      width: c.idx - CELL_PAD * 2,
       align: "center",
       lineBreak: false,
     });
 
     d.font(this.fonts.body).fontSize(8.5).fillColor(C.ink);
-    d.text(line.name, MARGIN + COL_IDX + CELL_PAD, ty, { width: nameW, lineGap: 1 });
+    d.text(line.name, MARGIN + c.idx + CELL_PAD, ty, { width: nameW, lineGap: 1 });
     if (noteText) {
       d.fontSize(7).fillColor(C.faint);
-      d.text(noteText, MARGIN + COL_IDX + CELL_PAD, ty + nameH + 1, { width: nameW, lineBreak: true });
+      d.text(noteText, MARGIN + c.idx + CELL_PAD, ty + nameH + 1, { width: nameW, lineBreak: true });
       d.fontSize(8.5).fillColor(C.ink);
     }
 
-    d.text(String(line.quantity), MARGIN + COL_IDX + COL_NAME + CELL_PAD, ty, {
-      width: COL_QTY - CELL_PAD * 2,
+    let x = MARGIN + c.idx + c.name;
+    d.text(String(line.quantity), x + CELL_PAD, ty, {
+      width: c.qty - CELL_PAD * 2,
       align: "center",
       lineBreak: false,
     });
+    x += c.qty;
+    if (c.shifts > 0) {
+      d.text(line.shifts == null ? "—" : String(line.shifts), x + CELL_PAD, ty, {
+        width: c.shifts - CELL_PAD * 2,
+        align: "center",
+        lineBreak: false,
+      });
+      x += c.shifts;
+    }
     d.fillColor(C.ink2);
-    d.text(rub(line.pricePerShift), MARGIN + COL_IDX + COL_NAME + COL_QTY + CELL_PAD, ty, {
-      width: COL_PRICE - CELL_PAD * 2,
+    d.text(rub(line.pricePerShift), x + CELL_PAD, ty, {
+      width: c.price - CELL_PAD * 2,
       align: "right",
       lineBreak: false,
     });
+    x += c.price;
     d.fillColor(C.ink);
-    d.text(rub(line.lineSum), MARGIN + COL_IDX + COL_NAME + COL_QTY + COL_PRICE + CELL_PAD, ty, {
-      width: COL_SUM - CELL_PAD * 2,
+    d.text(rub(line.lineSum), x + CELL_PAD, ty, {
+      width: c.sum - CELL_PAD * 2,
       align: "right",
       lineBreak: false,
     });
@@ -450,6 +470,8 @@ class SmetaPdfWriter {
 
   private drawTable(data: SmetaExportDocument): void {
     const groups = groupByCategory(data.lines);
+    this.cols = tableCols(data.showShiftsColumn);
+    this.tableDoc = { shiftsCount: data.shiftsCount, showShiftsColumn: data.showShiftsColumn };
     this.ensure(60);
     this.drawTableHeader();
     // Нумеруем в порядке ПЕЧАТИ, а не исходном: строки перегруппированы по
