@@ -10,6 +10,7 @@ import { quoteName } from "../inventory/format";
 import {
   canStay,
   formatWhen,
+  fromWhen,
   isBeyondPaid,
   stayChoicesFor,
   type ContinuationPreview,
@@ -33,11 +34,29 @@ type Props = {
   onToggleUnit: (unitId: string) => void;
   onChoice: (choice: StayChoice, customUntil?: string) => void;
   onAcknowledge: (ack: boolean) => void;
+  /** Подпись степпера: «остаётся у клиента» (приёмка) или «не вернули» (исправление). */
+  quantityLabel?: string;
+  /** Почему не больше — «Не больше 3: было 4, одна уже в «Потеряшках»». */
+  capNote?: string | null;
+  /**
+   * Исправление «Часть не вернули»: держатель проверяется с текущего момента —
+   * карточка нужна и внутри оплаченного, а «Только до …» не спасает (бронь уже
+   * принята и дни оплаченного склад не держит).
+   */
+  correction?: boolean;
 };
 
 const shiftsWord = (n: number) => pluralize(n, "смена", "смены", "смен");
 /** Срок «до» — не дальше года (так же проверяет сервер). */
 const MAX_STAY_AHEAD_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * В исправлении «Только до …» помогает, только если держателю позиция нужна
+ * не раньше конца оплаченного: тогда короткий срок снимает конфликт.
+ */
+export function paidShortcutHelps(conflict: StayConflict, line: ReturnPlanLine): boolean {
+  return Date.parse(conflict.neededFrom ?? conflict.from) >= Date.parse(line.paidThrough);
+}
 
 /** ISO → значение для <input type="datetime-local"> (время браузера). */
 function toLocalInput(iso: string): string {
@@ -58,6 +77,9 @@ export function ReturnStayRow({
   onToggleUnit,
   onChoice,
   onAcknowledge,
+  quantityLabel = "остаётся у клиента",
+  capNote = null,
+  correction = false,
 }: Props) {
   const kept = stay?.quantity ?? 0;
   const choices = stayChoicesFor(line);
@@ -72,11 +94,11 @@ export function ReturnStayRow({
         </div>
         {line.unitTracked ? (
           <p className="text-xs text-ink-2">
-            остаётся у клиента <span className="mono-num font-semibold text-ink">{kept}</span> из {line.quantity}
+            {quantityLabel} <span className="mono-num font-semibold text-ink">{kept}</span> из {line.quantity}
           </p>
         ) : (
           <div className="flex items-center gap-2 text-xs text-ink-2">
-            остаётся у клиента
+            {quantityLabel}
             <span className={`inline-flex items-center overflow-hidden rounded border ${kept > 0 ? "border-teal-border" : "border-border"}`}>
               <button
                 type="button"
@@ -107,17 +129,25 @@ export function ReturnStayRow({
         )}
       </div>
 
-      {line.unitTracked && (
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Какие единицы остались у клиента: ${line.name}`}>
+      {capNote && <p className="text-[12px] text-ink-3">{capNote}</p>}
+
+      {line.unitTracked && line.units.length > 0 && (
+        <div
+          className="flex flex-wrap gap-1.5"
+          role="group"
+          aria-label={`Какие единицы ${quantityLabel === "не вернули" ? "не вернули" : "остались у клиента"}: ${line.name}`}
+        >
           {line.units.map((u, i) => {
             const on = stay?.unitIds.includes(u.id) ?? false;
+            // Больше потолка строки не отметить: сервер ответил бы 400.
+            const full = !on && kept >= line.quantity;
             return (
               <button
                 key={u.id}
                 type="button"
                 aria-pressed={on}
-                disabled={busy}
-                className={`min-h-11 rounded border px-3 text-xs sm:min-h-9 ${on ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-ink-2 hover:bg-surface-subtle"}`}
+                disabled={busy || full}
+                className={`min-h-11 rounded border px-3 text-xs disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-9 ${on ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-ink-2 hover:bg-surface-subtle disabled:hover:bg-transparent"}`}
                 onClick={() => onToggleUnit(u.id)}
               >
                 {u.label ?? `Единица ${i + 1}`}
@@ -140,7 +170,7 @@ export function ReturnStayRow({
                   aria-checked={on}
                   disabled={busy}
                   onClick={() => onChoice(c.choice)}
-                  className={`flex min-h-11 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight hyphens-auto [overflow-wrap:anywhere] sm:min-h-10 ${on ? "border-accent-bright bg-accent-soft font-semibold text-accent" : "border-border bg-surface text-ink-2 hover:bg-surface-subtle"}`}
+                  className={`flex min-h-11 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight hyphens-auto [overflow-wrap:anywhere] disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-10 ${on ? "border-accent-bright bg-accent-soft font-semibold text-accent" : "border-border bg-surface text-ink-2 hover:bg-surface-subtle"}`}
                 >
                   {c.label}
                 </button>
@@ -180,10 +210,10 @@ export function ReturnStayRow({
               <span className="text-ink-3"> · сверх оплаченного</span>
             )}
           </p>
-          {conflict && beyond && (
+          {conflict && (beyond || correction) && (
             <div className="rounded-md border border-amber-border bg-amber-soft px-3 py-2.5" role="group" aria-label={`Нужен другой брони: ${line.name}`}>
               <p className="text-[12.5px] font-semibold text-amber">
-                Нужен {conflict.holder ? `брони ${quoteName(conflict.holder.projectName)}` : "другой брони"} с {formatWhen(conflict.neededFrom ?? conflict.from)}
+                Нужен {conflict.holder ? `брони ${quoteName(conflict.holder.projectName)}` : "другой брони"} {fromWhen(conflict.neededFrom ?? conflict.from)}
               </p>
               <p className="mt-0.5 text-[12px] leading-snug text-ink-2">
                 {conflict.holder?.clientName ? `${conflict.holder.clientName} · ` : ""}свободно {Math.max(0, conflict.available)} из{" "}
@@ -199,7 +229,7 @@ export function ReturnStayRow({
                 >
                   {stay.acknowledged ? "✓ Под ответственность" : "Оставить под ответственность"}
                 </button>
-                {canStay(line) && (
+                {canStay(line) && (!correction || paidShortcutHelps(conflict, line)) && (
                   <button
                     type="button"
                     disabled={busy}
@@ -215,10 +245,10 @@ export function ReturnStayRow({
         </>
       )}
 
-      {kept === 0 && (
+      {kept === 0 && !(line.unitTracked && line.units.length === 0) && (
         <p className="text-xs text-ink-3">
           {line.unitTracked
-            ? "Отметьте единицы, которые остались у клиента"
+            ? `Отметьте единицы, которые ${correction ? "не вернули" : "остались у клиента"}`
             : canStay(line)
               ? `Оплачено до ${formatWhen(line.paidThrough)}`
               : "Оплаченный срок прошёл — оставить можно с дополнительной сметой"}

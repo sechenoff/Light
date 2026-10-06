@@ -1,3 +1,5 @@
+import { pluralize } from "@/lib/format";
+
 /**
  * Логика окна «Принять возврат» (мокап docs/mockups/line-shifts-continuation/
  * m4-return-dialog.html) без React: план приёмки с сервера → что отмечено
@@ -16,6 +18,12 @@ export type ReturnPlanLine = {
   paidThrough: string;
   /** Позиция «по плану у клиента» — до этого срока (ISO). */
   plannedStayUntil: string | null;
+  /**
+   * От какого момента сервер выставит лишние смены (исправление «Часть не
+   * вернули»: конец оплаченного или приёмка). Есть — чипы «+N смен» считаются
+   * от него, и «+1» — ровно одна смена.
+   */
+  billingAnchor?: string;
 };
 
 export type ReturnPlan = {
@@ -30,7 +38,7 @@ export type ReturnPlan = {
  * Срок «до» строки: «до конца оплаченного», «+N смен» сверх него (или от
  * приёмки, если оплаченное уже прошло) или своя дата.
  */
-export type StayChoice = "paid" | 1 | 2 | 3 | "date";
+export type StayChoice = "paid" | number | "date";
 
 /** Что отмечено по строке: сколько остаётся, до когда, какие единицы. */
 export type StayDraft = {
@@ -70,10 +78,20 @@ export function anyStayPossible(plan: ReturnPlan): boolean {
  * сверх оплаченного; оплаченное прошло — от момента приёмки, начиная с «+1».
  */
 export function stayChoicesFor(line: ReturnPlanLine, now = Date.now()): Array<{ choice: StayChoice; label: string }> {
-  const plus = (n: 1 | 2 | 3) => ({ choice: n, label: `+${n} ${n === 1 ? "смена" : "смены"}` }) as const;
-  return canStay(line, now)
-    ? [{ choice: "paid", label: "до конца оплаченного" }, plus(1), plus(2), { choice: "date", label: "дата…" }]
-    : [plus(1), plus(2), plus(3), { choice: "date", label: "дата…" }];
+  const plus = (n: number) => ({ choice: n, label: `+${n} ${pluralize(n, "смена", "смены", "смен")}` });
+  if (canStay(line, now)) return [{ choice: "paid", label: "до конца оплаченного" }, plus(1), plus(2), { choice: "date", label: "дата…" }];
+  const first = firstAnchoredShift(line, now);
+  return [plus(first), plus(first + 1), plus(first + 2), { choice: "date", label: "дата…" }];
+}
+
+/**
+ * Первый чип «+N» от якоря счёта, срок которого ещё впереди. Без якоря —
+ * «+1» от сейчас. Исправление через несколько дней после приёмки начинается,
+ * например, с «+6 смен»: столько и выставит сервер.
+ */
+function firstAnchoredShift(line: ReturnPlanLine, now: number): number {
+  if (!line.billingAnchor) return 1;
+  return Math.max(1, Math.floor((now + STAY_MIN_MS - Date.parse(line.billingAnchor)) / SHIFT_MS) + 1);
 }
 
 /** Срок «до» для чипа: «+N» — от конца оплаченного, а если он прошёл — от сейчас. */
@@ -81,6 +99,8 @@ export function untilForChoice(line: ReturnPlanLine, choice: Exclude<StayChoice,
   const paid = Date.parse(line.paidThrough);
   if (choice === "paid") return line.paidThrough;
   if (canStay(line, now)) return new Date(paid + choice * SHIFT_MS).toISOString();
+  // От якоря сервера — точно: смены считаются от того же момента.
+  if (line.billingAnchor) return new Date(Date.parse(line.billingAnchor) + choice * SHIFT_MS).toISOString();
   const raw = now + choice * SHIFT_MS - CLOCK_MARGIN_MS;
   return new Date(Math.floor(raw / CLOCK_MARGIN_MS) * CLOCK_MARGIN_MS).toISOString();
 }
@@ -93,7 +113,7 @@ export function isBeyondPaid(stay: Pick<StayDraft, "until">, line: ReturnPlanLin
 /** Начальный выбор срока: в пределах оплаченного, если можно, иначе +1 смена. */
 function defaultChoice(line: ReturnPlanLine, now = Date.now()): { choice: StayChoice; until: string } {
   if (line.plannedStayUntil) return { choice: "paid", until: line.plannedStayUntil };
-  const choice: StayChoice = canStay(line, now) ? "paid" : 1;
+  const choice: StayChoice = canStay(line, now) ? "paid" : firstAnchoredShift(line, now);
   return { choice, until: untilForChoice(line, choice, now) };
 }
 
@@ -179,6 +199,8 @@ export function toggleStayUnit(
 ): Map<string, StayDraft> {
   const prev = stays.get(line.bookingItemId);
   const current = prev?.unitIds ?? [];
+  // Больше потолка строки не отметить.
+  if (!current.includes(unitId) && current.length >= line.quantity) return stays;
   const unitIds = current.includes(unitId) ? current.filter((id) => id !== unitId) : [...current, unitId];
   const next = new Map(stays);
   if (unitIds.length === 0) next.delete(line.bookingItemId);
@@ -256,6 +278,12 @@ export function formatWhen(iso: string): string {
   }).formatToParts(d);
   const get = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value ?? "";
   return `${get("weekday")} ${get("day")} ${get("month").replace(".", "")}, ${get("hour")}:${get("minute")}`;
+}
+
+/** «с пн», «со вт», «со ср» — предлог перед днём недели из `formatWhen`. */
+export function fromWhen(iso: string): string {
+  const f = formatWhen(iso);
+  return `${/^(вт|ср)/.test(f) ? "со" : "с"} ${f}`;
 }
 
 /** Держатель: кому нужна оставленная позиция (ответ превью). */

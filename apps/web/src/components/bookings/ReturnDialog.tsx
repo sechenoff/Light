@@ -213,7 +213,7 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-scrim/50 sm:items-center sm:px-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-scrim/50 sm:items-start sm:px-4 sm:pt-[6vh]"
       onClick={close}
     >
       <div
@@ -222,7 +222,7 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
         role="dialog"
         aria-modal="true"
         aria-labelledby="return-dialog-title"
-        className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-xl border border-border bg-surface shadow-xl outline-none sm:max-w-[640px] sm:rounded-lg"
+        className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-xl sm:max-h-[88vh] border border-border bg-surface shadow-xl outline-none sm:max-w-[640px] sm:rounded-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">

@@ -15,7 +15,15 @@ const PREVIEW_DEBOUNCE_MS = 350;
 
 type Stay = { bookingItemId: string; quantity: number; until: string; equipmentUnitIds?: string[]; acknowledgedConflict?: boolean };
 
-export function useReturnPreview(bookingId: string, stays: Stay[] | null) {
+/**
+ * `endpoint` — чей расчёт: приёмки («Вернули не всё») или исправления
+ * приёмки («Часть не вернули»).
+ */
+export function useReturnPreview(
+  bookingId: string,
+  stays: Stay[] | null,
+  endpoint: "return-partial/preview" | "return-correction/preview" = "return-partial/preview",
+) {
   const [preview, setPreview] = useState<ReturnPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +44,7 @@ export function useReturnPreview(bookingId: string, stays: Stay[] | null) {
     const mine = ++seq.current;
     setLoading(true);
     const timer = setTimeout(() => {
-      apiFetch<ReturnPreview>(`/api/bookings/${bookingId}/return-partial/preview`, {
+      apiFetch<ReturnPreview>(`/api/bookings/${bookingId}/${endpoint}`, {
         method: "POST",
         body: JSON.stringify({ stays }),
       })
@@ -61,7 +69,7 @@ export function useReturnPreview(bookingId: string, stays: Stay[] | null) {
     return () => clearTimeout(timer);
     // key — содержимое stays; сам массив новый на каждом рендере.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookingId, key, nonce]);
+  }, [bookingId, key, nonce, endpoint]);
 
   return { preview, loading, error, refresh: () => setNonce((n) => n + 1) };
 }

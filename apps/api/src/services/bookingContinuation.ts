@@ -51,7 +51,7 @@ export const PARTIAL_RETURN_ERROR_CODES = {
  */
 export const MAX_STAY_AHEAD_MS = 365 * 24 * 60 * 60 * 1000;
 
-type BookingWithItems = Booking & {
+export type BookingWithItems = Booking & {
   items: BookingItem[];
   estimates: Array<Estimate & { lines: EstimateLine[] }>;
 };
@@ -252,7 +252,7 @@ async function nextContinuationDocNumber(tx: Prisma.TransactionClient, rootId: s
 }
 
 /** Приёмка с продолжениями — много записей: таймаут как у завершения приёмки в киоске. */
-const PARTIAL_RETURN_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
+export const PARTIAL_RETURN_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
 
 /** Срок оплаты продолжения — по его сроку «до». Читает настройки, поэтому вне транзакции. */
 export async function stayPaymentDates(stays: ReadonlyArray<StayInput>): Promise<Map<number, Date>> {
@@ -304,6 +304,19 @@ export async function splitOffContinuationsInTx(
     auditExtra?: Record<string, string>;
     /** "collect" — для превью: держатели не останавливают, а возвращаются. */
     conflictMode?: "throw" | "collect";
+    /**
+     * Не раньше какого момента срок «до» (по умолчанию — `now`). Исправление
+     * «Часть не вернули» разделяет от момента приёмки, а срок «до» всё равно
+     * должен быть позже текущего.
+     */
+    untilNotBefore?: Date;
+    /**
+     * С какого момента проверять, не нужна ли оставленная позиция другой
+     * брони. По умолчанию — с конца оплаченного: эти дни бронь и так держала.
+     * Исправление «Часть не вернули» передаёт текущий момент: принятая бронь
+     * склад уже не держит, а прошедшие дни не исправить.
+     */
+    conflictFrom?: Date;
   },
 ): Promise<{ continuationIds: string[]; conflicts: StayConflict[] }> {
   const { booking, now } = args;
@@ -331,10 +344,11 @@ export async function splitOffContinuationsInTx(
     const item = itemById.get(s.bookingItemId);
     if (!item) throw new HttpError(400, "Позиция не из этой брони", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
     const until = new Date(s.until);
-    if (!Number.isFinite(until.getTime()) || until.getTime() <= now.getTime()) {
+    const floor = args.untilNotBefore ?? now;
+    if (!Number.isFinite(until.getTime()) || until.getTime() <= floor.getTime()) {
       throw new HttpError(400, "Срок «до» должен быть позже текущего момента", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
     }
-    if (until.getTime() > now.getTime() + MAX_STAY_AHEAD_MS) {
+    if (until.getTime() > floor.getTime() + MAX_STAY_AHEAD_MS) {
       throw new HttpError(400, "Срок «до» — не дальше чем через год", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
     }
     const total = (keptByItem.get(item.id) ?? 0) + s.quantity;
@@ -372,7 +386,7 @@ export async function splitOffContinuationsInTx(
   }
 
   // ── сверх оплаченного: не нужна ли позиция другой брони ──────────────────
-  const conflicts = await stayConflicts(tx, booking, args.stays, now);
+  const conflicts = await stayConflicts(tx, booking, args.stays, now, args.conflictFrom);
   // Под ответственность — только если подтвердили каждое оставленное этой
   // позиции, что выходит за начало конфликта (одна галочка не покрывает
   // другой срок той же позиции).
@@ -523,6 +537,7 @@ async function stayConflicts(
   booking: BookingWithItems,
   stays: ReadonlyArray<StayInput>,
   now: Date,
+  conflictFrom?: Date,
 ): Promise<StayConflict[]> {
   const itemById = new Map(booking.items.map((i) => [i.id, i]));
   type Need = { bookingItemId: string; quantity: number; from: Date; until: Date };
@@ -530,15 +545,29 @@ async function stayConflicts(
   for (const s of stays) {
     const item = itemById.get(s.bookingItemId);
     if (!item?.equipmentId) continue;
-    const paidThrough = paidThroughAt(itemCoverage(booking, item), booking.skipPartialDay);
     const until = new Date(s.until);
-    if (until.getTime() <= paidThrough.getTime()) continue;
-    const from = new Date(Math.max(paidThrough.getTime(), now.getTime()));
+    let from: Date;
+    if (conflictFrom) {
+      // Бронь уже принята и склад не держит — проверяется всё, что впереди.
+      if (until.getTime() <= conflictFrom.getTime()) continue;
+      from = conflictFrom;
+    } else {
+      const paidThrough = paidThroughAt(itemCoverage(booking, item), booking.skipPartialDay);
+      if (until.getTime() <= paidThrough.getTime()) continue;
+      from = new Date(Math.max(paidThrough.getTime(), now.getTime()));
+    }
     const list = byEquipment.get(item.equipmentId) ?? [];
     list.push({ bookingItemId: item.id, quantity: s.quantity, from, until });
     byEquipment.set(item.equipmentId, list);
   }
   const out: StayConflict[] = [];
+  if (byEquipment.size === 0) return out;
+  // Своя семья (корень и продолжения) склад занимает, но держателем не
+  // называется: иначе карточка говорила бы «нужна брони» о самой себе.
+  const rootId = booking.rootBookingId ?? booking.id;
+  const familyIds = (
+    await tx.booking.findMany({ where: { OR: [{ id: rootId }, { rootBookingId: rootId }] }, select: { id: true } })
+  ).map((b) => b.id);
   for (const [equipmentId, needs] of byEquipment) {
     // Разные сроки одной позиции: «1 шт до чт + 1 шт до сб» до четверга —
     // это 2 шт, после — 1. Проверяем по отрезкам между сроками, на каждом —
@@ -564,9 +593,16 @@ async function stayConflicts(
           start: segStart,
           end: segEnd,
           excludeBookingId: booking.id,
+          excludeHolderIds: familyIds,
         });
-        const holder = holders.get(equipmentId) ?? null;
-        const neededFrom = holder ? Math.max(Date.parse(holder.from), segStart.getTime()) : segStart.getTime();
+        // Держатель занимает позицию с начала своей брони, а выданный раньше
+        // срока — с момента выдачи. Кому она нужна только после срока «до»,
+        // дефицит не объясняет (окно поиска у длинной строки шире отрезка) —
+        // такого не называем.
+        const found = holders.get(equipmentId) ?? null;
+        const occupiedFrom = found ? holderOccupiedFrom(found) : null;
+        const holder = found && occupiedFrom! < segEnd.getTime() ? found : null;
+        const neededFrom = holder ? Math.max(occupiedFrom!, segStart.getTime()) : segStart.getTime();
         out.push({
           bookingItemId: involved[0].bookingItemId,
           equipmentId,
@@ -585,6 +621,13 @@ async function stayConflicts(
     }
   }
   return out;
+}
+
+/** С какого момента держатель занимает позицию: начало брони или, у выданной раньше срока, выдача. */
+function holderOccupiedFrom(h: AddonConflict): number {
+  const start = Date.parse(h.from);
+  const issued = h.issuedAt ? Date.parse(h.issuedAt) : Number.POSITIVE_INFINITY;
+  return Math.min(start, issued);
 }
 
 /** Превью продолжения для окна приёмки: цена дополнительной сметы, держатели. */
@@ -612,7 +655,53 @@ export type ContinuationPreview = {
   total: string;
 };
 
-class PreviewRollback extends Error {
+/**
+ * Продолжения, только что записанные в транзакции, — в вид превью: строки
+ * дополнительной сметы, смены, итог. Общий для приёмки и исправления приёмки.
+ */
+export async function continuationPreviewsInTx(
+  tx: Prisma.TransactionClient,
+  booking: BookingWithItems,
+  continuationIds: string[],
+): Promise<ContinuationPreview[]> {
+  const children = await tx.booking.findMany({
+    where: { id: { in: continuationIds } },
+    include: { estimates: { where: { kind: "MAIN" }, include: { lines: true } } },
+    orderBy: { endDate: "asc" },
+  });
+  const discount = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
+  const itemIdOf = (equipmentId: string | null, name: string) =>
+    booking.items.find((i) => (equipmentId ? i.equipmentId === equipmentId : i.customName === name))?.id ?? null;
+  return children.map((c) => {
+    const est = c.estimates[0];
+    return {
+      until: c.endDate.toISOString(),
+      docNumber: c.docNumber,
+      expectedPaymentDate: c.expectedPaymentDate ? c.expectedPaymentDate.toISOString() : null,
+      lines: (est?.lines ?? []).map((l) => {
+        const negotiated = l.listUnitPrice != null;
+        const sum = new Decimal(l.lineSum.toString());
+        return {
+          bookingItemId: itemIdOf(l.equipmentId, l.nameSnapshot),
+          name: l.nameSnapshot,
+          quantity: l.quantity,
+          billedShifts: l.shifts ?? 0,
+          lineSum: sum.toFixed(2),
+          afterDiscount: (negotiated ? sum : sum.mul(new Decimal(100).sub(discount)).div(100)).toFixed(2),
+          negotiated,
+        };
+      }),
+      discountPercent: discount.toFixed(2),
+      subtotal: est ? est.subtotal.toFixed(2) : "0.00",
+      discountAmount: est ? est.discountAmount.toFixed(2) : "0.00",
+      surchargeAmount: c.surchargeAmount.toFixed(2),
+      total: c.finalAmount.toFixed(2),
+    };
+  });
+}
+
+/** Откат транзакции превью — результат уносится исключением. */
+export class PreviewRollback extends Error {
   constructor(readonly result: { continuations: ContinuationPreview[]; conflicts: StayConflict[] }) {
     super("preview rollback");
   }
@@ -642,43 +731,7 @@ export async function previewReturnPartial(
         paymentDates,
         conflictMode: "collect",
       });
-      const children = await tx.booking.findMany({
-        where: { id: { in: continuationIds } },
-        include: { estimates: { where: { kind: "MAIN" }, include: { lines: true } } },
-        orderBy: { endDate: "asc" },
-      });
-      const discount = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
-      const itemIdOf = (equipmentId: string | null, name: string) =>
-        booking.items.find((i) => (equipmentId ? i.equipmentId === equipmentId : i.customName === name))?.id ?? null;
-      throw new PreviewRollback({
-        conflicts,
-        continuations: children.map((c) => {
-          const est = c.estimates[0];
-          return {
-            until: c.endDate.toISOString(),
-            docNumber: c.docNumber,
-            expectedPaymentDate: c.expectedPaymentDate ? c.expectedPaymentDate.toISOString() : null,
-            lines: (est?.lines ?? []).map((l) => {
-              const negotiated = l.listUnitPrice != null;
-              const sum = new Decimal(l.lineSum.toString());
-              return {
-                bookingItemId: itemIdOf(l.equipmentId, l.nameSnapshot),
-                name: l.nameSnapshot,
-                quantity: l.quantity,
-                billedShifts: l.shifts ?? 0,
-                lineSum: sum.toFixed(2),
-                afterDiscount: (negotiated ? sum : sum.mul(new Decimal(100).sub(discount)).div(100)).toFixed(2),
-                negotiated,
-              };
-            }),
-            discountPercent: discount.toFixed(2),
-            subtotal: est ? est.subtotal.toFixed(2) : "0.00",
-            discountAmount: est ? est.discountAmount.toFixed(2) : "0.00",
-            surchargeAmount: c.surchargeAmount.toFixed(2),
-            total: c.finalAmount.toFixed(2),
-          };
-        }),
-      });
+      throw new PreviewRollback({ conflicts, continuations: await continuationPreviewsInTx(tx, booking, continuationIds) });
     }, PARTIAL_RETURN_TX_OPTIONS);
   } catch (err) {
     if (err instanceof PreviewRollback) return { ...err.result, parentNegotiatedTotal };
