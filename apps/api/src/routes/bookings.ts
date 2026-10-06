@@ -1,4 +1,4 @@
-import { assertProjectStockForBooking } from "../services/projectStockGuard";
+import { setBookingIssuedOrReturnedManually } from "../services/bookingManualStatus";
 import { listBookingRegister } from "../services/bookingRegister";
 import { getBookingIssues } from "../services/bookingIssues";
 import express from "express";
@@ -1585,11 +1585,6 @@ router.post("/:id/status", async (req, res, next) => {
         body.expectedPaymentDate !== undefined ? (body.expectedPaymentDate ? new Date(body.expectedPaymentDate) : null) : undefined,
       paymentComment: body.paymentComment === undefined ? undefined : body.paymentComment ?? null,
     };
-    const bookingInclude = {
-      client: true,
-      items: { include: { equipment: true } },
-      estimates: { include: { lines: true } },
-    } as const;
 
     let updated;
     let closedScanSessions = 0;
@@ -1604,95 +1599,20 @@ router.post("/:id/status", async (req, res, next) => {
       updated = cancelled.booking;
       closedScanSessions = cancelled.closedScanSessions;
     } else {
-      // Ручные «Выдать»/«Вернуть» (без киоска) обязаны реконсилировать
-      // UNIT-резервы в той же транзакции — раньше менялся только статус брони,
-      // и юниты застревали в ISSUED (после ручного «Вернуть») или числились
-      // AVAILABLE на руках у клиента (после ручного «Выдать»). Семантика
-      // согласована с warehouseScan.completeSession: юниты, уже обработанные
-      // сканером или живущие своим циклом (MAINTENANCE/RETIRED/MISSING),
-      // не трогаем — фильтруем по текущему статусу.
-      const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        // Первой записью — условный переход статуса: проверка «можно ли» до
-        // транзакции не защищает от второго нажатия и второго сотрудника.
-        // Три быстрых «Вернуть» писали три события, «Отменить» ‖ «Выдать»
-        // проходили обе. Теперь проигравший получает 409 и откат.
-        const claimed = await tx.booking.updateMany({
-          where: { id, status: booking.status, deletedAt: null },
-          data: {
-            ...bookingUpdateData,
-            // Момент фактической выдачи — как в киоске: пишем только если ещё null.
-            ...(body.action === "issue" && !booking.issuedAt ? { issuedAt: new Date() } : {}),
-          },
-        });
-        if (claimed.count === 0) {
-          const fresh = await tx.booking.findUnique({ where: { id }, select: { status: true } });
-          throw invalidTransitionError(fresh?.status ?? booking.status, body.action);
-        }
-        if (body.action === "issue") await assertProjectStockForBooking(tx, id);
-
-        // Живые резервы брони (returnedAt: null) — история приёмки не трогается.
-        const reservations = await tx.bookingItemUnit.findMany({
-          where: { bookingItem: { bookingId: id }, returnedAt: null },
-          select: { id: true, equipmentUnitId: true },
-        });
-        let touchedUnits = 0;
-        if (reservations.length > 0) {
-          const unitIds = Array.from(new Set(reservations.map((r) => r.equipmentUnitId)));
-          if (body.action === "issue") {
-            // Выдача: только свободные юниты → ISSUED (выданные сканером уже ISSUED).
-            const res = await tx.equipmentUnit.updateMany({
-              where: { id: { in: unitIds }, status: "AVAILABLE" },
-              data: { status: "ISSUED" },
-            });
-            touchedUnits = res.count;
-          } else {
-            // Возврат: резервы закрываем returnedAt (сохраняем историю, как
-            // scan-return), выданные юниты → AVAILABLE.
-            await tx.bookingItemUnit.updateMany({
-              where: { id: { in: reservations.map((r) => r.id) } },
-              data: { returnedAt: new Date() },
-            });
-            const res = await tx.equipmentUnit.updateMany({
-              where: { id: { in: unitIds }, status: "ISSUED" },
-              data: { status: "AVAILABLE" },
-            });
-            touchedUnits = res.count;
-          }
-        }
-
-        // Брошенный в киоске чек-лист этой брони больше не нужен: выдачу/приёмку
-        // оформили кнопкой. Раньше сессия оставалась ACTIVE навсегда и запирала
-        // «+ Добор» со страницы (на проде 8 таких сессий на принятых бронях).
-        const closed = await closeActiveScanSessions(tx, id, {
-          reason: body.action === "issue" ? "BOOKING_ISSUED_MANUALLY" : "BOOKING_RETURNED_MANUALLY",
-          actorUserId: req.adminUser?.userId ?? null,
-        });
-
-        // Аудит выдачи/возврата — headline-событие пишем ВСЕГДА, не только при
-        // UNIT-резервах: физически самые важные операции (оборудование ушло со
-        // склада / вернулось) должны быть видны в /admin/audit и для COUNT-броней.
-        // Пропускаем только канал без AdminUser (bot-ключ) — userId это FK,
-        // синтетический sentinel уронил бы транзакцию.
-        if (req.adminUser?.userId) {
-          await writeAuditEntry({
-            tx,
-            userId: req.adminUser.userId,
-            action: body.action === "issue" ? "BOOKING_ISSUED" : "BOOKING_RETURNED",
-            entityType: "Booking",
-            entityId: id,
-            before: diffFields({ status: booking.status }),
-            after: diffFields({
-              status: nextStatus,
-              via: `status:${body.action}`,
-              reservations: reservations.length,
-              unitsUpdated: touchedUnits,
-              closedScanSessions: closed.length,
-              ...(body.action === "issue" && body.force ? { forcedEarlyIssue: true } : {}),
-            }),
-          });
-        }
-        const u = await tx.booking.findUniqueOrThrow({ where: { id }, include: bookingInclude });
-        return { booking: u, closedScanSessions: closed.length };
+      // «confirm» сюда не доходит: его нет ни в одном allowedActionsByStatus.
+      if (body.action !== "issue" && body.action !== "return") {
+        throw invalidTransitionError(booking.status, body.action);
+      }
+      // Ручные «Выдать»/«Вернуть» — services/bookingManualStatus (захват
+      // статуса, резервы юнитов, сессии киоска и аудит одной транзакцией).
+      const result = await setBookingIssuedOrReturnedManually({
+        bookingId: id,
+        fromStatus: booking.status,
+        issuedAt: booking.issuedAt,
+        action: body.action,
+        force: body.force,
+        actorUserId: req.adminUser?.userId ?? null,
+        patch: bookingUpdateData,
       });
       updated = result.booking;
       closedScanSessions = result.closedScanSessions;
