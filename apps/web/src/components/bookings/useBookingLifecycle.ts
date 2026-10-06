@@ -61,12 +61,21 @@ export function useBookingLifecycle(args: {
   booking: { amountPaid?: string | null } | null;
   reloadBooking: () => Promise<void>;
   onCancelWithDeposit: () => void;
+  /**
+   * «Вернуть» открывает окно «Принять возврат» (позиции «по плану», «Вернули
+   * не всё»). Без него — прежнее подтверждение и POST /status.
+   */
+  onReturn?: () => void;
 }) {
-  const { bookingId, booking, reloadBooking, onCancelWithDeposit } = args;
+  const { bookingId, booking, reloadBooking, onCancelWithDeposit, onReturn } = args;
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
 
   async function runLifecycleAction(action: LifecycleAction, opts?: { force?: boolean }) {
     if (!bookingId || !booking) return;
+    if (action === "return" && onReturn) {
+      onReturn();
+      return;
+    }
     const isForcedRetry = opts?.force === true;
     if (!isForcedRetry) {
       if (action === "cancel") {

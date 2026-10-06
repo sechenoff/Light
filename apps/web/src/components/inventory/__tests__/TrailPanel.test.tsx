@@ -153,7 +153,9 @@ describe("DiscrepancyRow — привязка «Пропало» к брони",
     fireEvent.click(screen.getByRole("button", { name: /Как пропало/ }));
     const select = (await screen.findByLabelText("Если в потеряшки — привязать к брони:")) as HTMLSelectElement;
     expect(apiFetch).toHaveBeenCalledWith("/api/stock-counts/sc-1/lines/line-1/trail", undefined);
-    expect(select.value).toBe("b-1");
+    // Подсказанная бронь подставляется после загрузки следа — ждём, а не читаем сразу
+    // (на нагруженном CI селект успевал появиться раньше).
+    await waitFor(() => expect(select.value).toBe("b-1"));
     expect(screen.getByText(/вероятнее всего, 3 шт ушли с ней/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Пропало → потеряшки" }));

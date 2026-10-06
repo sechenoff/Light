@@ -22,6 +22,7 @@ import {
   type StatusChangeResponse,
 } from "../useBookingLifecycle";
 import { hasLiveKioskSession } from "./model";
+import { ReturnDialog } from "../ReturnDialog";
 export function useRegisterActions(
   rows: Row[],
   user: CurrentUser | null,
@@ -31,10 +32,12 @@ export function useRegisterActions(
   const router = useRouter(),
     sa = user?.role === "SUPER_ADMIN";
   const [payment, setPayment] = useState<Row | null>(null);
+  // «Принять возврат» — общее с карточкой окно приёмки (позиции «по плану», «Вернули не всё»).
+  const [returnRow, setReturnRow] = useState<Row | null>(null);
   const [deposit, setDeposit] = useState<Row | null>(null);
   const [confirm, setConfirm] = useState<{
     row: Row;
-    action: "issue" | "return" | "cancel" | "archive";
+    action: "issue" | "cancel" | "archive";
     force?: boolean;
     message?: string;
   } | null>(null);
@@ -75,11 +78,8 @@ export function useRegisterActions(
       // висит брошенной и блокирует «+ Добор» на карточке брони.
       if (hasLiveKioskSession(r))
         router.push(`/warehouse/scan?booking=${encodeURIComponent(r.id)}`);
-      else
-        setConfirm({
-          row: r,
-          action: r.status === "ISSUED" ? "return" : "issue",
-        });
+      else if (r.status === "ISSUED") setReturnRow(r);
+      else setConfirm({ row: r, action: "issue" });
     } else router.push(`/bookings/${r.id}`);
   }
   const primaryLabel = (r: Row) =>
@@ -200,20 +200,27 @@ export function useRegisterActions(
   const messages = {
     issue:
       "Оборудование будет выдано по текущему составу брони. Проверьте комплект перед подтверждением.",
-    return:
-      "Весь состав вернётся на склад. Если есть недостача или повреждения, проведите возврат через сканирование на складе. Статус возврата финальный.",
     cancel: "Бронь будет отменена, резервы сняты. Отмена — финальный статус.",
     archive:
       "Бронь уйдёт в архив, резервы будут сняты. Данные сохранятся; восстановление доступно в архиве. Для выданного оборудования сначала оформите возврат.",
   };
   const labels = {
     issue: "Выдать",
-    return: "Принять возврат",
     cancel: "Отменить бронь",
     archive: "В архив",
   };
   const modals = (
     <>
+      {returnRow && (
+        <ReturnDialog
+          open
+          bookingId={returnRow.id}
+          docNumber={returnRow.docNumber}
+          projectName={returnRow.projectName}
+          onClose={() => setReturnRow(null)}
+          onDone={refresh}
+        />
+      )}
       {payment && (
         <RecordPaymentModal
           key={payment.id}
