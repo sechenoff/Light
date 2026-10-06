@@ -9,6 +9,7 @@ import {
   hasIssuedDescendant,
 } from "../services/bookingFamily";
 import { getReturnPlan, hasPlannedStays, plannedStayPendingError, previewReturnPartial, returnPartial } from "../services/bookingContinuation";
+import { cancelContinuation } from "../services/continuationCancel";
 import { listBookingRegister } from "../services/bookingRegister";
 import { getBookingIssues } from "../services/bookingIssues";
 import express from "express";
@@ -1783,6 +1784,25 @@ router.get("/:id/return-plan", async (req, res, next) => {
   try {
     await assertBookingNotArchived(req.params.id);
     res.json(await getReturnPlan(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/bookings/:id/cancel-continuation — продолжение оформили по ошибке:
+ * оставленное вернули вместе с основной бронью. Только руководитель, только
+ * выданное продолжение без оплаты (services/continuationCancel).
+ */
+router.post("/:id/cancel-continuation", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const body = z.object({ reason: z.string().trim().min(3, "Напишите, почему отменяете — хотя бы 3 символа").max(500) }).parse(req.body);
+    const result = await cancelContinuation({
+      bookingId: req.params.id,
+      reason: body.reason,
+      actorUserId: req.adminUser!.userId,
+    });
+    res.json(result);
   } catch (err) {
     next(err);
   }

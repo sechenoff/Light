@@ -52,6 +52,7 @@ import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoic
 import { CancelWithDepositModal } from "../../../src/components/finance/CancelWithDepositModal";
 import { ReturnDialog } from "../../../src/components/bookings/ReturnDialog";
 import { BookingFamilyBanner, type BookingFamily } from "../../../src/components/bookings/BookingFamilyBanner";
+import { CancelContinuationModal } from "../../../src/components/bookings/CancelContinuationModal";
 import { CreditNoteApplyModal } from "../../../src/components/finance/CreditNoteApplyModal";
 import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
 import { AddonEstimateSection } from "../../../src/components/bookings/AddonEstimateSection";
@@ -228,6 +229,8 @@ export default function BookingDetailPage() {
   const [changeClientOpen, setChangeClientOpen] = useState(false);
   // Окно «Принять возврат»: эта бронь или её продолжение («Принять остаток»).
   const [returnTarget, setReturnTarget] = useState<{ id: string; docNumber: string | null; projectName: string } | null>(null);
+  // «Отменить продолжение» — окно с причиной (только руководитель, выданное продолжение).
+  const [cancelContinuationOpen, setCancelContinuationOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState<null | "submit" | "instant">(null);
   // Фаза 4.5: шесть финансовых модалок — один reducer вместо шести useState.
   const [financeModals, dispatchFinanceModal] = useReducer(
@@ -623,6 +626,23 @@ export default function BookingDetailPage() {
         <BookingFamilyBanner
           family={booking.family}
           onAcceptRest={(c) => setReturnTarget({ id: c.id, docNumber: c.docNumber, projectName: booking.projectName })}
+          onCancelContinuation={
+            user?.role === "SUPER_ADMIN" && booking.status === "ISSUED" && booking.family.parent
+              ? () => setCancelContinuationOpen(true)
+              : undefined
+          }
+        />
+      )}
+      {booking && cancelContinuationOpen && (
+        <CancelContinuationModal
+          bookingId={booking.id}
+          docNumber={booking.docNumber ?? null}
+          onClose={() => setCancelContinuationOpen(false)}
+          onDone={() => {
+            reloadBooking().catch((e) =>
+              toast.error(e instanceof Error ? e.message : "Не удалось обновить бронь"),
+            );
+          }}
         />
       )}
       {/* «Принять возврат» — окно приёмки (мокап M4): своя бронь или продолжение. */}
