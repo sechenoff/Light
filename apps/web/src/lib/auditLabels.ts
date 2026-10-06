@@ -53,6 +53,7 @@ export const ACTION_LABELS: Record<string, string> = {
   PROJECT_PAYMENT: "Оплата проекта получена",
   PROJECT_CANCELLED: "Проект отменён",
   PROJECT_FINISHED: "Выдачи и возвраты проекта завершены",
+  PROJECT_CLIENT_CHANGED: "Клиент проекта изменён",
   // Брони
   BOOKING_CREATE: "Бронь создана",
   BOOKING_UPDATE: "Бронь изменена",
@@ -122,6 +123,8 @@ export const ACTION_LABELS: Record<string, string> = {
   CLIENT_CREATE: "Клиент создан",
   CLIENT_UPDATE: "Клиент изменён",
   CLIENT_DELETE: "Клиент удалён",
+  CLIENT_MERGE: "К карточке присоединён дубль",
+  CLIENT_MERGED_INTO: "Карточка объединена с другой",
   CLIENT_REMINDED: "Напоминание клиенту",
   CLIENT_PORTAL_INVITE_SENT: "Приглашение в портал отправлено",
   CLIENT_PORTAL_INVITE_RESENT: "Приглашение в портал отправлено повторно",

@@ -256,6 +256,9 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
         super: { level: "full", label: "да" }, warehouse: { level: "limited", label: "сумма и статус" }, technician: { level: "none", label: "нет" } },
       { capability: "Удалить клиента",
         super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "none", label: "нет" } },
+      { capability: "Объединить карточки-дубли",
+        hint: "брони, счета на оплату, кредит-ноты, задачи и кабинет — в одну карточку; дубль удаляется",
+        super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "none", label: "нет" } },
     ],
   },
   {

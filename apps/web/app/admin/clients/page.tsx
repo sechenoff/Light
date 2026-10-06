@@ -6,6 +6,7 @@ import { SectionHeader } from "../../../src/components/SectionHeader";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { AdminShell } from "../../../src/components/admin/AdminShell";
 import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
+import { MergeClientsModal } from "../../../src/components/admin/MergeClientsModal";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
 import { formatRub } from "../../../src/lib/format";
@@ -58,11 +59,13 @@ function ClientActions({
   client,
   size,
   onEdit,
+  onMerge,
   onDelete,
 }: {
   client: Client;
   size: "sm" | "lg";
   onEdit: (client: Client) => void;
+  onMerge: (client: Client) => void;
   onDelete: (client: Client) => void;
 }) {
   const box = size === "lg" ? "h-10 w-10" : "h-8 w-8";
@@ -76,6 +79,19 @@ function ClientActions({
       >
         <ActionIcon>
           <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+        </ActionIcon>
+      </button>
+      <button
+        type="button"
+        onClick={() => onMerge(client)}
+        title="Объединить с дублем"
+        className={`inline-flex ${box} items-center justify-center rounded text-ink-3 hover:bg-accent-soft hover:text-accent-bright transition-colors`}
+        aria-label={`Объединить клиента ${client.name} с другой карточкой`}
+      >
+        <ActionIcon>
+          <path d="m8 6 4-4 4 4" />
+          <path d="M12 2v10.3a4 4 0 0 1-1.172 2.872L4 22" />
+          <path d="m20 22-5-5" />
         </ActionIcon>
       </button>
       <button
@@ -473,6 +489,7 @@ export default function AdminClientsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [portalTarget, setPortalTarget] = useState<Client | null>(null);
+  const [mergeTarget, setMergeTarget] = useState<Client | null>(null);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
 
@@ -691,7 +708,7 @@ export default function AdminClientsPage() {
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <ClientActions client={client} size="sm" onEdit={openEdit} onDelete={requestDelete} />
+                      <ClientActions client={client} size="sm" onEdit={openEdit} onMerge={setMergeTarget} onDelete={requestDelete} />
                     </div>
                   </td>
                 </tr>
@@ -732,7 +749,7 @@ export default function AdminClientsPage() {
                     </span>
                     <PortalButton client={client} onOpen={setPortalTarget} />
                     <div className="ml-auto flex gap-1">
-                      <ClientActions client={client} size="lg" onEdit={openEdit} onDelete={requestDelete} />
+                      <ClientActions client={client} size="lg" onEdit={openEdit} onMerge={setMergeTarget} onDelete={requestDelete} />
                     </div>
                   </div>
                 </li>
@@ -757,6 +774,17 @@ export default function AdminClientsPage() {
         loading={deleting}
         onConfirm={confirmDelete}
         onClose={cancelDelete}
+      />
+
+      <MergeClientsModal
+        client={mergeTarget}
+        onClose={() => setMergeTarget(null)}
+        onMerged={() => {
+          setMergeTarget(null);
+          // Брони и долг дубля теперь у оставшейся карточки — обновляем обе колонки.
+          void fetchClients(search);
+          void fetchDebts();
+        }}
       />
 
       <PortalAccessModal

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useId, useMemo } from "react";
 import { apiFetch } from "../../../lib/api";
+import { normalizeClientName } from "../../../lib/clientName";
 
 type Client = {
   id: string;
@@ -28,14 +29,11 @@ type Props = {
 };
 
 /**
- * Case-insensitive, locale-aware normalisation for Russian client names.
- * SQLite's LIKE is case-sensitive for non-ASCII by default — we therefore
- * fetch a superset and filter on the client using `toLocaleLowerCase("ru")`
- * so that `АРТ` matches `арт-пикчерс`.
+ * Сравнение имён — то же правило, что у сервера: без регистра, «ё» = «е»,
+ * пробелы схлопнуты. Сервер ищет так же (поиск больше не LIKE), поэтому
+ * «петя» находит «Петя Куб», а «петя  куб» считается существующим клиентом.
  */
-function normalizeRu(s: string): string {
-  return s.trim().toLocaleLowerCase("ru");
-}
+const normalizeRu = normalizeClientName;
 
 export function ClientAutocomplete({
   value,
@@ -79,9 +77,8 @@ export function ClientAutocomplete({
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
-      // Fetch a superset (limit=50) to compensate for case-sensitive LIKE on
-      // SQLite. Server-side filtering still cuts down the network cost vs.
-      // fetching the whole table.
+      // Сервер ищет без учёта регистра и «ё»; запас (limit=50) — для
+      // локального фильтра по мере ввода.
       const data = await apiFetch<{ clients: Client[] }>(
         `/api/clients?search=${encodeURIComponent(trimmed)}&limit=50`,
         { signal: ctrl.signal }

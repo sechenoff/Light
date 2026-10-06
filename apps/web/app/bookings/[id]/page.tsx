@@ -974,6 +974,7 @@ export default function BookingDetailPage() {
             bookingId={booking.id}
             currentClientId={booking.client.id}
             currentClientName={booking.client.name}
+            family={Boolean(booking.family)}
             onClose={() => setChangeClientOpen(false)}
             onSuccess={() => { setChangeClientOpen(false); reloadBooking(); }}
           />

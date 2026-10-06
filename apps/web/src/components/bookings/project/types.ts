@@ -38,7 +38,7 @@ export type ProjectData = {
   booking: {
     id: string;
     projectName: string;
-    client: { name: string };
+    client: { id: string; name: string };
     status: string;
     finalAmount: string;
     amountPaid: string;

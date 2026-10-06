@@ -28,6 +28,23 @@ const FIELD_LABELS: Record<string, string> = {
   statusTo: "Статус после изменения",
   projectName: "Название проекта",
   clientName: "Клиент",
+  mergedClientName: "Присоединённая карточка",
+  mergedIntoClientName: "Объединена с карточкой",
+  movedBookings: "Перенесено броней",
+  movedBills: "Перенесено счетов на оплату",
+  movedCreditNotes: "Перенесено кредит-нот",
+  movedTasks: "Перенесено задач",
+  portalOutcome: "Личный кабинет",
+  legalName: "Юридическое название",
+  inn: "ИНН",
+  kpp: "КПП",
+  ogrn: "ОГРН",
+  legalAddress: "Юридический адрес",
+  postalAddress: "Почтовый адрес",
+  bankName: "Банк",
+  bankBik: "БИК",
+  rschet: "Расчётный счёт",
+  kschet: "Корр. счёт",
   name: "Название",
   title: "Название",
   username: "Аккаунт",
@@ -422,6 +439,10 @@ function flatten(
   >();
   for (const [key, value] of Object.entries(obj)) {
     if (HIDDEN.test(key)) continue;
+    // Ссылка рядом с именем — дубль строки: «Клиент: петя куб → Петя Куб»
+    // уже сказано по имени, а у удалённой карточки (объединение) ссылка
+    // читалась бы как «Запись № …».
+    if (/Id$/.test(key) && typeof obj[key.replace(/Id$/, "Name")] === "string") continue;
     const path = prefix ? `${prefix}.${key}` : key;
     const label =
       FIELD_LABELS[key] ??

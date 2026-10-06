@@ -96,3 +96,38 @@ describe("понятные изменения", () => {
     ).toEqual([]);
   });
 });
+
+describe("смена клиента в журнале", () => {
+  it("ссылка рядом с именем не дублирует строку: «Клиент: петя куб → Петя Куб» один раз", () => {
+    const changes = auditChanges({
+      entityType: "Booking",
+      before: JSON.stringify({ clientId: "c-dup", clientName: "петя куб" }),
+      after: JSON.stringify({ clientId: "c-main", clientName: "Петя Куб", reason: "Объединение карточек клиента" }),
+      // Удалённой при объединении карточки среди ссылок нет.
+      referenceLabels: { "c-main": "Петя Куб" },
+    });
+    expect(changes.map((c) => [c.label, c.before, c.after])).toEqual([
+      ["Клиент", "петя куб", "Петя Куб"],
+      ["Причина", "Не сохранено", "Объединение карточек клиента"],
+    ]);
+  });
+
+  it("объединение карточек — что перенесено, словами", () => {
+    const changes = auditChanges({
+      entityType: "Client",
+      before: JSON.stringify({ name: "Петя Куб", phone: null }),
+      after: JSON.stringify({
+        name: "Петя Куб",
+        phone: "+7 900 111-22-33",
+        mergedClientId: "c-dup",
+        mergedClientName: "петя куб",
+        movedBookings: 2,
+      }),
+    });
+    expect(changes.map((c) => [c.label, c.after])).toEqual([
+      ["Телефон", "+7 900 111-22-33"],
+      ["Присоединённая карточка", "петя куб"],
+      ["Перенесено броней", "2"],
+    ]);
+  });
+});
