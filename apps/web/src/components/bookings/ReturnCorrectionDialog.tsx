@@ -13,7 +13,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
-import { pluralize } from "@/lib/format";
 import { useDialog } from "@/hooks/useDialog";
 import { toast } from "../ToastProvider";
 import { ContinuationPriceBlock } from "./ContinuationPriceBlock";
@@ -174,14 +173,14 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim/50 sm:items-center sm:px-4" onClick={close}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim/50 sm:items-start sm:px-4 sm:pt-[6vh]" onClick={close}>
       <div
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="return-correction-title"
-        className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-xl border border-border bg-surface shadow-xl outline-none sm:max-w-[560px] sm:rounded-lg"
+        className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-xl sm:max-h-[88vh] border border-border bg-surface shadow-xl outline-none sm:max-w-[560px] sm:rounded-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
@@ -248,8 +247,8 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
               {previewError && <p className="text-xs text-amber">{previewError}</p>}
               {kept > 0 && plan.returnedAt && (
                 <p className="text-[12.5px] text-ink-2">
-                  Создастся продолжение {preview?.continuations[0]?.docNumber ?? "брони"} с {formatWhen(plan.returnedAt)}. Склад снова
-                  считает эти {kept} {pluralize(kept, "единицу", "единицы", "единиц")} занятыми.
+                  Создастся продолжение {preview?.continuations[0]?.docNumber ?? "брони"} с {formatWhen(plan.returnedAt)}. Оставленное
+                  ({kept} шт) склад снова считает занятым.
                 </p>
               )}
             </>
