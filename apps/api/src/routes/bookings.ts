@@ -1116,6 +1116,8 @@ router.patch("/:id", async (req, res, next) => {
       extend: isExtendIssued,
       skipPartialDayChanged:
         body.skipPartialDay !== undefined && body.skipPartialDay !== (existing.skipPartialDay ?? false),
+      startChanged: start.getTime() !== existing.startDate.getTime(),
+      endNotLater: end.getTime() <= existing.endDate.getTime(),
     });
 
     // F4+F5: compute resolved expectedPaymentDate for PATCH

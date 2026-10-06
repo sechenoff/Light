@@ -10,8 +10,9 @@
  *  - продолжение — «Отменена», его смета больше не долг клиента;
  *  - запись в журнал с причиной.
  *
- * Если по продолжению уже есть оплата — отказ: деньги сначала нужно вернуть
- * или перенести, молча их обнулять нельзя. Продолжение второй волны (у
+ * Если по продолжению уже есть оплата или выставлен счёт — отказ: деньги
+ * сначала нужно вернуть или перенести, счёт — аннулировать; молча их
+ * обнулять нельзя (живой счёт ушёл бы в напоминания о долге). Продолжение второй волны (у
  * отменяемого есть своё живое продолжение) — тоже отказ: сначала его.
  */
 import type { Prisma } from "@prisma/client";
@@ -28,7 +29,11 @@ export const CANCEL_CONTINUATION_CODES = {
   NOT_CONTINUATION: "NOT_A_CONTINUATION",
   NOT_OUT: "CONTINUATION_NOT_OUT",
   HAS_PAYMENTS: "CONTINUATION_HAS_PAYMENTS",
+  HAS_INVOICES: "CONTINUATION_HAS_INVOICES",
 } as const;
+
+/** Счета, которые клиент видит как долг: выставлен, частично оплачен, просрочен. */
+const LIVE_INVOICE_STATUSES = ["ISSUED", "PARTIAL_PAID", "OVERDUE"] as const;
 
 export async function cancelContinuation(args: {
   bookingId: string;
@@ -60,6 +65,16 @@ export async function cancelContinuation(args: {
         CANCEL_CONTINUATION_CODES.HAS_PAYMENTS,
       );
     }
+    const liveInvoices = await tx.invoice.count({
+      where: { bookingId: booking.id, status: { in: [...LIVE_INVOICE_STATUSES] } },
+    });
+    if (liveInvoices > 0) {
+      throw new HttpError(
+        409,
+        "По продолжению выставлен счёт — сначала аннулируйте его, потом отменяйте",
+        CANCEL_CONTINUATION_CODES.HAS_INVOICES,
+      );
+    }
 
     // Условная смена статуса: «Отменить» и «Принять остаток» в одну секунду не проходят обе.
     const claimed = await tx.booking.updateMany({
@@ -83,6 +98,8 @@ export async function cancelContinuation(args: {
       });
     }
     const closed = await closeActiveScanSessions(tx, booking.id, { reason: "BOOKING_CANCELLED", actorUserId: args.actorUserId });
+    // Отменённая бронь в реестре и в долгах не числится (её остаток там — 0);
+    // пересчёт держит поля брони согласованными со сметой.
     await recomputeBookingFinance(booking.id, tx);
     await writeAuditEntry({
       tx,

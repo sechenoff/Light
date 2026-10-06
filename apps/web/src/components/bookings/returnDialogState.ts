@@ -45,6 +45,13 @@ export type StayDraft = {
 /** Строку можно оставить у клиента в пределах оплаченного — оплачено ещё хотя бы час. */
 const STAY_MIN_MS = 60 * 60 * 1000;
 const SHIFT_MS = 24 * 60 * 60 * 1000;
+/**
+ * Запас на расхождение часов. Оплаченное прошло — «+N» считается от «сейчас»
+ * браузера, а сервер выставляет смены от своего «сейчас»: спеши часы
+ * компьютера хоть на секунду, «+1 смена» стала бы двумя. Срок берём на
+ * четверть часа раньше и округляем вниз до 15 минут.
+ */
+const CLOCK_MARGIN_MS = 15 * 60 * 1000;
 
 export function canStay(line: ReturnPlanLine, now = Date.now()): boolean {
   return Date.parse(line.paidThrough) - now > STAY_MIN_MS;
@@ -73,8 +80,9 @@ export function stayChoicesFor(line: ReturnPlanLine, now = Date.now()): Array<{ 
 export function untilForChoice(line: ReturnPlanLine, choice: Exclude<StayChoice, "date">, now = Date.now()): string {
   const paid = Date.parse(line.paidThrough);
   if (choice === "paid") return line.paidThrough;
-  const base = canStay(line, now) ? paid : now;
-  return new Date(base + choice * SHIFT_MS).toISOString();
+  if (canStay(line, now)) return new Date(paid + choice * SHIFT_MS).toISOString();
+  const raw = now + choice * SHIFT_MS - CLOCK_MARGIN_MS;
+  return new Date(Math.floor(raw / CLOCK_MARGIN_MS) * CLOCK_MARGIN_MS).toISOString();
 }
 
 /** Срок позже оплаченного — будут лишние смены в дополнительной смете. */
@@ -128,7 +136,8 @@ export function setStayQuantity(
     until: start.until,
     choice: start.choice,
     unitIds,
-    acknowledged: prev?.acknowledged,
+    // «Под ответственность» давали за другое количество — спросить заново.
+    acknowledged: prev?.quantity === q ? prev.acknowledged : undefined,
   });
   return next;
 }
@@ -144,7 +153,8 @@ export function setStayChoice(
   if (!prev) return stays;
   const until = choice === "date" ? customUntil ?? prev.until : untilForChoice(line, choice);
   const next = new Map(stays);
-  next.set(line.bookingItemId, { ...prev, choice, until });
+  // Другой срок — другой держатель и другие дни: подтверждение не переносится.
+  next.set(line.bookingItemId, { ...prev, choice, until, acknowledged: until === prev.until ? prev.acknowledged : undefined });
   return next;
 }
 
@@ -179,7 +189,7 @@ export function toggleStayUnit(
       until: start.until,
       choice: start.choice,
       unitIds,
-      acknowledged: prev?.acknowledged,
+      acknowledged: undefined,
     });
   }
   return next;
@@ -263,8 +273,11 @@ export type StayConflict = {
   name: string;
   needed: number;
   available: number;
+  /** С какого момента проверяли (конец оплаченного или сейчас). */
   from: string;
   until: string;
+  /** С какого момента позиция нужна другой брони — его и показываем. */
+  neededFrom?: string;
   holder: StayHolder | null;
 };
 
@@ -295,6 +308,14 @@ export type ReturnPreview = {
   /** Договорной итог основной брони — дополнительная смета оплачивается сверху. */
   parentNegotiatedTotal: string | null;
 };
+
+/** Хоть одна отмеченная строка — дольше оплаченного: есть что считать в превью. */
+export function anyBeyondPaid(plan: ReturnPlan, stays: Map<string, StayDraft>): boolean {
+  return plan.lines.some((l) => {
+    const s = stays.get(l.bookingItemId);
+    return s != null && isBeyondPaid(s, l);
+  });
+}
 
 /** Строки «нужна другой брони», по которым не нажали «под ответственность». */
 export function unacknowledgedConflicts(preview: ReturnPreview | null, stays: Map<string, StayDraft>): StayConflict[] {

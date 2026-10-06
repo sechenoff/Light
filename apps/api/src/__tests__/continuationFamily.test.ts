@@ -314,6 +314,29 @@ describe("гарды семьи", () => {
     expect(add.body.code).toBe("CONTINUATION_ADDON_FORBIDDEN");
   });
 
+  it("продление продолжения — без сдвига начала и только на более поздний срок", async () => {
+    const { child } = await mkFamily();
+    const existing = await prisma.booking.findUnique({ where: { id: child } });
+    const withStart = await request(app)
+      .patch(`/api/bookings/${child}`)
+      .set(AUTH())
+      .send({
+        extendEndDate: new Date(existing.endDate.getTime() + DAY).toISOString(),
+        startDate: new Date(existing.startDate.getTime() - 3 * DAY).toISOString(),
+      });
+    expect(withStart.status).toBe(409);
+    expect(withStart.body.code).toBe("CONTINUATION_EDIT_FORBIDDEN");
+    const earlier = await request(app)
+      .patch(`/api/bookings/${child}`)
+      .set(AUTH())
+      .send({ extendEndDate: new Date(existing.endDate.getTime() - HOUR).toISOString() });
+    expect(earlier.status).toBe(409);
+    expect(earlier.body.code).toBe("CONTINUATION_EXTEND_EARLIER");
+    const after = await prisma.booking.findUnique({ where: { id: child } });
+    expect(after.startDate.toISOString()).toBe(existing.startDate.toISOString());
+    expect(after.endDate.toISOString()).toBe(existing.endDate.toISOString());
+  });
+
   it("архив: ни основную с живым продолжением, ни продолжение у клиента", async () => {
     const { root, child } = await mkFamily();
     const rootArchive = await request(app).delete(`/api/bookings/${root}`).set(AUTH());

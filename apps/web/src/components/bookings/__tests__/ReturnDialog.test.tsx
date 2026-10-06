@@ -12,7 +12,7 @@ const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi
 vi.mock("../../ToastProvider", () => ({ toast: toastMock }));
 
 import { ReturnDialog } from "../ReturnDialog";
-import { initialStays, partialReturnBody, setStayQuantity, summarize, toggleStayUnit, type ReturnPlan } from "../returnDialogState";
+import { formatWhen, initialStays, partialReturnBody, setStayQuantity, summarize, toggleStayUnit, type ReturnPlan } from "../returnDialogState";
 
 const HOUR = 3_600_000;
 const later = (h: number) => new Date(Date.now() + h * HOUR).toISOString();
@@ -368,5 +368,98 @@ describe("initialStays — штучная позиция по плану", () =>
       ],
     });
     expect(initialStays(p).get("i-storm")).toMatchObject({ quantity: 2, unitIds: ["u1", "u2"] });
+  });
+});
+
+describe("окно «Принять возврат»: сверх оплаченного", () => {
+  const expired = () => plan({ lines: [{ ...plan().lines[0], paidThrough: later(-2) }, plan().lines[1]] });
+  const conflictPreview = (neededFrom: string) => ({
+    parentNegotiatedTotal: null,
+    continuations: [],
+    conflicts: [
+      {
+        bookingItemId: "i-storm",
+        equipmentId: "e1",
+        name: "Aputure STORM 400x",
+        needed: 1,
+        available: 0,
+        from: later(1),
+        until: later(22),
+        neededFrom,
+        holder: { bookingId: "b-other", projectName: "Клип Север", clientName: null, from: neededFrom },
+      },
+    ],
+  });
+  const previewCalls = () => apiFetchMock.mock.calls.filter(([url]) => String(url).endsWith("/return-partial/preview")).length;
+  const stormLine = () => screen.getAllByTestId("return-line").find((li) => li.textContent?.includes("STORM"))!;
+
+  it("в пределах оплаченного превью не запрашивается; срок дальше — запрашивается", async () => {
+    const p = plan();
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-plan") ? p : { continuations: [], conflicts: [], parentNegotiatedTotal: null },
+    );
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
+    fireEvent.click(within(stormLine()).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
+    await new Promise((r) => setTimeout(r, 500));
+    expect(previewCalls()).toBe(0);
+    fireEvent.click(within(stormLine()).getAllByRole("radio")[1]);
+    await waitFor(() => expect(previewCalls()).toBe(1));
+  });
+
+  it("карточка держателя называет начало его брони, а не начало проверки", async () => {
+    const p = expired();
+    const neededFrom = later(30);
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-plan") ? p : url.endsWith("/return-partial/preview") ? conflictPreview(neededFrom) : {},
+    );
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
+    fireEvent.click(within(stormLine()).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
+    const holder = await within(stormLine()).findByRole("group", { name: "Нужен другой брони: Aputure STORM 400x" });
+    expect(holder).toHaveTextContent(`с ${formatWhen(neededFrom)}`);
+    // Скрыт поиском — кнопка всё равно объясняет, кого ждём.
+    expect(screen.getByText(/Нужно другой брони: «Aputure STORM 400x»/)).toBeInTheDocument();
+  });
+
+  it("другой срок — «под ответственность» спрашивается заново", async () => {
+    const p = expired();
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-plan") ? p : url.endsWith("/return-partial/preview") ? conflictPreview(later(5)) : {},
+    );
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
+    fireEvent.click(within(stormLine()).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
+    const holder = await within(stormLine()).findByRole("group", { name: "Нужен другой брони: Aputure STORM 400x" });
+    fireEvent.click(within(holder).getByRole("button", { name: "Оставить под ответственность" }));
+    const primary = screen.getByRole("button", { name: "Принять 2 позиции" });
+    expect(primary).toBeEnabled();
+    fireEvent.click(within(stormLine()).getAllByRole("radio")[1]);
+    expect(primary).toBeDisabled();
+    const again = await within(stormLine()).findByRole("group", { name: "Нужен другой брони: Aputure STORM 400x" });
+    expect(within(again).getByRole("button", { name: "Оставить под ответственность" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("позицию заняли, пока окно было открыто: 409 при «Принять» — превью пересчитано, появилась карточка держателя", async () => {
+    const p = expired();
+    let conflictNow = false;
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/return-plan")) return p;
+      if (url.endsWith("/return-partial/preview")) {
+        return conflictNow ? conflictPreview(later(5)) : { continuations: [], conflicts: [], parentNegotiatedTotal: null };
+      }
+      conflictNow = true;
+      throw Object.assign(new Error("Позиция «Aputure STORM 400x» нужна брони «Клип Север»"), { code: "CONTINUATION_CONFLICT", status: 409 });
+    });
+    const onClose = vi.fn();
+    open(vi.fn(), onClose);
+    fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
+    fireEvent.click(within(stormLine()).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
+    await waitFor(() => expect(previewCalls()).toBe(1));
+    await new Promise((r) => setTimeout(r, 20));
+    fireEvent.click(screen.getByRole("button", { name: "Принять 2 позиции" }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(expect.stringMatching(/Клип Север/)));
+    expect(await within(stormLine()).findByRole("group", { name: "Нужен другой брони: Aputure STORM 400x" })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

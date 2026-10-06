@@ -19,6 +19,9 @@ export function useReturnPreview(bookingId: string, stays: Stay[] | null) {
   const [preview, setPreview] = useState<ReturnPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Пересчитать с теми же отметками: «Принять» получил 409 — склад поменялся,
+  // пока окно было открыто, и карточка держателя должна появиться.
+  const [nonce, setNonce] = useState(0);
   const seq = useRef(0);
   const key = stays ? JSON.stringify(stays) : "";
 
@@ -58,7 +61,7 @@ export function useReturnPreview(bookingId: string, stays: Stay[] | null) {
     return () => clearTimeout(timer);
     // key — содержимое stays; сам массив новый на каждом рендере.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookingId, key]);
+  }, [bookingId, key, nonce]);
 
-  return { preview, loading, error };
+  return { preview, loading, error, refresh: () => setNonce((n) => n + 1) };
 }

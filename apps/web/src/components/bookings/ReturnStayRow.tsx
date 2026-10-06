@@ -5,7 +5,7 @@
  * состояние B): сколько остаётся у клиента, до какого срока, во что это
  * обойдётся и не нужна ли позиция другой брони.
  */
-import { formatRub } from "@/lib/format";
+import { formatRub, pluralize } from "@/lib/format";
 import { quoteName } from "../inventory/format";
 import {
   canStay,
@@ -35,8 +35,9 @@ type Props = {
   onAcknowledge: (ack: boolean) => void;
 };
 
-const shiftsWord = (n: number) =>
-  n % 10 === 1 && n % 100 !== 11 ? "смена" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? "смены" : "смен";
+const shiftsWord = (n: number) => pluralize(n, "смена", "смены", "смен");
+/** Срок «до» — не дальше года (так же проверяет сервер). */
+const MAX_STAY_AHEAD_MS = 365 * 24 * 60 * 60 * 1000;
 
 /** ISO → значение для <input type="datetime-local"> (время браузера). */
 function toLocalInput(iso: string): string {
@@ -139,7 +140,7 @@ export function ReturnStayRow({
                   aria-checked={on}
                   disabled={busy}
                   onClick={() => onChoice(c.choice)}
-                  className={`flex min-h-11 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight sm:min-h-10 ${on ? "border-accent-bright bg-accent-soft font-semibold text-accent" : "border-border bg-surface text-ink-2 hover:bg-surface-subtle"}`}
+                  className={`flex min-h-11 items-center justify-center rounded border px-1 py-1 text-center text-[11.5px] leading-tight hyphens-auto [overflow-wrap:anywhere] sm:min-h-10 ${on ? "border-accent-bright bg-accent-soft font-semibold text-accent" : "border-border bg-surface text-ink-2 hover:bg-surface-subtle"}`}
                 >
                   {c.label}
                 </button>
@@ -151,10 +152,14 @@ export function ReturnStayRow({
               type="datetime-local"
               aria-label={`Срок возврата: ${line.name}`}
               value={toLocalInput(stay.until)}
+              min={toLocalInput(new Date().toISOString())}
+              max={toLocalInput(new Date(Date.now() + MAX_STAY_AHEAD_MS).toISOString())}
               disabled={busy}
               onChange={(e) => {
                 const d = new Date(e.target.value);
-                if (Number.isFinite(d.getTime()) && d.getTime() > Date.now()) onChoice("date", d.toISOString());
+                if (Number.isFinite(d.getTime()) && d.getTime() > Date.now() && d.getTime() <= Date.now() + MAX_STAY_AHEAD_MS) {
+                  onChoice("date", d.toISOString());
+                }
               }}
               className="h-11 w-full rounded border border-border bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none sm:h-10 sm:w-auto"
             />
@@ -163,20 +168,22 @@ export function ReturnStayRow({
             Вернут <span className="font-semibold text-ink">{formatWhen(stay.until)}</span>
             {!beyond ? (
               " · без доплаты"
+            ) : previewLoading ? (
+              <span className="text-ink-3"> · считаем доплату…</span>
             ) : previewLine && previewLine.billedShifts > 0 ? (
-              <span className="whitespace-nowrap text-amber">
+              <span className="text-amber">
                 {" "}
                 · {kept} шт × {previewLine.billedShifts} {shiftsWord(previewLine.billedShifts)} → {formatRub(previewLine.afterDiscount)}
                 {previewLine.negotiated ? ", договорная цена" : discountPercent > 0 ? " со скидкой" : ""}
               </span>
             ) : (
-              <span className="text-ink-3"> · {previewLoading ? "считаем доплату…" : "сверх оплаченного"}</span>
+              <span className="text-ink-3"> · сверх оплаченного</span>
             )}
           </p>
           {conflict && beyond && (
             <div className="rounded-md border border-amber-border bg-amber-soft px-3 py-2.5" role="group" aria-label={`Нужен другой брони: ${line.name}`}>
               <p className="text-[12.5px] font-semibold text-amber">
-                Нужен {conflict.holder ? `брони ${quoteName(conflict.holder.projectName)}` : "другой брони"} с {formatWhen(conflict.from)}
+                Нужен {conflict.holder ? `брони ${quoteName(conflict.holder.projectName)}` : "другой брони"} с {formatWhen(conflict.neededFrom ?? conflict.from)}
               </p>
               <p className="mt-0.5 text-[12px] leading-snug text-ink-2">
                 {conflict.holder?.clientName ? `${conflict.holder.clientName} · ` : ""}свободно {Math.max(0, conflict.available)} из{" "}

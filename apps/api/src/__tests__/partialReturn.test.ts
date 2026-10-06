@@ -231,12 +231,20 @@ describe("принять часть — остальное у клиента", (
     const stays = [{ bookingItemId: lampItem.id, quantity: 1, until: new Date(b.endDate.getTime() + DAY).toISOString() }];
     const preview = await request(app).post(`/api/bookings/${b.id}/return-partial/preview`).set(AUTH()).send({ stays });
     expect(preview.body.conflicts).toEqual([
-      expect.objectContaining({ bookingItemId: lampItem.id, needed: 1, available: 0, holder: expect.objectContaining({ bookingId: other.id, projectName: "Клип «Ночной рейс»" }) }),
+      expect.objectContaining({
+        bookingItemId: lampItem.id,
+        needed: 1,
+        available: 0,
+        // Проверяли с конца оплаченного, а нужна она — с начала чужой брони.
+        from: b.endDate.toISOString(),
+        neededFrom: other.startDate.toISOString(),
+        holder: expect.objectContaining({ bookingId: other.id, projectName: "Клип «Ночной рейс»" }),
+      }),
     ]);
     const refused = await request(app).post(`/api/bookings/${b.id}/return-partial`).set(AUTH()).send({ stays, expectedSplitRevision: p.splitRevision });
     expect(refused.status).toBe(409);
     expect(refused.body.code).toBe("CONTINUATION_CONFLICT");
-    expect(refused.body.message).toMatch(/Ночной рейс/);
+    expect(refused.body.message).toMatch(/^Позиция «Nanlux Evoke 1200» нужна брони «Клип «Ночной рейс»» с /);
     expect((await prisma.booking.findUnique({ where: { id: b.id } })).status).toBe("ISSUED");
 
     const acked = await request(app)
@@ -247,6 +255,62 @@ describe("принять часть — остальное у клиента", (
     const audit = await prisma.auditEntry.findFirst({ where: { entityId: acked.body.continuationIds[0], action: "BOOKING_CONTINUATION_CREATED" } });
     const after = typeof audit.after === "string" ? JSON.parse(audit.after) : audit.after;
     expect(after).toMatchObject({ acknowledgedConflict: true, conflictBookingIds: other.id });
+  });
+
+  it("одна позиция с двумя сроками — спрос складывается до первого срока; галочка нужна у каждого", async () => {
+    const lamp = (
+      await prisma.equipment.create({
+        data: { importKey: `prt-lamp2-${++seq}`, name: "Arri Orbiter", category: "Свет", totalQuantity: 3, rentalRatePerShift: 6000, stockTrackingMode: "COUNT" },
+      })
+    ).id;
+    const b = await issuedBooking();
+    const lampItem = await prisma.bookingItem.create({ data: { bookingId: b.id, equipmentId: lamp, quantity: 2 } });
+    const { rebuildBookingEstimate } = await import("../services/bookings");
+    await rebuildBookingEstimate(b.id);
+    // Чужая бронь держит 2 из 3 сразу после конца нашей: свободна одна.
+    await prisma.booking.create({
+      data: {
+        clientId,
+        projectName: "Сериал «Маяк»",
+        status: "CONFIRMED",
+        startDate: new Date(b.endDate.getTime() + 2 * HOUR),
+        endDate: new Date(b.endDate.getTime() + 3 * DAY),
+        items: { create: [{ equipmentId: lamp, quantity: 2 }] },
+      },
+    });
+    const p = await plan(b.id);
+    const one = { bookingItemId: lampItem.id, quantity: 1, until: new Date(b.endDate.getTime() + DAY).toISOString() };
+    const two = { bookingItemId: lampItem.id, quantity: 1, until: new Date(b.endDate.getTime() + 2 * DAY).toISOString() };
+    // По отдельности каждая штука помещается…
+    const alone = await request(app).post(`/api/bookings/${b.id}/return-partial/preview`).set(AUTH()).send({ stays: [one] });
+    expect(alone.body.conflicts).toEqual([]);
+    // …а вместе до первого срока у клиента две при одной свободной.
+    const both = await request(app).post(`/api/bookings/${b.id}/return-partial/preview`).set(AUTH()).send({ stays: [one, two] });
+    expect(both.body.conflicts).toEqual([expect.objectContaining({ bookingItemId: lampItem.id, needed: 2, available: 1 })]);
+    const half = await request(app)
+      .post(`/api/bookings/${b.id}/return-partial`)
+      .set(AUTH())
+      .send({ stays: [{ ...one, acknowledgedConflict: true }, two], expectedSplitRevision: p.splitRevision });
+    expect(half.status).toBe(409);
+    expect(half.body.code).toBe("CONTINUATION_CONFLICT");
+    const acked = await request(app)
+      .post(`/api/bookings/${b.id}/return-partial`)
+      .set(AUTH())
+      .send({ stays: [{ ...one, acknowledgedConflict: true }, { ...two, acknowledgedConflict: true }], expectedSplitRevision: p.splitRevision });
+    expect(acked.status).toBe(200);
+    expect(acked.body.continuationIds).toHaveLength(2);
+  });
+
+  it("срок «до» дальше года — 400 (опечатка в годе не превращается в смету на миллионы)", async () => {
+    const b = await issuedBooking();
+    const p = await plan(b.id);
+    const far = await request(app)
+      .post(`/api/bookings/${b.id}/return-partial/preview`)
+      .set(AUTH())
+      .send({ stays: [{ bookingItemId: itemOf(b, stand).id, quantity: 1, until: new Date(N + 400 * DAY).toISOString() }] });
+    expect(far.status).toBe(400);
+    expect(far.body.code).toBe("PARTIAL_RETURN_BAD_STAY");
+    expect(p.splitRevision).toBeTypeOf("number");
   });
 
   it("основную сдали раньше срока, часть оставили до конца брони — продолжение с текущего момента", async () => {

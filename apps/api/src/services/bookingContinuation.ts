@@ -40,11 +40,16 @@ export const PARTIAL_RETURN_ERROR_CODES = {
   NOT_ISSUED: "PARTIAL_RETURN_NOT_ISSUED",
   STALE: "PARTIAL_RETURN_STALE",
   BAD_STAY: "PARTIAL_RETURN_BAD_STAY",
-  BEYOND_PAID: "CONTINUATION_BEYOND_PAID_NOT_YET",
   UNITS_REQUIRED: "PARTIAL_RETURN_UNITS_REQUIRED",
   PLANNED_STAY_PENDING: "PLANNED_STAY_PENDING",
   CONFLICT: "CONTINUATION_CONFLICT",
 } as const;
+
+/**
+ * Срок «до» — не дальше года: опечатка в годе (2062 вместо 2026) в поле даты
+ * иначе дала бы смету на миллионы и бронь, занимающую склад десятилетиями.
+ */
+export const MAX_STAY_AHEAD_MS = 365 * 24 * 60 * 60 * 1000;
 
 type BookingWithItems = Booking & {
   items: BookingItem[];
@@ -207,6 +212,11 @@ export type StayConflict = {
   /** С какого момента проверяли (конец оплаченного или сейчас), ISO. */
   from: string;
   until: string;
+  /**
+   * С какого момента позиция нужна другой брони, ISO: начало держателя, но не
+   * раньше начала проверки. Его и показываем — «нужна с ср 12:00».
+   */
+  neededFrom: string;
   holder: AddonConflict | null;
 };
 
@@ -324,6 +334,9 @@ export async function splitOffContinuationsInTx(
     if (!Number.isFinite(until.getTime()) || until.getTime() <= now.getTime()) {
       throw new HttpError(400, "Срок «до» должен быть позже текущего момента", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
     }
+    if (until.getTime() > now.getTime() + MAX_STAY_AHEAD_MS) {
+      throw new HttpError(400, "Срок «до» — не дальше чем через год", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
+    }
     const total = (keptByItem.get(item.id) ?? 0) + s.quantity;
     if (!Number.isInteger(s.quantity) || s.quantity <= 0 || total > item.quantity) {
       throw new HttpError(400, "Оставить можно от 1 до количества позиции", PARTIAL_RETURN_ERROR_CODES.BAD_STAY);
@@ -360,15 +373,23 @@ export async function splitOffContinuationsInTx(
 
   // ── сверх оплаченного: не нужна ли позиция другой брони ──────────────────
   const conflicts = await stayConflicts(tx, booking, args.stays, now);
-  const unacknowledged = conflicts.filter(
-    (c) => !args.stays.some((s) => s.bookingItemId === c.bookingItemId && s.acknowledgedConflict === true),
+  // Под ответственность — только если подтвердили каждое оставленное этой
+  // позиции, что выходит за начало конфликта (одна галочка не покрывает
+  // другой срок той же позиции).
+  const unacknowledged = conflicts.filter((c) =>
+    args.stays.some(
+      (s) =>
+        s.bookingItemId === c.bookingItemId &&
+        new Date(s.until).getTime() > Date.parse(c.from) &&
+        s.acknowledgedConflict !== true,
+    ),
   );
   if (unacknowledged.length > 0 && (args.conflictMode ?? "throw") === "throw") {
     const first = unacknowledged[0];
     const who = first.holder ? ` брони «${first.holder.projectName}»` : " другой брони";
     throw new HttpError(
       409,
-      `«${first.name}» нужен${who} с ${formatMoscowDayTime(new Date(first.from))} — свободно ${Math.max(0, first.available)} из ${first.needed}. Оставить можно под ответственность.`,
+      `Позиция «${first.name}» нужна${who} с ${formatMoscowDayTime(new Date(first.neededFrom))} — свободно ${Math.max(0, first.available)} из ${first.needed}. Оставить можно под ответственность.`,
       PARTIAL_RETURN_ERROR_CODES.CONFLICT,
       { conflicts: unacknowledged },
     );
@@ -504,8 +525,8 @@ async function stayConflicts(
   now: Date,
 ): Promise<StayConflict[]> {
   const itemById = new Map(booking.items.map((i) => [i.id, i]));
-  type Need = { bookingItemId: string; equipmentId: string; quantity: number; from: Date; until: Date };
-  const needs: Need[] = [];
+  type Need = { bookingItemId: string; quantity: number; from: Date; until: Date };
+  const byEquipment = new Map<string, Need[]>();
   for (const s of stays) {
     const item = itemById.get(s.bookingItemId);
     if (!item?.equipmentId) continue;
@@ -513,38 +534,55 @@ async function stayConflicts(
     const until = new Date(s.until);
     if (until.getTime() <= paidThrough.getTime()) continue;
     const from = new Date(Math.max(paidThrough.getTime(), now.getTime()));
-    const same = needs.find((n) => n.equipmentId === item.equipmentId && n.until.getTime() === until.getTime());
-    if (same) same.quantity += s.quantity;
-    else needs.push({ bookingItemId: item.id, equipmentId: item.equipmentId, quantity: s.quantity, from, until });
+    const list = byEquipment.get(item.equipmentId) ?? [];
+    list.push({ bookingItemId: item.id, quantity: s.quantity, from, until });
+    byEquipment.set(item.equipmentId, list);
   }
-  if (needs.length === 0) return [];
   const out: StayConflict[] = [];
-  for (const n of needs) {
-    const [row] = await getAvailability({
-      startDate: n.from,
-      endDate: n.until,
-      equipmentIds: [n.equipmentId],
-      excludeBookingId: booking.id,
-      tx,
-    });
-    const available = row?.availableQuantity ?? 0;
-    if (available >= n.quantity) continue;
-    const holders = await findHoldersBatch(tx, {
-      equipmentIds: [n.equipmentId],
-      start: n.from,
-      end: n.until,
-      excludeBookingId: booking.id,
-    });
-    out.push({
-      bookingItemId: n.bookingItemId,
-      equipmentId: n.equipmentId,
-      name: row?.equipment.name ?? "Позиция",
-      needed: n.quantity,
-      available,
-      from: n.from.toISOString(),
-      until: n.until.toISOString(),
-      holder: holders.get(n.equipmentId) ?? null,
-    });
+  for (const [equipmentId, needs] of byEquipment) {
+    // Разные сроки одной позиции: «1 шт до чт + 1 шт до сб» до четверга —
+    // это 2 шт, после — 1. Проверяем по отрезкам между сроками, на каждом —
+    // сколько ещё у клиента.
+    const ends = Array.from(new Set(needs.map((n) => n.until.getTime()))).sort((a, b) => a - b);
+    let segStart = new Date(Math.min(...needs.map((n) => n.from.getTime())));
+    for (const end of ends) {
+      const segEnd = new Date(end);
+      if (segEnd.getTime() <= segStart.getTime()) continue;
+      const involved = needs.filter((n) => n.until.getTime() >= end);
+      const needed = involved.reduce((sum, n) => sum + n.quantity, 0);
+      const [row] = await getAvailability({
+        startDate: segStart,
+        endDate: segEnd,
+        equipmentIds: [equipmentId],
+        excludeBookingId: booking.id,
+        tx,
+      });
+      const available = row?.availableQuantity ?? 0;
+      if (available < needed) {
+        const holders = await findHoldersBatch(tx, {
+          equipmentIds: [equipmentId],
+          start: segStart,
+          end: segEnd,
+          excludeBookingId: booking.id,
+        });
+        const holder = holders.get(equipmentId) ?? null;
+        const neededFrom = holder ? Math.max(Date.parse(holder.from), segStart.getTime()) : segStart.getTime();
+        out.push({
+          bookingItemId: involved[0].bookingItemId,
+          equipmentId,
+          name: row?.equipment.name ?? "Позиция",
+          needed,
+          available,
+          from: segStart.toISOString(),
+          until: segEnd.toISOString(),
+          neededFrom: new Date(neededFrom).toISOString(),
+          holder,
+        });
+        // Одной карточки на позицию достаточно: решают по ней.
+        break;
+      }
+      segStart = segEnd;
+    }
   }
   return out;
 }

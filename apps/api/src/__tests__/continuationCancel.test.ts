@@ -113,6 +113,11 @@ describe("«Отменить продолжение»", () => {
     expect(reservation.returnedAt).not.toBeNull();
     const debts = await request(app).get("/api/finance/debts").set(AUTH());
     expect(JSON.stringify(debts.body)).not.toContain(child);
+    // И в реестре броней — не долг: к получению 0, без кнопки «Оплата».
+    const reg = await request(app).get("/api/bookings/register").set(AUTH()).query({ clientId, limit: 100 });
+    const row = reg.body.bookings.find((r: { id: string }) => r.id === child);
+    expect(row).toMatchObject({ amountOutstanding: "0.00", financeState: "NO_CHARGES" });
+    expect(row.actions).not.toContain("payment");
     const audit = await prisma.auditEntry.findFirst({ where: { entityId: child, action: "BOOKING_CONTINUATION_CANCELLED" } });
     const payload = typeof audit.after === "string" ? JSON.parse(audit.after) : audit.after;
     expect(payload).toMatchObject({ status: "CANCELLED", reason: "Всё вернули вместе с основной", releasedUnits: 1 });
@@ -139,6 +144,20 @@ describe("«Отменить продолжение»", () => {
     expect(res.status).toBe(409);
     expect(res.body.code).toBe("CONTINUATION_HAS_PAYMENTS");
     expect((await prisma.booking.findUnique({ where: { id: child } })).status).toBe("ISSUED");
+  });
+
+  it("по продолжению выставлен счёт — отказ, пока счёт не аннулирован", async () => {
+    const { child } = await mkFamily();
+    const sa = await prisma.adminUser.findFirst({ where: { username: "sa-ccan" } });
+    const invoice = await prisma.invoice.create({
+      data: { number: `LR-CC-${seq}`, bookingId: child, kind: "FULL", status: "ISSUED", total: 2000, createdBy: sa.id },
+    });
+    const res = await cancel(child);
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("CONTINUATION_HAS_INVOICES");
+    expect((await prisma.booking.findUnique({ where: { id: child } })).status).toBe("ISSUED");
+    await prisma.invoice.update({ where: { id: invoice.id }, data: { status: "VOID" } });
+    expect((await cancel(child)).status).toBe(200);
   });
 
   it("уже принятое продолжение — отказ; причина короче трёх символов — 400", async () => {

@@ -8,8 +8,9 @@
  *  - Позиции «по плану у клиента» (взяты дольше брони) — сразу отмечены,
  *    главная кнопка «Принять N позиций»: остальное на склад, оставленное — в
  *    продолжение брони за 0 ₽ (уже оплачено в основной смете).
- *  - «Вернули не всё» — по каждой строке «остаётся у клиента N». Пока — только
- *    в пределах оплаченного; дольше — вместе с дополнительной сметой.
+ *  - «Вернули не всё» — по каждой строке «остаётся у клиента N» и до какого
+ *    срока. Дольше оплаченного — с дополнительной сметой (превью цены), а
+ *    если позиция нужна другой брони — только «под ответственность».
  *  - В киоске идёт приёмка — сначала выбор: закончить там или принять здесь.
  *  - План не загрузился — «Повторить» или обычная приёмка целиком: окно не
  *    должно отнимать то, что раньше делалось одним подтверждением.
@@ -21,6 +22,7 @@ import { pluralize } from "@/lib/format";
 import { useDialog } from "@/hooks/useDialog";
 import { toast } from "../ToastProvider";
 import {
+  anyBeyondPaid,
   anyStayPossible,
   formatWhen,
   initialStays,
@@ -115,13 +117,19 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
   }, [plan, mode, kioskOverride]);
 
   const summary = useMemo(() => (plan ? summarize(plan, stays) : null), [plan, stays]);
-  // Превью дополнительной сметы и держателей — только в «Вернули не всё»:
-  // по плану всё в пределах оплаченного, считать нечего.
+  // Превью дополнительной сметы и держателей — только в «Вернули не всё» и
+  // только когда что-то остаётся дольше оплаченного: в пределах оплаченного
+  // доплаты нет, а держателей не проверяют (эти дни бронь и так держала).
   const previewStays = useMemo(
-    () => (plan && mode === "partial" && stays.size > 0 ? partialReturnBody(plan, stays).stays : null),
+    () => (plan && mode === "partial" && anyBeyondPaid(plan, stays) ? partialReturnBody(plan, stays).stays : null),
     [plan, mode, stays],
   );
-  const { preview, loading: previewLoading, error: previewError } = useReturnPreview(bookingId, previewStays);
+  const {
+    preview,
+    loading: previewLoading,
+    error: previewError,
+    refresh: refreshPreview,
+  } = useReturnPreview(bookingId, previewStays);
   if (!open) return null;
 
   const close = () => !busyRef.current && onClose();
@@ -154,6 +162,11 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
         toast.error(staleStateMessage(e.message, "Данные обновлены"));
         onDone();
         onClose();
+      } else if (e?.code === "CONTINUATION_CONFLICT") {
+        // Позицию заняли, пока окно было открыто: пересчитать превью — у
+        // строки появится карточка держателя и «Оставить под ответственность».
+        toast.error(e.message ?? "Позиция нужна другой брони");
+        refreshPreview();
       } else {
         toast.error(e?.message ?? "Не удалось принять возврат");
       }
@@ -360,7 +373,8 @@ export function ReturnDialog({ bookingId, projectName, docNumber, open, onClose,
                 {mode === "partial" && summary.keptUnits > 0 ? (
                   blockingConflicts.length > 0 ? (
                     <span className="text-amber">
-                      Оставленное нужно другой брони — оставьте под ответственность или сократите срок
+                      Нужно другой брони: {blockingConflicts.map((c) => `«${c.name}»`).join(", ")} — оставьте под ответственность
+                      или сократите срок
                     </span>
                   ) : (
                     <>
