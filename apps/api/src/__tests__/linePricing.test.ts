@@ -232,6 +232,71 @@ describe("добор и вливание", () => {
   });
 });
 
+describe("добор в основную смету", () => {
+  it("новая строка в основной смете — на смены позиции", async () => {
+    const id = await createDraft();
+    await svc.confirmBooking(id);
+    await prisma.booking.update({ where: { id }, data: { status: "ISSUED", issuedAt: START } });
+    // Стойка целиком в доборе (в основной смете её строки нет), позиция — на 2 смены.
+    await prisma.bookingItem.delete({ where: { bookingId_equipmentId: { bookingId: id, equipmentId: stand } } });
+    await svc.rebuildBookingEstimate(id);
+    await prisma.bookingItem.create({ data: { bookingId: id, equipmentId: stand, quantity: 1, shifts: 2 } });
+    await addon.addAddonItems({
+      bookingId: id,
+      items: [{ equipmentId: stand, quantity: 1 }],
+      mode: "MERGE",
+      userId: saId,
+      createdBy: "sa-lpr",
+    });
+    const line = lineOf(await estimate(id), "Стойка C-Stand");
+    expect(line.shifts).toBe(2);
+    expect(Number(line.unitPrice)).toBe(1000);
+  });
+
+  it("строка основной сметы на другое число смен — в одну строку не сливается", async () => {
+    const id = await createDraft();
+    await svc.confirmBooking(id);
+    await prisma.booking.update({ where: { id }, data: { status: "ISSUED", issuedAt: START } });
+    // Свои смены поменяли без пересборки основной сметы: в ней STORM на 1 смену.
+    await setLineShifts(id, storm, 2);
+    await expect(
+      addon.addAddonItems({
+        bookingId: id,
+        items: [{ equipmentId: storm, quantity: 1 }],
+        mode: "MERGE",
+        userId: saId,
+        createdBy: "sa-lpr",
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "ADDON_MERGE_SHIFTS_MISMATCH" });
+    expect(lineOf(await estimate(id), "Aputure STORM 400x").quantity).toBe(2);
+  });
+});
+
+describe("тело запроса своих смен пока не принимает", () => {
+  it("черновик и правка игнорируют shifts в позициях — смены по позиции включатся с формой", async () => {
+    const res = await request(app)
+      .post("/api/bookings/draft")
+      .set(AUTH())
+      .send({
+        client: { name: "Продакшн «Сфера»" },
+        projectName: "Проверка тела",
+        startDate: START.toISOString(),
+        endDate: END.toISOString(),
+        items: [{ equipmentId: storm, quantity: 1, shifts: 5 }],
+      });
+    expect(res.status).toBe(200);
+    const id = (res.body.booking?.id ?? res.body.id) as string;
+    expect((await prisma.bookingItem.findFirst({ where: { bookingId: id } })).shifts).toBeNull();
+    expect(lineOf(await estimate(id), "Aputure STORM 400x").shifts).toBe(1);
+    const patched = await request(app)
+      .patch(`/api/bookings/${id}`)
+      .set(AUTH())
+      .send({ items: [{ equipmentId: storm, quantity: 2, shifts: 5 }] });
+    expect(patched.status).toBe(200);
+    expect((await prisma.bookingItem.findFirst({ where: { bookingId: id } })).shifts).toBeNull();
+  });
+});
+
 describe("перенос своих смен при правке", () => {
   const existing = [{ equipmentId: "a", negotiatedRatePerShift: null, shifts: 2 }];
   it("не передано — как было, null — сброс, число — записать, у своей позиции — пусто", () => {

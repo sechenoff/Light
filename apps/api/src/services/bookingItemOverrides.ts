@@ -29,7 +29,8 @@ export type ItemOverridesInput = {
 export type ExistingItemOverrides = {
   equipmentId: string | null;
   negotiatedRatePerShift: Numeric | null;
-  shifts?: number | null;
+  /** Обязательно: выборка без shifts молча сбрасывала бы свои смены при каждой правке. */
+  shifts: number | null;
 };
 
 export function carryItemOverrides<T extends ItemOverridesInput>(
@@ -68,7 +69,7 @@ export function existingItemsForQuote(
     customUnitPrice?: Numeric | null;
     quantity: number;
     negotiatedRatePerShift?: Numeric | null;
-    shifts?: number | null;
+    shifts: number | null;
   }>,
 ): QuoteItem[] {
   return items.map((i) => ({

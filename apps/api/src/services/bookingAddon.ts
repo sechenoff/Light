@@ -49,6 +49,8 @@ import { recomputeAddonEstimate } from "./addonEstimate";
 import { getAvailability } from "./availability";
 import { createFinanceEvent, recomputeBookingFinance } from "./finance";
 import { resolveBookingLinePrice, splitEquipmentDiscount } from "./pricing";
+import { effectiveLineShifts } from "@light-rental/shared";
+import { pluralShifts } from "./smetaExport/shiftsNote";
 import { findBlockingScanSession, scanSessionActiveError } from "./scanSessionPolicy";
 import { addonWindow, computeAddCaps, overStockError, reserveUnits, type StockWindow } from "./stockCap";
 
@@ -135,6 +137,7 @@ export const ADDON_ERROR_CODES = {
   NO_MAIN: "MAIN_ESTIMATE_NOT_FOUND",
   NO_ADDON: "ADDON_ESTIMATE_NOT_FOUND",
   SCAN_SESSION_ACTIVE: "SCAN_SESSION_ACTIVE",
+  MERGE_SHIFTS_MISMATCH: "ADDON_MERGE_SHIFTS_MISMATCH",
 } as const;
 
 // ── Поиск по каталогу с доступностью на даты брони ───────────────────────────
@@ -277,6 +280,30 @@ async function applyAdditionsToMainEstimate(
     if (add.quantity <= 0) continue;
     const existing = main.lines.find((l) => l.equipmentId === add.equipmentId);
     if (existing) {
+      // Довезённое считается по цене строки MAIN — значит, и на её смены.
+      // Если позиция теперь на другое число смен (своё «не меньше N» поменяли
+      // без пересборки основной сметы), слить по количеству значило бы молча
+      // пересчитать добор по чужому сроку и потерять деньги: отказ.
+      const existingShifts = existing.shifts ?? shifts;
+      const addShifts = add.snapshot
+        ? add.snapshot.shifts ?? shifts
+        : effectiveLineShifts(
+            shifts,
+            (
+              await tx.bookingItem.findUnique({
+                where: { bookingId_equipmentId: { bookingId, equipmentId: add.equipmentId } },
+                select: { shifts: true },
+              })
+            )?.shifts,
+          );
+      if (existingShifts !== addShifts) {
+        throw new HttpError(
+          409,
+          `«${existing.nameSnapshot}» в основной смете посчитана на ${existingShifts} ${pluralShifts(existingShifts)}, а добор — на ${addShifts}: в одну строку их не слить — оставьте добор отдельной сметой`,
+          ADDON_ERROR_CODES.MERGE_SHIFTS_MISMATCH,
+          { equipmentId: add.equipmentId, mainShifts: existingShifts, addonShifts: addShifts },
+        );
+      }
       const unitPrice = new Decimal(existing.unitPrice.toString());
       const quantity = existing.quantity + add.quantity;
       const lineSum = unitPrice.mul(quantity);
