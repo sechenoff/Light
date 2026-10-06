@@ -49,13 +49,21 @@ function toNumber(value: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Смены строки: у позиции, взятой дольше брони, — свои (сервер считает доп-смету
+ * так же), иначе смены брони.
+ */
+function lineShiftsOf(item: ChecklistItem, bookingShifts: number): number {
+  return item.lineShifts != null && item.lineShifts > 0 ? item.lineShifts : bookingShifts;
+}
+
 /** Цена единицы строки MAIN за весь период (снимок сметы). */
 function mainPriceOf(item: ChecklistItem, shifts: number): number {
   const snapshot = toNumber(item.mainUnitPrice);
   if (snapshot !== null) return snapshot;
   if (item.equipmentId == null) return toNumber(item.customUnitPrice) ?? 0;
-  // Старый сервер без снимка — ставка × смены, как раньше.
-  return (toNumber(item.rentalRatePerShift) ?? 0) * shifts;
+  // Старый сервер без снимка — ставка × смены строки, как раньше.
+  return (toNumber(item.rentalRatePerShift) ?? 0) * lineShiftsOf(item, shifts);
 }
 
 /** Цена единицы добора за весь период — правила доп-сметы. */
@@ -64,7 +72,7 @@ function addonPriceOf(item: ChecklistItem, shifts: number): number {
     return toNumber(item.customUnitPrice) ?? mainPriceOf(item, shifts);
   }
   if (item.mainNegotiated === true) return mainPriceOf(item, shifts);
-  return (toNumber(item.rentalRatePerShift) ?? 0) * shifts;
+  return (toNumber(item.rentalRatePerShift) ?? 0) * lineShiftsOf(item, shifts);
 }
 
 export function emptyLiveFinance(): LiveFinance {

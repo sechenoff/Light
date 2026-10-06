@@ -2,11 +2,22 @@
 
 import { useState } from "react";
 
-import { formatMoneyRubWhole } from "../../../lib/format";
+import { formatMoneyRubWhole, pluralize } from "../../../lib/format";
 import { toast } from "../../ToastProvider";
 import { CATEGORY_BAND_TEXT } from "../CategoryBand";
 import { EMPTY_CATALOG_ORDER, groupCartItems, type CatalogOrder } from "./cartOrder";
 import { EditablePrice, ListPriceBadge, RevertPriceButton } from "./EditablePrice";
+import { LineShiftsCell, LineShiftsChip, LineShiftsSheet, ShortageNote, type LineShortage } from "./LineShiftsControls";
+import {
+  effectiveLineShifts,
+  formatDueBy,
+  formatDueShort,
+  isLongLine,
+  lineDueAt,
+  longLinesInfo,
+  longLinesSummary,
+  shiftsWord,
+} from "./lineShifts";
 import { maxReasonFor } from "./maxReason";
 import { RemoveItemConfirm } from "./RemoveItemConfirm";
 import type { CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem } from "./types";
@@ -58,11 +69,30 @@ type Props = {
    * добавлению категории, строки внутри в порядке добавления.
    */
   catalogOrder?: CatalogOrder;
+  /**
+   * Свои смены позиции «не меньше N» (мокап M1). Не передан — смены только
+   * для чтения. null — вернуть позицию к сроку брони.
+   */
+  onChangeLineShifts?: (equipmentId: string, shifts: number | null) => void;
+  /** Конец брони (мс) — от него считается срок возврата длинной позиции. */
+  bookingEndMs?: number | null;
+  /** Период брони для шторки: «пн 12 окт. 10:00 → вт 13 окт. 10:00». */
+  periodLabel?: string | null;
+  /** Не хватает склада на срок длинной позиции: equipmentId → свободно. */
+  lineShortages?: Map<string, LineShortage>;
 };
 
 /** Действующая ставка за смену: договорная, если есть, иначе прайсовая. */
 export function rateOf(it: CatalogSelectedItem): number {
   return it.negotiatedRatePerShift ?? Number(it.dailyPrice);
+}
+
+/**
+ * Сумма каталожной строки: ставка × количество × действующие смены строки —
+ * большее из своих и смен брони, как на сервере.
+ */
+export function catalogLineSum(it: CatalogSelectedItem, bookingShifts: number): number {
+  return rateOf(it) * it.quantity * effectiveLineShifts(bookingShifts, it.shifts);
 }
 
 /**
@@ -76,7 +106,7 @@ export function computeCartTotal(
   shifts: number,
 ): number {
   let sum = 0;
-  for (const it of selected.values()) sum += rateOf(it) * it.quantity * shifts;
+  for (const it of selected.values()) sum += catalogLineSum(it, shifts);
   for (const c of customItems) sum += c.unitPrice * c.quantity;
   return sum;
 }
@@ -104,8 +134,18 @@ type CartRow = {
    * Отвечает только за подпись «/см» — арифметику несёт `shiftFactor`.
    */
   perShift: boolean;
-  /** На сколько смен умножается строка: каталог — на все, своя — ни на одну. */
+  /** На сколько смен умножается строка: каталог — на свои (не меньше брони), своя — ни на одну. */
   shiftFactor: number;
+  /** Своё значение смен каталожной позиции; null — как у брони. */
+  ownShifts: number | null;
+  /** Строка длиннее брони: срок возврата (мс), иначе null. */
+  dueMs: number | null;
+  /** Не хватает склада на срок строки. */
+  shortage: LineShortage | null;
+  /** Правка своих смен. undefined — только чтение или у строки нет смен. */
+  onShiftsChange: ((next: number | null) => void) | undefined;
+  /** Открыть шторку смен (телефон). */
+  onOpenShifts: (() => void) | undefined;
   sum: number | null;
   /** Корректировка доступности после смены дат. */
   adjustment: CatalogRowAdjustment | undefined;
@@ -236,7 +276,16 @@ export function EquipmentCartZone({
   onChangeNegotiatedRate,
   onOpenCustomModal,
   catalogOrder = EMPTY_CATALOG_ORDER,
+  onChangeLineShifts,
+  bookingEndMs = null,
+  periodLabel = null,
+  lineShortages,
 }: Props) {
+  // Шторка смен (телефон) — одна на состав, по equipmentId.
+  const [sheetFor, setSheetFor] = useState<string | null>(null);
+  // Нет дат брони — нет и срока строки: подпись «возврат …» не выдумываем.
+  const dueFor = (lineShifts: number | null): number | null =>
+    bookingEndMs != null ? lineDueAt(bookingEndMs, shifts, lineShifts) : null;
   const catalogRow = (it: CatalogSelectedItem): CartRow => ({
     key: `eq-${it.equipmentId}`,
     name: it.name,
@@ -248,8 +297,15 @@ export function EquipmentCartZone({
     rate: rateOf(it),
     listRate: it.negotiatedRatePerShift != null ? Number(it.dailyPrice) : null,
     perShift: true,
-    shiftFactor: shifts,
-    sum: rateOf(it) * it.quantity * shifts,
+    shiftFactor: effectiveLineShifts(shifts, it.shifts),
+    ownShifts: it.shifts ?? null,
+    dueMs: isLongLine(shifts, it.shifts) ? dueFor(it.shifts ?? null) : null,
+    shortage: isLongLine(shifts, it.shifts) ? lineShortages?.get(it.equipmentId) ?? null : null,
+    onShiftsChange: onChangeLineShifts
+      ? (next) => onChangeLineShifts(it.equipmentId, next)
+      : undefined,
+    onOpenShifts: onChangeLineShifts ? () => setSheetFor(it.equipmentId) : undefined,
+    sum: catalogLineSum(it, shifts),
     adjustment: adjustments?.get(it.equipmentId),
     onDec: () => onChangeQty(it.equipmentId, it.quantity - 1),
     onInc: () => onChangeQty(it.equipmentId, it.quantity + 1),
@@ -273,6 +329,11 @@ export function EquipmentCartZone({
       // Цена своей позиции — за всю бронь, а не за смену: множителя нет.
       perShift: false,
       shiftFactor: 1,
+      ownShifts: null,
+      dueMs: null,
+      shortage: null,
+      onShiftsChange: undefined,
+      onOpenShifts: undefined,
       sum: it.unitPrice * it.quantity,
       adjustment: undefined,
       onDec: () => onChangeCustomQty?.(it.tempId, it.quantity - 1),
@@ -292,6 +353,11 @@ export function EquipmentCartZone({
       listRate: null,
       perShift: false,
       shiftFactor: 1,
+      ownShifts: null,
+      dueMs: null,
+      shortage: null,
+      onShiftsChange: undefined,
+      onOpenShifts: undefined,
       sum: null,
       adjustment: undefined,
       onDec: () => onChangeOffCatalogQty?.(it.tempId, it.quantity - 1),
@@ -314,6 +380,14 @@ export function EquipmentCartZone({
   const rowCount = sections.reduce((n, section) => n + section.rows.length, 0);
 
   const total = computeCartTotal(selected, customItems, shifts);
+  // «1 смена · 55 позиций · 2 позиции на 2 смены» — только когда есть
+  // позиции дольше брони: без них подпись повторяла бы панель «Расчёт».
+  const longSummary = longLinesSummary(selected.values(), shifts);
+  const longInfo = bookingEndMs != null ? longLinesInfo(selected.values(), shifts, bookingEndMs) : null;
+  const summaryLine = longSummary
+    ? `${shifts} ${shiftsWord(shifts)} · ${rowCount} ${pluralize(rowCount, "позиция", "позиции", "позиций")}`
+    : null;
+  const sheetItem = sheetFor ? selected.get(sheetFor) ?? null : null;
 
   // «−» на количестве 1 убирал позицию молча, и промах пальцем стоил дорого:
   // в смете на сорок строк потом не вспомнить, что именно пропало. Теперь
@@ -326,9 +400,16 @@ export function EquipmentCartZone({
     // flex-wrap: длинная подпись кнопки не помещается рядом с заголовком на
     // телефоне и в узкой колонке 1024–1279 — там кнопка уходит на свою строку.
     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 pb-2.5 pt-2.5">
-      <span className="font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-3">
-        Состав заявки{rowCount > 0 && <span className="ml-1 font-mono text-emerald">· {rowCount}</span>}
-      </span>
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-3">
+          Состав заявки{rowCount > 0 && <span className="ml-1 font-mono text-emerald">· {rowCount}</span>}
+        </span>
+        {summaryLine && longSummary && (
+          <span className="font-mono text-[12px] text-ink-2">
+            {summaryLine} · <span className="text-indigo">{longSummary}</span>
+          </span>
+        )}
+      </div>
       <button
         type="button"
         onClick={onOpenCustomModal}
@@ -351,9 +432,27 @@ export function EquipmentCartZone({
     );
   }
 
+  const longBanner =
+    longInfo && bookingEndMs != null ? (
+      <div className="mx-5 mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-indigo-border bg-indigo-soft px-3 py-2 text-[12.5px] text-indigo">
+        <span className="font-semibold">
+          {longInfo.count} {pluralize(longInfo.count, "позиция взята", "позиции взяты", "позиций взяты")}{" "}
+          {longInfo.lineShifts != null
+            ? `на ${longInfo.lineShifts} ${pluralize(longInfo.lineShifts, "смену", "смены", "смен")}.`
+            : "дольше брони."}
+        </span>
+        <span>
+          Бронь ждём {formatDueBy(bookingEndMs)},{" "}
+          {longInfo.count === 1 ? "эту позицию" : longInfo.lineShifts != null ? "эти позиции" : "последнюю из них"} —{" "}
+          {formatDueBy(longInfo.latestDueMs)}. Склад держит {longInfo.count === 1 ? "её" : "их"} до своего срока.
+        </span>
+      </div>
+    ) : null;
+
   return (
     <div>
       {header}
+      {longBanner}
 
       {/* ── Десктоп: смета-таблица ──
           Брейкпоинты нелинейны намеренно. Колонка формы шире всего НЕ на
@@ -402,6 +501,14 @@ export function EquipmentCartZone({
                         {row.badge && <Badge badge={row.badge} />}
                         {row.listRate != null && <ListPriceBadge value={row.listRate} />}
                       </div>
+                      {row.shortage && (
+                        <div className="mt-0.5 text-[11.5px]">
+                          <ShortageNote shortage={row.shortage} quantity={row.quantity} />
+                        </div>
+                      )}
+                      {!row.perShift && row.rate != null && (
+                        <div className="mt-0.5 text-[11.5px] text-ink-3">цена за весь срок аренды</div>
+                      )}
                       <AdjustmentNote adjustment={row.adjustment} />
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -450,8 +557,23 @@ export function EquipmentCartZone({
                     </td>
                     {/* У своей позиции цена задана за всю бронь: «1» здесь
                         читалось бы как «оплачена одна смена из трёх». */}
-                    <td className="mono-num px-3 py-2 text-right text-ink-3">
-                      {row.perShift ? row.shiftFactor : "—"}
+                    <td className="px-3 py-2 text-right align-top">
+                      {row.perShift ? (
+                        <LineShiftsCell
+                          name={row.name}
+                          own={row.ownShifts}
+                          bookingShifts={shifts}
+                          dueFor={dueFor}
+                          onChange={row.onShiftsChange}
+                        />
+                      ) : (
+                        <span
+                          title="У своей позиции нет смен — цена за весь срок"
+                          className="inline-flex h-8 min-w-[48px] items-center justify-end px-2 font-mono text-[12.5px] text-ink-3"
+                        >
+                          —
+                        </span>
+                      )}
                     </td>
                     <td className="mono-num whitespace-nowrap px-3 py-2 text-right font-semibold text-ink">
                       {row.sum == null ? <span className="text-ink-3">—</span> : formatMoneyRubWhole(row.sum)}
@@ -466,8 +588,13 @@ export function EquipmentCartZone({
           ))}
           <tfoot>
             <tr className="border-t-2 border-ink">
-              <th scope="row" colSpan={4} className="py-2.5 pl-5 pr-3 text-left font-semibold text-ink">
-                Сумма позиций
+              <th scope="row" colSpan={4} className="py-2.5 pl-5 pr-3 text-left">
+                <span className="font-semibold text-ink">Сумма позиций</span>
+                {summaryLine && longSummary && (
+                  <span className="ml-2 font-mono text-[12px] font-normal text-ink-3">
+                    {summaryLine} · {longSummary}
+                  </span>
+                )}
               </th>
               <td className="mono-num whitespace-nowrap px-3 py-2.5 text-right text-[15px] font-bold text-ink">
                 {formatMoneyRubWhole(total)} ₽
@@ -541,10 +668,35 @@ export function EquipmentCartZone({
                       ) : (
                         <span className="font-semibold text-ink">{formatMoneyRubWhole(row.rate)}</span>
                       )}
-                      <span className="text-ink-3">
-                        {row.perShift && "/см"} × {row.quantity}
-                        {row.shiftFactor > 1 && <> × {row.shiftFactor} см</>} =
-                      </span>
+                      {row.perShift && row.onOpenShifts ? (
+                        <>
+                          <span className="text-ink-3">/см × {row.quantity} ×</span>
+                          <LineShiftsChip
+                            own={row.ownShifts}
+                            bookingShifts={shifts}
+                            name={row.name}
+                            onOpen={row.onOpenShifts}
+                          />
+                          <span className="text-ink-3">=</span>
+                        </>
+                      ) : row.perShift ? (
+                        // Только чтение: множитель — когда смен больше одной, как раньше.
+                        <span className="text-ink-3">
+                          /см × {row.quantity}
+                          {row.shiftFactor > 1 && (
+                            <>
+                              {" "}
+                              × <span className={row.dueMs != null ? "text-indigo" : undefined}>{row.shiftFactor} см</span>
+                            </>
+                          )}{" "}
+                          =
+                        </span>
+                      ) : (
+                        <span className="text-ink-3">
+                          <span className="font-sans">за весь срок, без смен</span>
+                          {row.quantity > 1 && <> × {row.quantity}</>} =
+                        </span>
+                      )}
                       <span className="font-semibold text-ink">
                         {formatMoneyRubWhole(row.sum ?? 0)} ₽
                       </span>
@@ -559,6 +711,12 @@ export function EquipmentCartZone({
                       )}
                     </span>
                   )}
+                  {(row.dueMs != null || row.shortage) && (
+                    <span className="col-start-2 col-end-[-1] flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px]">
+                      {row.dueMs != null && <span className="text-indigo">возврат {formatDueShort(row.dueMs)}</span>}
+                      {row.shortage && <ShortageNote shortage={row.shortage} quantity={row.quantity} />}
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -569,6 +727,21 @@ export function EquipmentCartZone({
           <span className="mono-num text-[15px] font-bold text-ink">{formatMoneyRubWhole(total)} ₽</span>
         </div>
       </div>
+
+      {sheetItem && onChangeLineShifts && (
+        <LineShiftsSheet
+          name={sheetItem.name}
+          quantity={sheetItem.quantity}
+          own={sheetItem.shifts ?? null}
+          bookingShifts={shifts}
+          periodLabel={periodLabel}
+          rate={rateOf(sheetItem)}
+          dueFor={dueFor}
+          shortage={lineShortages?.get(sheetItem.equipmentId) ?? null}
+          onChange={(next) => onChangeLineShifts(sheetItem.equipmentId, next)}
+          onClose={() => setSheetFor(null)}
+        />
+      )}
 
       {/* Одно окно на обе раскладки — иначе на переходе через брейкпоинт
           подтверждение открывалось бы дважды. */}

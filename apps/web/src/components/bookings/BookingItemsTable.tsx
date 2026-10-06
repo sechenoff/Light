@@ -5,6 +5,7 @@ import { formatMoneyRub } from "@/lib/format";
 import { groupByCategory } from "@/lib/groupByCategory";
 import { CategoryBandHeading, CategoryBandRow } from "./CategoryBand";
 import type { RetroEditItem } from "./useRetroEdit";
+import { formatDueLong, isLongLine, lineDueAt, shiftsWordAcc } from "./create/lineShifts";
 
 // Таблица «Позиции брони» (фаза 4.10, вынос из bookings/[id]/page.tsx,
 // поведение 1:1). Единый список позиций: когда есть снапшот сметы — цены/суммы
@@ -16,6 +17,8 @@ import type { RetroEditItem } from "./useRetroEdit";
 // первого появления; добавленная «задним числом» строка встаёт в свою группу.
 
 export type ItemsTableBooking = {
+  /** Конец брони (ISO) — от него считается срок позиции, взятой дольше. */
+  endDate?: string;
   items: Array<{
     id: string;
     equipmentId: string | null;
@@ -31,11 +34,15 @@ export type ItemsTableBooking = {
     } | null;
   }>;
   estimate?: {
+    /** Смены брони в смете. */
+    shifts?: number;
     lines?: Array<{
       equipmentId?: string | null;
       nameSnapshot: string;
       unitPrice: string;
       lineSum: string;
+      /** Смены строки — больше смен брони у позиции, взятой дольше. */
+      shifts?: number | null;
     }> | null;
   } | null;
   /** Доп-смета (доборы поверх согласованной): строка таблицы показывает
@@ -68,6 +75,19 @@ export function BookingItemsTable({
   onToggleDeleted,
 }: BookingItemsTableProps) {
   const estLines = booking.estimate?.lines ?? [];
+  const bookingShifts = Math.max(1, booking.estimate?.shifts ?? 1);
+  const endMs = booking.endDate ? Date.parse(booking.endDate) : NaN;
+  // «на 2 смены · до ср 14 окт. 10:00» — позиция взята дольше брони.
+  const lineShiftsByEquipment = new Map<string, number>();
+  for (const l of estLines) {
+    if (l.equipmentId && l.shifts != null && isLongLine(bookingShifts, l.shifts)) lineShiftsByEquipment.set(l.equipmentId, l.shifts);
+  }
+  function longNote(equipmentId: string | null): string | null {
+    const own = equipmentId ? lineShiftsByEquipment.get(equipmentId) : undefined;
+    if (own == null) return null;
+    const due = Number.isFinite(endMs) ? ` · до ${formatDueLong(lineDueAt(endMs, bookingShifts, own))}` : "";
+    return `на ${own} ${shiftsWordAcc(own)}${due}`;
+  }
   const priceByEquipmentId = new Map<string, { unitPrice: string; lineSum: string }>();
   const priceByName = new Map<string, { unitPrice: string; lineSum: string }>();
   for (const l of estLines) {
@@ -151,6 +171,9 @@ export function BookingItemsTable({
                       <p className="text-sm font-medium text-ink break-words">
                         {it.equipment?.name ?? it.customName ?? "—"}
                       </p>
+                      {longNote(it.equipmentId) && (
+                        <p className="mt-0.5 text-xs text-indigo">{longNote(it.equipmentId)}</p>
+                      )}
                       {addon && (
                         <p className="mt-0.5 text-xs text-accent" title="Добавлено поверх согласованной сметы">
                           добор ×{addon.quantity}
@@ -224,6 +247,9 @@ export function BookingItemsTable({
                           </span>
                         )}
                         {it._added && <span className="text-emerald ml-1">· новая позиция</span>}
+                        {longNote(it.equipmentId) && (
+                          <span className="ml-1 text-indigo">· {longNote(it.equipmentId)}</span>
+                        )}
                         {addon && !retroEditMode && (
                           <span className="text-accent ml-1" title="Добавлено поверх согласованной сметы">
                             · добор ×{addon.quantity}

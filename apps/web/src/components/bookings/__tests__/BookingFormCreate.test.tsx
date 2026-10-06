@@ -137,6 +137,41 @@ describe("BookingForm create — черновик в localStorage", () => {
     expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("Студия Тест");
   });
 
+  it("свои смены позиции переживают черновик, мусор из localStorage — «как у брони»", async () => {
+    const HOUR = 3_600_000;
+    const start = new Date(Math.ceil((Date.now() + 7 * 24 * HOUR) / HOUR) * HOUR);
+    const local = (d: Date) => {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    seedDraft({
+      pickupLocal: local(start),
+      returnLocal: local(new Date(start.getTime() + 24 * HOUR)),
+      selected: [
+        { equipmentId: "eq-1", name: "Arri SkyPanel S60", category: "Свет", quantity: 2, dailyPrice: "5000", availableQuantity: 5, shifts: 3 },
+        { equipmentId: "eq-2", name: "Godox SL200", category: "Свет", quantity: 1, dailyPrice: "1500", availableQuantity: 5, shifts: "много" },
+      ],
+    });
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      fetchCalls.push({ url, init });
+      if (url.includes("/api/availability"))
+        return jsonResponse({ rows: [EQ_ROW, { ...EQ_ROW, equipmentId: "eq-2", name: "Godox SL200", rentalRatePerShift: "1500" }] });
+      if (url.includes("/api/bookings/quote"))
+        return jsonResponse({ shifts: 1, subtotal: "0", discountPercent: "50", discountAmount: "0", totalAfterDiscount: "0", lines: [] });
+      return jsonResponse({ vehicles: [], clients: [] });
+    }) as unknown as typeof fetch;
+    render(<BookingForm mode="create" />);
+    await screen.findByText(/Восстановлен черновик/);
+    expect(screen.getAllByRole("button", { name: /Смен: 3, своё значение — Arri SkyPanel S60/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /Смен: 1, как у брони — Godox SL200/ }).length).toBeGreaterThan(0);
+    await waitFor(() => expect(fetchCalls.some((c) => c.url.includes("/api/bookings/quote"))).toBe(true), { timeout: 3000 });
+    const quote = fetchCalls.filter((c) => c.url.includes("/api/bookings/quote")).at(-1)!;
+    const items = JSON.parse(String(quote.init!.body)).items as Array<{ equipmentId: string; shifts: number | null }>;
+    expect(items.find((i) => i.equipmentId === "eq-1")?.shifts).toBe(3);
+    expect(items.find((i) => i.equipmentId === "eq-2")?.shifts).toBeNull();
+  });
+
   it("«Начать заново» очищает localStorage и сбрасывает форму", async () => {
     seedDraft();
     render(<BookingForm mode="create" />);

@@ -21,6 +21,8 @@ type SummaryPanelProps = {
   discountPercent: number;
   itemCount: number;
   shifts: number;
+  /** «2 позиции на 2 смены» — позиции, взятые дольше брони; null — таких нет. */
+  longLinesNote?: string | null;
   isLoadingQuote: boolean;
   /** true, когда серверный пересчёт сметы упал — показываем предварительный
    *  локальный расчёт с честной пометкой, а не выдаём его за «обновлено». */
@@ -78,6 +80,7 @@ export function SummaryPanel({
   discountPercent,
   itemCount,
   shifts,
+  longLinesNote = null,
   isLoadingQuote,
   quoteError = false,
   checks,
@@ -196,6 +199,7 @@ export function SummaryPanel({
             <>
               {effectiveShifts} {pluralize(effectiveShifts, "день", "дня", "дней")} · {itemCount}{" "}
               {pluralize(itemCount, "позиция", "позиции", "позиций")}
+              {longLinesNote && <span className="text-indigo"> · {longLinesNote}</span>}
             </>
           )}
         </p>

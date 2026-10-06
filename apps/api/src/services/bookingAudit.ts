@@ -44,6 +44,9 @@ export async function bookingAuditSnapshot(
       quantity: item.quantity,
       customUnitPrice: item.customUnitPrice?.toString() ?? null,
       negotiatedRatePerShift: item.negotiatedRatePerShift?.toString() ?? null,
+      // Свои смены позиции меняют сумму и срок, когда склад держит позицию:
+      // правка одних смен без этого поля не оставила бы записи в журнале.
+      shifts: item.shifts ?? null,
     };
   }
   result.itemsDetails = Object.fromEntries(

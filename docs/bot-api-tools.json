@@ -130,7 +130,8 @@
                 "type": "object",
                 "properties": {
                   "equipmentId": { "type": "string", "description": "ID оборудования из каталога" },
-                  "quantity": { "type": "integer", "minimum": 1, "description": "Количество" }
+                  "quantity": { "type": "integer", "minimum": 1, "description": "Количество" },
+                  "shifts": { "type": ["integer", "null"], "minimum": 1, "maximum": 60, "description": "Своё число смен позиции «не меньше N» (бронь на 1 смену, прибор — на 2). Не передано — как было, null — как у брони" }
                 },
                 "required": ["equipmentId", "quantity"],
                 "additionalProperties": false
@@ -195,7 +196,8 @@
                 "type": "object",
                 "properties": {
                   "equipmentId": { "type": "string", "description": "ID оборудования" },
-                  "quantity": { "type": "integer", "minimum": 1 }
+                  "quantity": { "type": "integer", "minimum": 1 },
+                  "shifts": { "type": ["integer", "null"], "minimum": 1, "maximum": 60, "description": "Своё число смен позиции «не меньше N» (бронь на 1 смену, прибор — на 2). Не передано — как было, null — как у брони" }
                 },
                 "required": ["equipmentId", "quantity"],
                 "additionalProperties": false
@@ -261,7 +263,8 @@
                 "type": "object",
                 "properties": {
                   "equipmentId": { "type": "string" },
-                  "quantity": { "type": "integer", "minimum": 1 }
+                  "quantity": { "type": "integer", "minimum": 1 },
+                  "shifts": { "type": ["integer", "null"], "minimum": 1, "maximum": 60, "description": "Своё число смен позиции «не меньше N» (бронь на 1 смену, прибор — на 2). Не передано — как было, null — как у брони" }
                 },
                 "required": ["equipmentId", "quantity"],
                 "additionalProperties": false

@@ -9,6 +9,7 @@ import { formatMoneyRub, pluralize } from "../../lib/format";
 import { StatusPill } from "../StatusPill";
 import { RoleBadge } from "../RoleBadge";
 import { RejectBookingModal } from "./RejectBookingModal";
+import { formatDueLong, isLongLine, lineDueAt, shiftsWordAcc } from "./create/lineShifts";
 import { ApprovalContext } from "./ApprovalContext";
 import { readBookingsListHref } from "./bookingsListNav";
 import { toast } from "../ToastProvider";
@@ -25,6 +26,8 @@ type EstimateLine = {
   quantity: number;
   unitPrice: string;
   lineSum: string;
+  /** Смены строки — больше смен брони у позиции, взятой дольше. */
+  shifts?: number | null;
 };
 
 /**
@@ -41,6 +44,8 @@ type DisplayLine = {
   quantity: number;
   unitPrice: string | null;
   lineSum: string | null;
+  /** «на 2 смены · до ср 14 окт. 10:00» — позиция взята дольше брони. */
+  longNote: string | null;
 };
 
 type BookingForReview = {
@@ -284,6 +289,13 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
   // смете строим строки из booking.items (имя/кол-во/ставка из каталога).
   const estimateLines: EstimateLine[] = booking.estimate?.lines ?? [];
   const hasEstimate = estimateLines.length > 0;
+  const bookingShifts = Math.max(1, booking.estimate?.shifts ?? 1);
+  const endMs = Date.parse(booking.endDate);
+  const longNoteOf = (lineShifts: number | null | undefined): string | null => {
+    if (lineShifts == null || !isLongLine(bookingShifts, lineShifts)) return null;
+    const due = Number.isFinite(endMs) ? ` · до ${formatDueLong(lineDueAt(endMs, bookingShifts, lineShifts))}` : "";
+    return `на ${lineShifts} ${shiftsWordAcc(lineShifts)}${due}`;
+  };
   const lines: DisplayLine[] = hasEstimate
     ? estimateLines.map((ln) => ({
         id: ln.id,
@@ -292,6 +304,7 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
         quantity: ln.quantity,
         unitPrice: ln.unitPrice,
         lineSum: ln.lineSum,
+        longNote: ln.equipmentId ? longNoteOf(ln.shifts) : null,
       }))
     : booking.items.map((it) => {
         // Custom-позиции (вне каталога) несут имя/категорию/цену на самом item.
@@ -303,6 +316,7 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
           quantity: it.quantity,
           unitPrice: price,
           lineSum: price != null ? String(Number(price) * it.quantity) : null,
+          longNote: null,
         };
       });
   const hasLines = lines.length > 0;
@@ -457,7 +471,7 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
                   <thead>
                     <tr className="border-b border-border bg-surface-subtle/50 text-xs text-ink-2">
                       <th className="px-4 py-2 text-left font-medium">Наименование</th>
-                      <th className="px-4 py-2 text-right font-medium w-28">Цена/день</th>
+                      <th className="px-4 py-2 text-right font-medium w-28" title="Цена единицы за весь срок позиции">Цена</th>
                       <th className="px-4 py-2 text-center font-medium w-20">Кол-во</th>
                       <th className="px-4 py-2 text-right font-medium w-28">Сумма</th>
                     </tr>
@@ -474,7 +488,10 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
                         </tr>
                         {catLines.map((ln) => (
                           <tr key={ln.id} className="border-t border-border">
-                            <td className="px-4 py-2 text-ink font-medium">{ln.nameSnapshot}</td>
+                            <td className="px-4 py-2 text-ink font-medium">
+                              {ln.nameSnapshot}
+                              {ln.longNote && <div className="text-xs font-normal text-indigo">{ln.longNote}</div>}
+                            </td>
                             <td className="px-4 py-2 text-right mono-num text-ink-2">
                               {ln.unitPrice != null ? `${formatMoneyRub(ln.unitPrice)} ₽` : "—"}
                             </td>

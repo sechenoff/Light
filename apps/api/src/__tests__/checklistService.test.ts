@@ -227,6 +227,22 @@ describe("getChecklistState", () => {
     expect(countItem?.quantity).toBe(5);
   });
 
+  it("смены строки: свои, если позицию взяли дольше брони, иначе смены брони (не больше 60)", async () => {
+    // Сметы нет — смены брони по умолчанию 1.
+    await prisma.bookingItem.update({ where: { id: countBookingItemId }, data: { shifts: 3 } });
+    try {
+      let state = await checklistService.getChecklistState(sessionId);
+      expect(state.shifts).toBe(1);
+      expect(state.items.find((i) => i.bookingItemId === countBookingItemId)?.lineShifts).toBe(3);
+      expect(state.items.find((i) => i.bookingItemId === unitBookingItemId)?.lineShifts).toBe(1);
+      await prisma.bookingItem.update({ where: { id: countBookingItemId }, data: { shifts: 99 } });
+      state = await checklistService.getChecklistState(sessionId);
+      expect(state.items.find((i) => i.bookingItemId === countBookingItemId)?.lineShifts).toBe(60);
+    } finally {
+      await prisma.bookingItem.update({ where: { id: countBookingItemId }, data: { shifts: null } });
+    }
+  });
+
   it("progress считает только UNIT-чекбоксы", async () => {
     const state = await checklistService.getChecklistState(sessionId);
     // 2 UNIT юнита, 1 отмечен (COUNT позиции не входят в totalItems т.к. не отслеживаются на сервере)

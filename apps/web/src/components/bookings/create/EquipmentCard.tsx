@@ -6,6 +6,8 @@ import { AiResultBanner } from "./AiResultBanner";
 import { buildCatalogOrder } from "./cartOrder";
 import { CatalogBrowser } from "./CatalogBrowser";
 import { EquipmentCartZone, computeCartTotal } from "./EquipmentCartZone";
+import type { LineShortage } from "./LineShiftsControls";
+import { periodLabelOf } from "./lineShifts";
 import { ReviewPanel } from "./ReviewPanel";
 import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem, PendingReviewItem } from "./types";
 import { formatMoneyRubWhole, pluralize } from "../../../lib/format";
@@ -58,6 +60,10 @@ type Props = {
   onAdd: (row: AvailabilityRow) => void;
   onChangeQty: (equipmentId: string, newQty: number) => void;
   onChangeNegotiatedRate?: (equipmentId: string, rate: number | null) => void;
+  /** Свои смены позиции; null — как у брони. Не передан — смены только для чтения. */
+  onChangeLineShifts?: (equipmentId: string, shifts: number | null) => void;
+  /** Не хватает склада на срок длинной позиции (см. EquipmentCartZone). */
+  lineShortages?: Map<string, LineShortage>;
   onRemove: (equipmentId: string) => void;
   onChangeOffCatalogQty?: (tempId: string, newQty: number) => void;
   onRemoveOffCatalog?: (tempId: string) => void;
@@ -108,6 +114,8 @@ export function EquipmentCard({
   onAdd,
   onChangeQty,
   onChangeNegotiatedRate,
+  onChangeLineShifts,
+  lineShortages,
   onRemove,
   onChangeOffCatalogQty,
   onRemoveOffCatalog,
@@ -297,6 +305,10 @@ export function EquipmentCard({
           adjustments={adjustments}
           onChangeQty={onChangeQty}
           onChangeNegotiatedRate={onChangeNegotiatedRate}
+          onChangeLineShifts={onChangeLineShifts}
+          lineShortages={lineShortages}
+          bookingEndMs={returnISO ? new Date(returnISO).getTime() : null}
+          periodLabel={periodLabelOf(pickupISO, returnISO)}
           onRemove={onRemove}
           onChangeCustomQty={onChangeCustomQty}
           onRemoveCustom={onRemoveCustom}

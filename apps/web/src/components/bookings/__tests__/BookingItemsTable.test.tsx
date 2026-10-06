@@ -130,3 +130,29 @@ describe("BookingItemsTable — группы по категориям", () => {
     expect(screen.getByRole("table").querySelector("th[scope=rowgroup]")).toHaveAttribute("colspan", "3");
   });
 });
+
+describe("BookingItemsTable — позиция, взятая дольше брони", () => {
+  it("подпись «на N смен · до …» только у строки длиннее брони", () => {
+    const HOUR = 3_600_000;
+    const end = new Date(Math.ceil((Date.now() + 7 * 24 * HOUR) / HOUR) * HOUR).toISOString();
+    render(
+      <BookingItemsTable
+        booking={{
+          endDate: end,
+          items: BOOKING.items,
+          estimate: {
+            shifts: 1,
+            lines: [
+              { equipmentId: "eq-main", nameSnapshot: "Aputure 600d", unitPrice: "18000", lineSum: "72000", shifts: 2 },
+              { equipmentId: "eq-addon", nameSnapshot: "ARRI SkyPanel S60", unitPrice: "9000", lineSum: "18000", shifts: 1 },
+            ],
+          },
+        }}
+        {...NOOP}
+      />,
+    );
+    const table = within(screen.getByRole("table"));
+    expect(table.getByText(/на 2 смены · до /)).toBeInTheDocument();
+    expect(table.getAllByText(/на \d+ смен/)).toHaveLength(1);
+  });
+});

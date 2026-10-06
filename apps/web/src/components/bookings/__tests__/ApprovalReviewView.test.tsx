@@ -398,3 +398,20 @@ describe("ApprovalReviewView — контекст согласования (Appr
     );
   });
 });
+
+describe("ApprovalReviewView — позиция, взятая дольше брони", () => {
+  beforeEach(() => mockFetchRoutes());
+
+  it("строка длиннее брони подписана «на N смен · до …»", () => {
+    const booking = {
+      ...BOOKING,
+      estimate: {
+        ...BOOKING.estimate,
+        lines: BOOKING.estimate.lines.map((l) => (l.id === "ln1" ? { ...l, shifts: 4 } : { ...l, shifts: 2 })),
+      },
+    };
+    render(<ApprovalReviewView booking={booking} onReload={vi.fn()} />);
+    expect(screen.getByText(/на 4 смены · до /)).toBeInTheDocument();
+    expect(screen.getAllByText(/на \d+ смен/)).toHaveLength(1);
+  });
+});

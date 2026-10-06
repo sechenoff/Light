@@ -29,6 +29,9 @@ import { PaymentFormCard, type PaymentForm } from "./create/PaymentFormCard";
 import { SummaryPanel } from "./create/SummaryPanel";
 import { computeTransportListClient } from "./create/transportClientCalc";
 import { AddCustomItemModal } from "./create/AddCustomItemModal";
+import { catalogLineSum } from "./create/EquipmentCartZone";
+import { longLinesSummary, sanitizeLineShifts } from "./create/lineShifts";
+import { useLineWindowShortages } from "./create/useLineWindowShortages";
 import type {
   AvailabilityRow,
   CatalogRowAdjustment,
@@ -94,6 +97,8 @@ export type BookingDetail = {
     customCategory: string | null;
     /** Договорная ставка за смену; null — цена по прайсу. */
     negotiatedRatePerShift?: string | null;
+    /** Своё число смен позиции «не меньше N»; null — как у брони. */
+    shifts?: number | null;
     equipment: {
       id: string;
       name: string;
@@ -368,7 +373,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
   const [selected, setSelected] = useState<Map<string, CatalogSelectedItem>>(() => {
     if (!isEdit && draft) {
       // availableQuantity/dailyPrice обновятся при первой загрузке каталога.
-      return new Map(draft.selected.map((s) => [s.equipmentId, s]));
+      // Смены позиции из localStorage — недоверенные: мусор становится «как у брони».
+      return new Map(draft.selected.map((s) => [s.equipmentId, { ...s, shifts: sanitizeLineShifts(s.shifts) }]));
     }
     if (!isEdit || !initialBooking) return new Map();
     const m = new Map<string, CatalogSelectedItem>();
@@ -386,6 +392,9 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         // показала бы прайс и первым же сохранением стёрла уступку.
         negotiatedRatePerShift:
           it.negotiatedRatePerShift != null ? Number(it.negotiatedRatePerShift) : null,
+        // Без своих смен открытая на правку бронь показала бы срок брони, а
+        // сохранение (форма шлёт смены явно) вернуло бы позицию к нему.
+        shifts: sanitizeLineShifts(it.shifts),
       });
     }
     return m;
@@ -599,6 +608,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
           s.equipmentId,
           s.quantity,
           s.negotiatedRatePerShift ?? null,
+          s.shifts ?? null,
         ]),
         customItems: customItems.map((c) => [c.name, c.unitPrice, c.quantity]),
         vehicles: selectedVehicles,
@@ -737,9 +747,21 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         // null = «по прайсу». Не переданное поле сервер оставил бы как было
         // (так работают ретро-правка и бот).
         negotiatedRatePerShift: s.negotiatedRatePerShift ?? null,
+        // Свои смены — тоже явно: null = «как у брони».
+        shifts: s.shifts ?? null,
       })),
     [selected],
   );
+
+  // «На ср свободно 1 из 2» — склад на срок позиций, взятых дольше брони.
+  const lineShortages = useLineWindowShortages({
+    selected,
+    bookingShifts: shifts,
+    pickupISO,
+    returnISO,
+    invalid: dateOrderInvalid,
+    excludeBookingId: isEdit ? bookingId : undefined,
+  });
 
   // Предварительный расчёт, пока не пришла серверная смета. Делит строки так
   // же, как сервер в splitEquipmentDiscount: процент начисляется ТОЛЬКО на
@@ -749,7 +771,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     let listed = 0;
     let negotiated = 0;
     for (const s of selected.values()) {
-      const line = (s.negotiatedRatePerShift ?? Number(s.dailyPrice)) * s.quantity * shifts;
+      // Смены строки — свои, если позицию взяли дольше брони (как на сервере).
+      const line = catalogLineSum(s, shifts);
       if (s.negotiatedRatePerShift != null) negotiated += line;
       else listed += line;
     }
@@ -1030,6 +1053,18 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
       } else {
         next.set(equipmentId, { ...existing, quantity: clamped });
       }
+      return next;
+    });
+  }
+
+  /** Свои смены позиции «не меньше N»; null — как у брони. */
+  function handleChangeLineShifts(equipmentId: string, lineShifts: number | null) {
+    setSelected((prev) => {
+      const existing = prev.get(equipmentId);
+      if (!existing) return prev;
+      if ((existing.shifts ?? null) === lineShifts) return prev;
+      const next = new Map(prev);
+      next.set(equipmentId, { ...existing, shifts: lineShifts });
       return next;
     });
   }
@@ -1593,6 +1628,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             onAdd={handleAdd}
             onChangeQty={handleChangeQty}
             onChangeNegotiatedRate={handleChangeNegotiatedRate}
+            onChangeLineShifts={handleChangeLineShifts}
+            lineShortages={lineShortages}
             onRemove={handleRemove}
             onChangeCustomQty={handleChangeCustomQty}
             onRemoveCustom={handleRemoveCustom}
@@ -1691,6 +1728,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             discountPercent={discountPercent}
             itemCount={selected.size + customItems.length}
             shifts={shifts}
+            longLinesNote={longLinesSummary(selected.values(), shifts)}
             isLoadingQuote={loadingQuote}
             quoteError={quoteError}
             checks={checks}

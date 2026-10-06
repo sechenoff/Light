@@ -825,6 +825,61 @@ export async function writeMainEstimateInTx(
   }
 }
 
+/**
+ * Правка подтверждённой брони удлинила позиции (свои смены сверх брони):
+ * склад держит их до своего срока, поэтому дополнительные дни проверяются
+ * так же, как при подтверждении. Только строки, чьё окно этой правкой стало
+ * длиннее, — остальное правка не меняет, а уже подтверждённое не
+ * перепроверяется.
+ */
+export async function assertLongLineWindowsAvailable(
+  tx: Prisma.TransactionClient,
+  args: {
+    bookingId: string;
+    startDate: Date;
+    lines: Array<{ equipmentId: string; name: string; quantity: number; previousEnd: Date; newEnd: Date }>;
+  },
+): Promise<void> {
+  const grown = args.lines.filter((l) => l.quantity > 0 && l.newEnd.getTime() > l.previousEnd.getTime());
+  if (grown.length === 0) return;
+  const byEnd = new Map<number, string[]>();
+  for (const l of grown) byEnd.set(l.newEnd.getTime(), [...(byEnd.get(l.newEnd.getTime()) ?? []), l.equipmentId]);
+  const available = new Map<string, Awaited<ReturnType<typeof getAvailability>>[number]>();
+  for (const [end, equipmentIds] of byEnd) {
+    for (const row of await getAvailability({
+      startDate: args.startDate,
+      endDate: new Date(end),
+      equipmentIds,
+      excludeBookingId: args.bookingId,
+      tx,
+    })) {
+      available.set(`${row.equipment.id}|${end}`, row);
+    }
+  }
+  const conflicts = grown
+    .map((l) => {
+      const a = available.get(`${l.equipmentId}|${l.newEnd.getTime()}`);
+      return {
+        equipmentId: l.equipmentId,
+        equipmentName: l.name,
+        totalQuantity: a?.equipment.totalQuantity ?? 0,
+        occupiedQuantity: a?.occupiedQuantity ?? 0,
+        availableQuantity: a?.availableQuantity ?? 0,
+        requestedQuantity: l.quantity,
+        until: l.newEnd.toISOString(),
+      };
+    })
+    .filter((c) => c.availableQuantity < c.requestedQuantity);
+  if (conflicts.length === 0) return;
+  const summary = conflicts
+    .map(
+      (c) =>
+        `${c.equipmentName} (до ${formatMoscowDayTime(new Date(c.until))}): нужно ${c.requestedQuantity}, свободно ${Math.max(0, c.availableQuantity)} из ${c.totalQuantity}`,
+    )
+    .join("; ");
+  throw new HttpError(409, `Не хватает оборудования на выбранные даты — ${summary}`, { conflicts });
+}
+
 export async function confirmBooking(bookingId: string) {
   return prisma.$transaction(async (tx) => {
     const booking = await tx.booking.findUnique({

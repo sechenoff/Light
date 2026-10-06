@@ -7,7 +7,7 @@
  * документы делят цену). Правка брони переносит свои смены позиции, как и
  * договорную цену.
  *
- * Поле пока не пишет ни форма, ни API — здесь оно ставится прямо в базе.
+ * Форма шлёт поле в теле запроса; часть тестов ставит его прямо в базе.
  */
 
 import path from "path";
@@ -272,8 +272,8 @@ describe("добор в основную смету", () => {
   });
 });
 
-describe("тело запроса своих смен пока не принимает", () => {
-  it("черновик и правка игнорируют shifts в позициях — смены по позиции включатся с формой", async () => {
+describe("свои смены позиции из тела запроса (форма брони)", () => {
+  it("черновик пишет смены позиции и считает строку на них; правка меняет и сбрасывает", async () => {
     const res = await request(app)
       .post("/api/bookings/draft")
       .set(AUTH())
@@ -282,18 +282,140 @@ describe("тело запроса своих смен пока не приним
         projectName: "Проверка тела",
         startDate: START.toISOString(),
         endDate: END.toISOString(),
-        items: [{ equipmentId: storm, quantity: 1, shifts: 5 }],
+        items: [
+          { equipmentId: storm, quantity: 1, shifts: 3 },
+          { equipmentId: stand, quantity: 1 },
+        ],
       });
     expect(res.status).toBe(200);
     const id = (res.body.booking?.id ?? res.body.id) as string;
-    expect((await prisma.bookingItem.findFirst({ where: { bookingId: id } })).shifts).toBeNull();
-    expect(lineOf(await estimate(id), "Aputure STORM 400x").shifts).toBe(1);
-    const patched = await request(app)
+    const item = await prisma.bookingItem.findFirst({ where: { bookingId: id, equipmentId: storm } });
+    expect(item.shifts).toBe(3);
+    const main = await estimate(id);
+    expect(lineOf(main, "Aputure STORM 400x")).toMatchObject({ shifts: 3 });
+    expect(Number(lineOf(main, "Aputure STORM 400x").lineSum)).toBe(3000);
+    expect(lineOf(main, "Стойка C-Stand").shifts).toBe(1);
+
+    // Количество без смен — смены остаются (форма шлёт явно, бот и ретро-правка — нет).
+    const qtyOnly = await request(app)
       .patch(`/api/bookings/${id}`)
       .set(AUTH())
-      .send({ items: [{ equipmentId: storm, quantity: 2, shifts: 5 }] });
-    expect(patched.status).toBe(200);
-    expect((await prisma.bookingItem.findFirst({ where: { bookingId: id } })).shifts).toBeNull();
+      .send({ items: [{ equipmentId: storm, quantity: 2 }, { equipmentId: stand, quantity: 1 }] });
+    expect(qtyOnly.status).toBe(200);
+    expect((await prisma.bookingItem.findFirst({ where: { bookingId: id, equipmentId: storm } })).shifts).toBe(3);
+
+    const reset = await request(app)
+      .patch(`/api/bookings/${id}`)
+      .set(AUTH())
+      .send({ items: [{ equipmentId: storm, quantity: 2, shifts: null }, { equipmentId: stand, quantity: 1, shifts: 2 }] });
+    expect(reset.status).toBe(200);
+    expect((await prisma.bookingItem.findFirst({ where: { bookingId: id, equipmentId: storm } })).shifts).toBeNull();
+    expect((await prisma.bookingItem.findFirst({ where: { bookingId: id, equipmentId: stand } })).shifts).toBe(2);
+  });
+
+  it("правка одних смен позиции пишет запись в журнал брони", async () => {
+    const id = await createDraft();
+    const before = await prisma.auditEntry.count({ where: { entityId: id, action: "BOOKING_UPDATE" } });
+    const res = await request(app)
+      .patch(`/api/bookings/${id}`)
+      .set(AUTH())
+      .send({
+        items: [
+          { equipmentId: storm, quantity: 2, shifts: 3 },
+          { equipmentId: stand, quantity: 1 },
+          { customName: "Расходники", customUnitPrice: 1500, quantity: 1 },
+        ],
+      });
+    expect(res.status).toBe(200);
+    const entries = await prisma.auditEntry.findMany({
+      where: { entityId: id, action: "BOOKING_UPDATE" },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(entries).toHaveLength(before + 1);
+    const last = entries.at(-1);
+    const parse = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v);
+    expect(parse(last.before).itemsDetails["Aputure STORM 400x"].shifts).toBeNull();
+    expect(parse(last.after).itemsDetails["Aputure STORM 400x"].shifts).toBe(3);
+  });
+
+  it("подтверждённая бронь: позицию нельзя взять дольше, если склад на эти дни занят", async () => {
+    // Своя позиция с запасом 3 — чтобы не делить склад с остальными тестами.
+    const lamp = (
+      await prisma.equipment.create({
+        data: { importKey: "lpr-lamp", name: "Nanlux Evoke 1200", category: "Свет", totalQuantity: 3, rentalRatePerShift: 7000, stockTrackingMode: "COUNT" },
+      })
+    ).id;
+    const draft = async (start: Date, end: Date, quantity: number) => {
+      const res = await request(app)
+        .post("/api/bookings/draft")
+        .set(AUTH())
+        .send({
+          client: { name: "Продакшн «Сфера»" },
+          projectName: "Проверка склада",
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          items: [{ equipmentId: lamp, quantity }],
+        });
+      expect(res.status).toBe(200);
+      return (res.body.booking?.id ?? res.body.id) as string;
+    };
+    const mine = await draft(START, END, 2);
+    await svc.confirmBooking(mine);
+    // Соседняя бронь занимает 2 из 3 на следующие сутки.
+    const other = await draft(new Date(END.getTime() + HOUR), new Date(END.getTime() + DAY), 2);
+    await svc.confirmBooking(other);
+
+    const longer = await request(app)
+      .patch(`/api/bookings/${mine}`)
+      .set(AUTH())
+      .send({ items: [{ equipmentId: lamp, quantity: 2, shifts: 2 }] });
+    expect(longer.status).toBe(409);
+    expect(longer.body.message).toMatch(/Nanlux Evoke 1200 \(до .+\): нужно 2, свободно 1 из 3/);
+    expect((await prisma.bookingItem.findFirst({ where: { bookingId: mine, equipmentId: lamp } })).shifts).toBeNull();
+
+    // Без удлинения правка проходит — уже подтверждённое не перепроверяется.
+    const same = await request(app)
+      .patch(`/api/bookings/${mine}`)
+      .set(AUTH())
+      .send({ items: [{ equipmentId: lamp, quantity: 2 }] });
+    expect(same.status).toBe(200);
+  });
+
+  it("расчёт /quote отдаёт строку на её смены", async () => {
+    const res = await request(app)
+      .post("/api/bookings/quote")
+      .set(AUTH())
+      .send({
+        client: { name: "Продакшн «Сфера»" },
+        projectName: "Расчёт",
+        startDate: START.toISOString(),
+        endDate: END.toISOString(),
+        discountPercent: 0,
+        items: [{ equipmentId: storm, quantity: 2, shifts: 2 }, { equipmentId: stand, quantity: 1 }],
+      });
+    expect(res.status).toBe(200);
+    const line = res.body.lines.find((l: any) => l.equipmentId === storm);
+    expect(line.shifts).toBe(2);
+    expect(Number(line.lineSum)).toBe(4000);
+    expect(Number(res.body.equipmentSubtotal ?? res.body.subtotal)).toBe(4500);
+  });
+
+  it("смены у своей позиции, ноль и больше предела — 400", async () => {
+    const base = {
+      client: { name: "Продакшн «Сфера»" },
+      projectName: "Проверка тела",
+      startDate: START.toISOString(),
+      endDate: END.toISOString(),
+    };
+    for (const items of [
+      [{ customName: "Расходники", customUnitPrice: 1500, quantity: 1, shifts: 2 }],
+      [{ equipmentId: storm, quantity: 1, shifts: 0 }],
+      [{ equipmentId: storm, quantity: 1, shifts: 61 }],
+      [{ equipmentId: storm, quantity: 1, shifts: 1.5 }],
+    ]) {
+      const res = await request(app).post("/api/bookings/quote").set(AUTH()).send({ ...base, items });
+      expect(res.status).toBe(400);
+    }
   });
 });
 

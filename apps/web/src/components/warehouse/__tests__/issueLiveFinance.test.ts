@@ -154,4 +154,18 @@ describe("computeLiveFinance", () => {
     expect(f.removalAmount).toBe(2000);
     expect(f.finalAmount).toBe(2000);
   });
+
+  it("добор к позиции, взятой дольше брони, — на её смены, как в доп-смете", () => {
+    // Бронь на 2 смены, STORM взят на 3: добор одной штуки — 1000 × 3, а не × 2.
+    const s = state([item({ bookingItemId: "storm", mainUnitPrice: "3000", lineShifts: 3 })], {
+      mainOriginalAfterDiscount: "6000",
+    });
+    const f = computeLiveFinance(s, new Map([["storm", 3]]));
+    expect(f.addonActual).toBe(3000);
+  });
+
+  it("старый сервер без смен строки — смены брони", () => {
+    const s = state([item({ bookingItemId: "storm", mainUnitPrice: "2000" })], { mainOriginalAfterDiscount: "4000" });
+    expect(computeLiveFinance(s, new Map([["storm", 3]])).addonActual).toBe(2000);
+  });
 });
