@@ -10,6 +10,7 @@ import { quoteName } from "../inventory/format";
 import {
   canStay,
   formatWhen,
+  fromWhen,
   isBeyondPaid,
   stayChoicesFor,
   type ContinuationPreview,
@@ -191,7 +192,7 @@ export function ReturnStayRow({
           {conflict && beyond && (
             <div className="rounded-md border border-amber-border bg-amber-soft px-3 py-2.5" role="group" aria-label={`Нужен другой брони: ${line.name}`}>
               <p className="text-[12.5px] font-semibold text-amber">
-                Нужен {conflict.holder ? `брони ${quoteName(conflict.holder.projectName)}` : "другой брони"} с {formatWhen(conflict.neededFrom ?? conflict.from)}
+                Нужен {conflict.holder ? `брони ${quoteName(conflict.holder.projectName)}` : "другой брони"} {fromWhen(conflict.neededFrom ?? conflict.from)}
               </p>
               <p className="mt-0.5 text-[12px] leading-snug text-ink-2">
                 {conflict.holder?.clientName ? `${conflict.holder.clientName} · ` : ""}свободно {Math.max(0, conflict.available)} из{" "}

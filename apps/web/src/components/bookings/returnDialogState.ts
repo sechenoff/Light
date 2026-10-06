@@ -258,6 +258,12 @@ export function formatWhen(iso: string): string {
   return `${get("weekday")} ${get("day")} ${get("month").replace(".", "")}, ${get("hour")}:${get("minute")}`;
 }
 
+/** «с пн», «со вт», «со ср» — предлог перед днём недели из `formatWhen`. */
+export function fromWhen(iso: string): string {
+  const f = formatWhen(iso);
+  return `${/^(вт|ср)/.test(f) ? "со" : "с"} ${f}`;
+}
+
 /** Держатель: кому нужна оставленная позиция (ответ превью). */
 export type StayHolder = {
   bookingId: string;

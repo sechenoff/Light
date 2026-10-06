@@ -12,7 +12,7 @@ const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi
 vi.mock("../../ToastProvider", () => ({ toast: toastMock }));
 
 import { ReturnDialog } from "../ReturnDialog";
-import { formatWhen, initialStays, partialReturnBody, setStayQuantity, summarize, toggleStayUnit, type ReturnPlan } from "../returnDialogState";
+import { fromWhen, initialStays, partialReturnBody, setStayQuantity, summarize, toggleStayUnit, type ReturnPlan } from "../returnDialogState";
 
 const HOUR = 3_600_000;
 const later = (h: number) => new Date(Date.now() + h * HOUR).toISOString();
@@ -417,7 +417,7 @@ describe("окно «Принять возврат»: сверх оплачен�
     fireEvent.click(await screen.findByRole("button", { name: "Вернули не всё" }));
     fireEvent.click(within(stormLine()).getByRole("button", { name: "Больше: Aputure STORM 400x" }));
     const holder = await within(stormLine()).findByRole("group", { name: "Нужен другой брони: Aputure STORM 400x" });
-    expect(holder).toHaveTextContent(`с ${formatWhen(neededFrom)}`);
+    expect(holder).toHaveTextContent(fromWhen(neededFrom));
     // Скрыт поиском — кнопка всё равно объясняет, кого ждём.
     expect(screen.getByText(/Нужно другой брони: «Aputure STORM 400x»/)).toBeInTheDocument();
   });
