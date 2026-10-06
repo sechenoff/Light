@@ -12,6 +12,7 @@ import { getReturnPlan, hasPlannedStays, plannedStayPendingError, returnPartial 
 import { listBookingRegister } from "../services/bookingRegister";
 import { getBookingIssues } from "../services/bookingIssues";
 import express from "express";
+import { MAX_LINE_SHIFTS } from "@light-rental/shared";
 import { z } from "zod";
 import { PAYMENT_FORMS, computeSurcharge, formatPercent, resolveSurchargePercent } from "../services/paymentForm";
 import { Prisma, type BookingStatus } from "@prisma/client";
@@ -126,6 +127,18 @@ const bookingItemSchema = z
      * каталожной. null — вернуться к прайсу.
      */
     negotiatedRatePerShift: z.number().positive().max(100_000_000).nullish(),
+    /**
+     * Своё число смен позиции, «не меньше N»: бронь на одну смену, а пару
+     * приборов берут на двое суток. Действующее число смен строки — большее
+     * из своего и смен брони; хранится как ввели. null — как у брони, не
+     * передано — как было у позиции (carryItemOverrides).
+     */
+    shifts: z
+      .number()
+      .int("Смены позиции — целое число")
+      .min(1, "Смен у позиции не меньше одной")
+      .max(MAX_LINE_SHIFTS, `Смен у позиции не больше ${MAX_LINE_SHIFTS}`)
+      .nullish(),
   })
   .refine(
     (v) =>
@@ -135,6 +148,9 @@ const bookingItemSchema = z
   )
   .refine((v) => v.negotiatedRatePerShift == null || Boolean(v.equipmentId), {
     message: "Договорная цена задаётся только для позиции из каталога",
+  })
+  .refine((v) => v.shifts == null || Boolean(v.equipmentId), {
+    message: "Своё число смен задаётся только для позиции из каталога — у своей позиции цена за весь срок",
   });
 
 const transportVehicleSchema = z.object({
@@ -985,6 +1001,8 @@ router.patch("/:id", async (req, res, next) => {
               quantity: l.quantity,
               unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
               lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+              // На сколько смен посчитана строка: у позиции со своими сменами — свои.
+              shifts: l.shifts ?? null,
             })),
           },
         },
@@ -1911,6 +1929,8 @@ router.post("/quote", async (req, res, next) => {
         lineSum: l.lineSum.toDecimalPlaces(2).toString(),
         listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
         isNegotiated: l.isNegotiated,
+        // На сколько смен посчитана строка: у позиции со своими сменами — свои.
+        shifts: l.shifts ?? null,
       })),
     });
   } catch (err) {
@@ -2118,6 +2138,8 @@ router.post("/draft", async (req, res, next) => {
               quantity: l.quantity,
               unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
               lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+              // На сколько смен посчитана строка: у позиции со своими сменами — свои.
+              shifts: l.shifts ?? null,
             })),
           },
         },

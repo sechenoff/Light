@@ -21,6 +21,7 @@
  * (сумма броней, DRAFT держал склад, PENDING — нет) и расходился с поиском.
  */
 
+import { effectiveLineShifts } from "@light-rental/shared";
 import type { BookingStatus, EstimateLine, Prisma, ScanSessionStatus } from "@prisma/client";
 
 import { prisma } from "../prisma";
@@ -92,6 +93,12 @@ export interface ChecklistItem {
   mainNegotiated: boolean;
   /** Сколько единиц строки добавлено доборами в ЭТОЙ сессии (AddonRecord). */
   addedOnSite: number;
+  /**
+   * На сколько смен считается строка: у позиции со своими сменами — большее из
+   * своих и смен брони, иначе смены брони. По нему киоск считает живую сумму
+   * добора — так же, как доп-смета на сервере.
+   */
+  lineShifts: number;
 }
 
 export interface ChecklistUnit {
@@ -172,6 +179,8 @@ type LoadedSession = Prisma.ScanSessionGetPayload<{ include: typeof CHECKLIST_SE
 type LoadedItem = LoadedSession["booking"]["items"][number];
 
 interface PricingContext {
+  /** Смены брони из MAIN (по умолчанию 1). */
+  bookingShifts: number;
   mainByEquipment: Map<string, EstimateLine>;
   mainByCustomName: Map<string, EstimateLine>;
   caps: Map<string, AddCapInfo>;
@@ -210,7 +219,9 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
     where: { sessionId },
     _sum: { quantity: true },
   });
+  const bookingShifts = main && main.shifts > 0 ? main.shifts : 1;
   const pricing: PricingContext = {
+    bookingShifts,
     ...indexMainLines(main?.lines ?? []),
     caps,
     holders,
@@ -235,7 +246,7 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
     operation: session.operation as "ISSUE" | "RETURN",
     items,
     progress,
-    shifts: main && main.shifts > 0 ? main.shifts : 1,
+    shifts: bookingShifts,
     discountPercent: main?.discountPercent?.toString() ?? "0",
     mainOriginalAfterDiscount: main?.totalAfterDiscount?.toString() ?? "0",
     session: {
@@ -405,6 +416,7 @@ function catalogRowBase(
     mainUnitPrice: line ? line.unitPrice.toString() : null,
     mainNegotiated: line?.listUnitPrice != null,
     addedOnSite: p.addedOnSite.get(bi.id) ?? 0,
+    lineShifts: effectiveLineShifts(p.bookingShifts, bi.shifts),
   };
 }
 
@@ -429,6 +441,8 @@ function customRow(bi: LoadedItem, p: PricingContext): ChecklistItem {
     mainUnitPrice: line ? line.unitPrice.toString() : null,
     mainNegotiated: line?.listUnitPrice != null,
     addedOnSite: p.addedOnSite.get(bi.id) ?? 0,
+    // Своя позиция — цена за весь срок, смен у неё нет; число для полноты.
+    lineShifts: p.bookingShifts,
   };
 }
 

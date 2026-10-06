@@ -201,4 +201,38 @@ describe("BookingForm edit — импорт заявки документом", 
     );
     expect(datesAfter).toEqual(datesBefore);
   });
+
+  it("свои смены позиции загружаются с брони и уходят в расчёт явно", async () => {
+    // Бронь на 2 смены от ровного часа через неделю; SkyPanel взят на 4.
+    const HOUR = 3_600_000;
+    const start = Math.ceil((Date.now() + 7 * 24 * HOUR) / HOUR) * HOUR;
+    const booking: BookingDetail = {
+      ...BOOKING,
+      startDate: new Date(start).toISOString(),
+      endDate: new Date(start + 48 * HOUR).toISOString(),
+      items: BOOKING.items.map((it) => (it.equipmentId === "eq-1" ? { ...it, shifts: 4 } : it)),
+    };
+    const quoteBodies: Array<{ items: Array<{ equipmentId?: string; shifts?: number | null }> }> = [];
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/bookings/quote") && init?.body) quoteBodies.push(JSON.parse(String(init.body)));
+      // Каталог обязан знать позиции брони: отсутствующие в нём форма убирает из состава.
+      const row = (equipmentId: string, name: string, rate: string) => ({
+        equipmentId, category: "Свет", name, brand: null, model: null, stockTrackingMode: "COUNT",
+        totalQuantity: 10, rentalRatePerShift: rate, occupiedQuantity: 0, availableQuantity: 10,
+        availability: "AVAILABLE", comment: null,
+      });
+      const data = url.includes("/api/availability")
+        ? { rows: [row("eq-1", "Arri SkyPanel S60", "5000"), row("eq-2", "Godox SL200", "1500")] }
+        : { vehicles: [] };
+      return { ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) };
+    }) as unknown as typeof fetch;
+
+    render(<BookingForm mode="edit" initialBooking={booking} bookingId="booking-123" />);
+    expect(screen.getAllByRole("button", { name: /Смен: 4, своё значение — Arri SkyPanel S60/ }).length).toBeGreaterThan(0);
+    await waitFor(() => expect(quoteBodies.length).toBeGreaterThan(0), { timeout: 3000 });
+    const items = quoteBodies.at(-1)!.items;
+    expect(items.find((i) => i.equipmentId === "eq-1")?.shifts).toBe(4);
+    expect(items.find((i) => i.equipmentId === "eq-2")?.shifts).toBeNull();
+  });
 });

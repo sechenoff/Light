@@ -115,6 +115,8 @@ export type QuoteResponse = {
     pricingMode: string;
     unitPrice: string;
     lineSum: string;
+    /** На сколько смен посчитана строка (свои смены позиции или смены брони). */
+    shifts?: number | null;
   }>;
 };
 
@@ -159,6 +161,12 @@ export type CatalogSelectedItem = {
    * не применяется — она уже финальная.
    */
   negotiatedRatePerShift?: number | null;
+  /**
+   * Своё число смен позиции «не меньше N» (BookingItem.shifts). null — как у
+   * брони. Хранится как ввели: меньше смен брони действующим не станет, но и
+   * не обнулится, когда бронь продлят.
+   */
+  shifts?: number | null;
 };
 
 /** Off-catalog item (AI-unmatched that user kept, or free-text add) */
