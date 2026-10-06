@@ -7,7 +7,7 @@ import type { Booking, Equipment, BookingItem, Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { billableShifts24h, formatExportHourCalculationLine } from "../utils/dates";
 import { HttpError } from "../utils/errors";
-import { computeUnitPriceForBookingPeriod, resolveCatalogLinePrice, splitEquipmentDiscount } from "./pricing";
+import { computeUnitPriceForBookingPeriod, resolveBookingLinePrice, splitEquipmentDiscount } from "./pricing";
 import { generateEstimateDocNumber } from "./numberingService";
 import { getAvailability, linePlannedEnd } from "./availability";
 import { findHoldersBatch, type AddonConflict } from "./addonAvailability";
@@ -131,6 +131,8 @@ export async function quoteEstimate(args: {
     quantity: number;
     /** Договорная ставка за смену по каталожной позиции; null — считаем по прайсу. */
     negotiatedRatePerShift?: number | string | null;
+    /** Свои смены позиции «не меньше N»; null — как у брони. */
+    shifts?: number | null;
   }>;
   transport?: QuoteTransportInput[] | null;
   skipPartialDay?: boolean;
@@ -152,12 +154,13 @@ export async function quoteEstimate(args: {
   const catalogLines: QuoteLine[] = catalogItems.map((item) => {
     const eq = equipmentById.get(item.equipmentId!);
     if (!eq) throw new HttpError(400, `Equipment not found: ${item.equipmentId}`);
-    const { mode } = computeUnitPriceForBookingPeriod({ equipment: eq, shifts });
-    const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+    const { unitPrice, listUnitPrice, isNegotiated, shifts: lineShifts } = resolveBookingLinePrice({
       ratePerShift: eq.rentalRatePerShift.toString(),
-      shifts,
+      bookingShifts: shifts,
+      lineShifts: item.shifts ?? null,
       negotiatedRatePerShift: item.negotiatedRatePerShift ?? null,
     });
+    const { mode } = computeUnitPriceForBookingPeriod({ equipment: eq, shifts: lineShifts });
     const quantity = item.quantity;
     const lineSum = unitPrice.mul(quantity);
     return {
@@ -173,6 +176,7 @@ export async function quoteEstimate(args: {
       isCustom: false,
       listUnitPrice,
       isNegotiated,
+      shifts: lineShifts,
     };
   });
 
@@ -192,6 +196,7 @@ export async function quoteEstimate(args: {
       isCustom: true,
       listUnitPrice: null,
       isNegotiated: false,
+      shifts: null,
     };
   });
 
@@ -460,6 +465,8 @@ export async function createBookingDraft(args: {
     quantity: number;
     /** Договорная ставка за смену по каталожной позиции; null — считаем по прайсу. */
     negotiatedRatePerShift?: number | string | null;
+    /** Свои смены позиции «не меньше N»; null — как у брони. */
+    shifts?: number | null;
   }>;
   transport?: BookingTransportSnapshot[] | null;
 }) {
@@ -537,6 +544,7 @@ export async function createBookingDraft(args: {
                 it.negotiatedRatePerShift != null
                   ? new Decimal(it.negotiatedRatePerShift.toString())
                   : null,
+              shifts: it.shifts ?? null,
             };
           }
           return {
@@ -626,6 +634,7 @@ export async function createBookingDraft(args: {
               unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
               lineSum: l.lineSum.toDecimalPlaces(2).toString(),
               listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
+              shifts: l.shifts ?? null,
             })),
           },
         },
@@ -775,6 +784,8 @@ export async function rebuildBookingEstimate(
       lineSum: Decimal;
       listUnitPrice: Decimal | null;
       isNegotiated: boolean;
+      /** Смены строки; null у произвольной позиции. */
+      shifts: number | null;
     };
     // Явный тип возврата: у каталожной и произвольной строки разные литеральные
     // типы (equipmentId: string | null), и flatMap иначе выводит тип по первой ветке.
@@ -785,9 +796,10 @@ export async function rebuildBookingEstimate(
           : it.quantity;
         // Позиция целиком добор — в MAIN ей места нет.
         if (quantity <= 0) return [];
-        const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+        const { unitPrice, listUnitPrice, isNegotiated, shifts: lineShifts } = resolveBookingLinePrice({
           ratePerShift: it.equipment.rentalRatePerShift.toString(),
-          shifts,
+          bookingShifts: shifts,
+          lineShifts: it.shifts,
           negotiatedRatePerShift: it.negotiatedRatePerShift?.toString() ?? null,
         });
         return [{
@@ -801,6 +813,7 @@ export async function rebuildBookingEstimate(
           lineSum: unitPrice.mul(quantity),
           listUnitPrice,
           isNegotiated,
+          shifts: lineShifts,
         }];
       }
       // Произвольная позиция — фиксированная цена без умножения на shifts
@@ -816,6 +829,7 @@ export async function rebuildBookingEstimate(
         lineSum: unitPrice.mul(it.quantity),
         listUnitPrice: null,
         isNegotiated: false,
+        shifts: null,
       }];
     });
 
@@ -845,6 +859,7 @@ export async function rebuildBookingEstimate(
       unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
       lineSum: l.lineSum.toDecimalPlaces(2).toString(),
       listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
+      shifts: l.shifts,
     }));
 
     // Удаляем существующий MAIN Estimate (если есть) — ADDON оставляем нетронутым:
@@ -1025,14 +1040,17 @@ export async function confirmBooking(bookingId: string) {
       lineSum: Decimal;
       listUnitPrice: Decimal | null;
       isNegotiated: boolean;
+      /** Смены строки; null у произвольной позиции. */
+      shifts: number | null;
       estimateLineCreate: any;
     }> = [];
 
     for (const it of booking.items) {
       if (it.equipmentId != null && it.equipment != null) {
-        const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+        const { unitPrice, listUnitPrice, isNegotiated, shifts: lineShifts } = resolveBookingLinePrice({
           ratePerShift: it.equipment.rentalRatePerShift.toString(),
-          shifts,
+          bookingShifts: shifts,
+          lineShifts: it.shifts,
           negotiatedRatePerShift: it.negotiatedRatePerShift?.toString() ?? null,
         });
         const lineSum = unitPrice.mul(it.quantity);
@@ -1047,6 +1065,7 @@ export async function confirmBooking(bookingId: string) {
           lineSum,
           listUnitPrice,
           isNegotiated,
+          shifts: lineShifts,
           estimateLineCreate: null,
         });
       } else {
@@ -1063,6 +1082,7 @@ export async function confirmBooking(bookingId: string) {
           lineSum: unitPrice.mul(it.quantity),
           listUnitPrice: null,
           isNegotiated: false,
+          shifts: null,
           estimateLineCreate: null,
         });
       }
@@ -1094,6 +1114,7 @@ export async function confirmBooking(bookingId: string) {
           unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
           lineSum: l.lineSum.toDecimalPlaces(2).toString(),
           listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
+          shifts: l.shifts,
         })),
       },
     };
