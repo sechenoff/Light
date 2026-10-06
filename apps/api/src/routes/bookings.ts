@@ -8,6 +8,7 @@ import { Prisma, type BookingStatus } from "@prisma/client";
 import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
+import { carryItemOverrides, existingItemsForQuote, quoteItemsFromBody } from "../services/bookingItemOverrides";
 import { createBookingDraft, createQuickBooking, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, resolveBookingSurchargePercent, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
@@ -100,7 +101,9 @@ const bookingRangeStringSchema = z.string().min(10, "Укажите дату/в�
 
 const bookingItemSchema = z
   .object({
-    equipmentId: z.string().min(1).optional(),
+    // null — то же, что «не передано»: ретро-правка шлёт null у произвольной
+    // позиции, и раньше вся правка состава падала с 400.
+    equipmentId: z.string().min(1).nullish().transform((v) => v ?? undefined),
     customName: z.string().min(1).max(200).optional(),
     customUnitPrice: z.number().positive().max(100_000_000).optional(),
     quantity: z.number().int().positive(),
@@ -859,14 +862,8 @@ router.patch("/:id", async (req, res, next) => {
       assertBookingRangeOrder(start, end);
 
       const itemsAfter = body.items
-        ? body.items.map((it) => ({
-        equipmentId: it.equipmentId,
-        customName: it.customName,
-        customUnitPrice: it.customUnitPrice,
-        quantity: it.quantity,
-        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
-      }))
-        : existing.items.map((i) => ({ equipmentId: i.equipmentId ?? undefined, customName: (i as any).customName ?? undefined, customUnitPrice: (i as any).customUnitPrice != null ? Number((i as any).customUnitPrice.toString()) : undefined, quantity: i.quantity }));
+        ? quoteItemsFromBody(carryItemOverrides(body.items, existing.items))
+        : existingItemsForQuote(existing.items);
 
       // Форма оплаты в превью: из тела, иначе как на брони.
       const dryRunPaymentForm = body.paymentForm ?? existing.paymentForm;
@@ -1089,14 +1086,25 @@ router.patch("/:id", async (req, res, next) => {
         ? transportReplacement.reduce((acc, t) => acc.add(new Decimal(t.subtotalRub)), new Decimal(0))
         : null;
 
+    // Позиции, записанные транзакцией: по ним же пересчитывается бронь на
+    // согласовании, а не по снимку до правки.
+    let writtenItems: ReturnType<typeof carryItemOverrides<NonNullable<typeof body.items>[number]>> | null = null;
     const booking = await prisma.$transaction(async (tx) => {
       // Повторно внутри транзакции: выдачу могли начать между проверкой и записью.
       if (touchesKioskChecklist) await assertNoIssueInProgress(tx, id);
       const auditBefore = await bookingAuditSnapshot(tx, id);
       if (body.items) {
+        // Настройки строк, которых клиент не прислал, берём из текущих позиций —
+        // до deleteMany и в той же транзакции (см. carryItemOverrides).
+        const currentItems = await tx.bookingItem.findMany({
+          where: { bookingId: id },
+          select: { equipmentId: true, negotiatedRatePerShift: true },
+        });
+        const itemsToWrite = carryItemOverrides(body.items, currentItems);
+        writtenItems = itemsToWrite;
         await tx.bookingItem.deleteMany({ where: { bookingId: id } });
         await tx.bookingItem.createMany({
-          data: body.items.map((it) => ({
+          data: itemsToWrite.map((it) => ({
             bookingId: id,
             equipmentId: it.equipmentId ?? null,
             quantity: it.quantity,
@@ -1346,15 +1354,9 @@ router.patch("/:id", async (req, res, next) => {
     // (rebuildBookingEstimate не обновляет поля на брони, только estimate-snapshot).
     if (wasInReview) {
       try {
-        const itemsAfter = body.items
-          ? body.items.map((it: any) => ({
-        equipmentId: it.equipmentId,
-        customName: it.customName,
-        customUnitPrice: it.customUnitPrice,
-        quantity: it.quantity,
-        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
-      }))
-          : existing.items.map((i: any) => ({ equipmentId: i.equipmentId ?? undefined, customName: i.customName ?? undefined, customUnitPrice: i.customUnitPrice != null ? Number(i.customUnitPrice.toString()) : undefined, quantity: i.quantity }));
+        const itemsAfter = writtenItems
+          ? quoteItemsFromBody(writtenItems)
+          : existingItemsForQuote(existing.items);
         const quote = await quoteEstimate({
           startDate: start,
           endDate: end,
