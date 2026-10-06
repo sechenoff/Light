@@ -432,3 +432,132 @@ describe("«Часть не вернули»: сроки, деньги, дост
     expect(res.status).toBe(403);
   });
 });
+
+describe("«Часть не вернули»: находки проверки", () => {
+  it("держатель — чужая бронь, а не своё продолжение; «нужна с» — с её начала", async () => {
+    const eq = await freshStand();
+    const { b, standItem } = await returnedBooking({ standId: eq });
+    const first = await correct(b.id, {
+      stays: [{ bookingItemId: standItem, quantity: 2, until: new Date(N + 3 * DAY).toISOString() }],
+      expectedSplitRevision: (await plan(b.id)).splitRevision,
+    });
+    expect(first.status).toBe(200);
+    const real = await confirmedHolder(eq, 17, N + 10 * HOUR, N + 2 * DAY, "Настоящий держатель");
+    const pv = await preview(b.id, [{ bookingItemId: standItem, quantity: 2, until: new Date(N + 2 * DAY).toISOString() }]);
+    expect(pv.body.conflicts).toEqual([
+      expect.objectContaining({
+        needed: 2,
+        available: 1,
+        neededFrom: real.startDate.toISOString(),
+        holder: expect.objectContaining({ bookingId: real.id, projectName: "Настоящий держатель" }),
+      }),
+    ]);
+  });
+
+  it("живой резерв мёртвой брони (прошедшая неподтверждённая, принятая) — не держит единицу", async () => {
+    const { b, units, lensItem } = await returnedBooking();
+    const stalePast = await prisma.booking.create({
+      data: { clientId, projectName: "Давно прошедшая", status: "CONFIRMED", startDate: new Date(N - 3 * DAY), endDate: new Date(N - 2 * DAY), items: { create: [{ equipmentId: lens, quantity: 1 }] } },
+      include: { items: true },
+    });
+    await prisma.bookingItemUnit.create({ data: { bookingItemId: stalePast.items[0].id, equipmentUnitId: units[0] } });
+    const deadReturned = await prisma.booking.create({
+      data: { clientId, projectName: "Принятая", status: "RETURNED", startDate: new Date(N - 5 * DAY), endDate: new Date(N - 4 * DAY), items: { create: [{ equipmentId: lens, quantity: 1 }] } },
+      include: { items: true },
+    });
+    await prisma.bookingItemUnit.create({ data: { bookingItemId: deadReturned.items[0].id, equipmentUnitId: units[1] } });
+    const line = (await plan(b.id)).lines.find((l: any) => l.bookingItemId === lensItem);
+    expect(line.units.map((u: any) => u.id).sort()).toEqual([...units].sort());
+    expect(line.reservedUnits).toEqual([]);
+  });
+
+  it("сданная с этой брони в ремонт единица отметить нельзя — она вернулась", async () => {
+    const { b, units, lensItem } = await returnedBooking();
+    await prisma.repair.create({
+      data: { unitId: units[1], equipmentId: lens, quantity: 1, status: "CLOSED", urgency: "NORMAL", reason: "фокус", sourceBookingId: b.id, createdBy: saId },
+    });
+    const line = (await plan(b.id)).lines.find((l: any) => l.bookingItemId === lensItem);
+    expect(line.units.map((u: any) => u.id)).toEqual([units[0]]);
+    expect(line).toMatchObject({ quantity: 1, inRepair: 1 });
+  });
+
+  it("единицу после приёмки выдавали партией длинного проекта — не предлагается", async () => {
+    const { b, units, lensItem } = await returnedBooking();
+    await shiftBack(b.id, 3 * HOUR);
+    const project = await prisma.booking.create({
+      data: { clientId, projectName: "Сериал-проект", mode: "PROJECT", status: "ISSUED", startDate: new Date(N - DAY), endDate: new Date(N + 10 * DAY) },
+    });
+    await prisma.bookingProject.create({ data: { bookingId: project.id } });
+    const lot = await prisma.projectLot.create({
+      data: {
+        bookingId: project.id,
+        equipmentId: lens,
+        nameSnapshot: "Объектив Cooke",
+        quantity: 1,
+        ratePerShift: 2000,
+        fromDate: "2026-01-01",
+        throughDate: "2026-01-02",
+        status: "RETURNED",
+        issuedAt: new Date(Date.now() - 2 * HOUR),
+      },
+    });
+    await prisma.projectLotUnit.create({ data: { lotId: lot.id, equipmentUnitId: units[1], returnedAt: new Date(Date.now() - HOUR) } });
+    const line = (await plan(b.id)).lines.find((l: any) => l.bookingItemId === lensItem);
+    expect(line.units.map((u: any) => u.id)).toEqual([units[0]]);
+  });
+
+  it("единицу уже отметили в открытой выдаче другой брони — «зарезервирована», и отказ называет бронь", async () => {
+    const { b, units, lensItem } = await returnedBooking();
+    const other = await prisma.booking.create({
+      data: { clientId, projectName: "Выдаётся сейчас", status: "CONFIRMED", startDate: new Date(N), endDate: new Date(N + DAY), items: { create: [{ equipmentId: lens, quantity: 1 }] } },
+    });
+    const session = await prisma.scanSession.create({ data: { bookingId: other.id, workerName: "Иван", operation: "ISSUE", status: "ACTIVE" } });
+    await prisma.scanRecord.create({ data: { sessionId: session.id, equipmentUnitId: units[0] } });
+    const p = await plan(b.id);
+    const line = p.lines.find((l: any) => l.bookingItemId === lensItem);
+    expect(line.reservedUnits).toEqual([expect.objectContaining({ id: units[0], reservedFor: "Выдаётся сейчас" })]);
+    const res = await correct(b.id, {
+      stays: [{ bookingItemId: lensItem, quantity: 1, until: new Date(b.endDate.getTime() + DAY).toISOString(), equipmentUnitIds: [units[0]] }],
+      expectedSplitRevision: p.splitRevision,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("RETURN_CORRECTION_UNIT_NOT_ON_SHELF");
+    expect(res.body.message).toMatch(/зарезервирована за «Выдаётся сейчас»/);
+  });
+
+  it("две свои строки с одним названием — продолжение одной не урезает другую", async () => {
+    seq += 1;
+    const start = new Date(N - 20 * HOUR);
+    const b = await prisma.booking.create({
+      data: {
+        clientId, projectName: `Свои ${seq}`, docNumber: `СМ-RC-${seq}`, status: "ISSUED", startDate: start, endDate: new Date(N + 4 * HOUR), issuedAt: start, legacyFinance: false,
+        items: {
+          create: [
+            { customName: "Удлинитель", customUnitPrice: 300, customCategory: "Произвольная позиция", quantity: 2 },
+            { customName: "Удлинитель", customUnitPrice: 300, customCategory: "Произвольная позиция", quantity: 3 },
+          ],
+        },
+      },
+      include: { items: true },
+    });
+    const { rebuildBookingEstimate } = await import("../services/bookings");
+    await rebuildBookingEstimate(b.id);
+    expect((await request(app).post(`/api/bookings/${b.id}/status`).set(AUTH()).send({ action: "return" })).status).toBe(200);
+    const [a, c] = b.items;
+    const first = await correct(b.id, {
+      stays: [{ bookingItemId: a.id, quantity: 2, until: new Date(N + DAY).toISOString() }],
+      expectedSplitRevision: (await plan(b.id)).splitRevision,
+    });
+    expect(first.status).toBe(200);
+    const lines = (await plan(b.id)).lines;
+    expect(lines.find((l: any) => l.bookingItemId === c.id)).toMatchObject({ quantity: 3, inContinuations: 0 });
+    expect(lines.find((l: any) => l.bookingItemId === a.id)).toBeUndefined();
+  });
+
+  it("у брони договорной итог — превью исправления говорит, что доплата сверху", async () => {
+    const { b, standItem } = await returnedBooking();
+    await prisma.booking.update({ where: { id: b.id }, data: { manualFinalAmount: 1000 } });
+    const pv = await preview(b.id, [{ bookingItemId: standItem, quantity: 1, until: new Date(b.endDate.getTime() + DAY).toISOString() }]);
+    expect(pv.body.parentNegotiatedTotal).toBe("1000");
+  });
+});

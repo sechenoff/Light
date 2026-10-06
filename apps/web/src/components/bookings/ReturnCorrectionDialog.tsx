@@ -19,7 +19,6 @@ import { quoteName } from "../inventory/format";
 import { ContinuationPriceBlock } from "./ContinuationPriceBlock";
 import { ReturnStayRow } from "./ReturnStayRow";
 import {
-  anyBeyondPaid,
   formatWhen,
   fromWhen,
   partialReturnBody,
@@ -69,7 +68,7 @@ export function capNoteOf(line: CorrectionLine): string | null {
   if (line.quantity >= line.booked) return null;
   const parts: string[] = [];
   if (line.inContinuations > 0) parts.push(`${count(line.inContinuations)} уже в продолжении`);
-  if (line.inRepair > 0) parts.push(`${count(line.inRepair)} в ремонте`);
+  if (line.inRepair > 0) parts.push(`${count(line.inRepair)} сдана в ремонт`.replace(/^(\d+) сдана/, "$1 сданы"));
   if (line.inProblems > 0) parts.push(`${count(line.inProblems)} уже в «Потеряшках»`);
   const reserved = line.reservedUnits ?? [];
   if (reserved.length > 0) {
@@ -142,9 +141,11 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
       plan ? { bookingId, splitRevision: plan.splitRevision, lines: plan.lines, hasPlannedStays: false, kioskSession: null } : null,
     [plan, bookingId],
   );
+  // Превью — для любой отметки: держатель проверяется с текущего момента и
+  // внутри оплаченного тоже. Исправить нельзя — считать незачем.
   const previewStays = useMemo(
-    () => (asPlan && anyBeyondPaid(asPlan, stays) ? partialReturnBody(asPlan, stays).stays : null),
-    [asPlan, stays],
+    () => (asPlan && stays.size > 0 && plan?.blockedBy == null ? partialReturnBody(asPlan, stays).stays : null),
+    [asPlan, stays, plan?.blockedBy],
   );
   const { preview, loading: previewLoading, error: previewError, refresh: refreshPreview } = useReturnPreview(
     bookingId,
@@ -249,7 +250,8 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
                     key={l.bookingItemId}
                     line={l}
                     stay={stays.get(l.bookingItemId)}
-                    busy={busy}
+                    busy={busy || blockedBy != null}
+                    correction
                     quantityLabel="не вернули"
                     capNote={capNoteOf(l)}
                     previewLine={preview?.continuations.flatMap((c) => c.lines).find((pl) => pl.bookingItemId === l.bookingItemId) ?? null}
@@ -266,7 +268,7 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
               {preview && <ContinuationPriceBlock preview={preview} loading={previewLoading} />}
               {previewError && <p className="text-xs text-amber">{previewError}</p>}
               {kept > 0 && plan.returnedAt && (
-                <p className="text-[12.5px] text-ink-2">
+                <p className="rounded-md border border-border bg-surface-subtle px-3 py-2.5 text-[12.5px] text-ink-2">
                   Создастся продолжение {preview?.continuations[0]?.docNumber ?? "брони"} {fromWhen(plan.returnedAt)}. Оставленное
                   ({kept} шт) склад снова считает занятым. Акт основной брони станет доступен, когда примут продолжение.
                 </p>
@@ -281,7 +283,7 @@ export function ReturnCorrectionDialog({ bookingId, docNumber, open, onClose, on
               <span className="text-amber">{BLOCK_NOTE[blockedBy]}</span>
             ) : blockingConflicts.length > 0 ? (
               <span className="text-amber">
-                Нужно другой брони: {blockingConflicts.map((c) => `«${c.name}»`).join(", ")} — оставьте под ответственность или сократите срок
+                Нужно другой брони: {blockingConflicts.map((c) => `«${c.name}»`).join(", ")} — оставьте под ответственность
               </span>
             ) : null}
           </p>

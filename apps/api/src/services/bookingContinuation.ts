@@ -561,6 +561,13 @@ async function stayConflicts(
     byEquipment.set(item.equipmentId, list);
   }
   const out: StayConflict[] = [];
+  if (byEquipment.size === 0) return out;
+  // Своя семья (корень и продолжения) склад занимает, но держателем не
+  // называется: иначе карточка говорила бы «нужна брони» о самой себе.
+  const rootId = booking.rootBookingId ?? booking.id;
+  const familyIds = (
+    await tx.booking.findMany({ where: { OR: [{ id: rootId }, { rootBookingId: rootId }] }, select: { id: true } })
+  ).map((b) => b.id);
   for (const [equipmentId, needs] of byEquipment) {
     // Разные сроки одной позиции: «1 шт до чт + 1 шт до сб» до четверга —
     // это 2 шт, после — 1. Проверяем по отрезкам между сроками, на каждом —
@@ -586,6 +593,7 @@ async function stayConflicts(
           start: segStart,
           end: segEnd,
           excludeBookingId: booking.id,
+          excludeHolderIds: familyIds,
         });
         const holder = holders.get(equipmentId) ?? null;
         const neededFrom = holder ? Math.max(Date.parse(holder.from), segStart.getTime()) : segStart.getTime();

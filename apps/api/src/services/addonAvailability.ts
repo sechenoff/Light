@@ -69,7 +69,18 @@ function asHolderStatus(status: string): HolderStatus {
  */
 async function loadHolders(
   client: Db,
-  a: { equipmentIds: string[]; start: Date; end: Date; excludeBookingId: string; now: Date },
+  a: {
+    equipmentIds: string[];
+    start: Date;
+    end: Date;
+    excludeBookingId: string;
+    now: Date;
+    /**
+     * Брони, которые держателем не называть, хотя склад они занимают: семья
+     * разделяемой брони (её же продолжения) — позиция нужна не им.
+     */
+    excludeHolderIds?: string[];
+  },
 ): Promise<Map<string, Holder>> {
   const holders = new Map<string, Holder>();
   if (a.equipmentIds.length === 0) return holders;
@@ -87,6 +98,7 @@ async function loadHolders(
     (r) =>
       r.quantity > 0 &&
       r.bookingId !== a.excludeBookingId &&
+      !(a.excludeHolderIds ?? []).includes(r.bookingId) &&
       reservationOverlaps(r, a.start.getTime(), a.end.getTime()),
   );
   if (reservations.length === 0) return holders;
@@ -218,7 +230,7 @@ export async function findAddonConflict(
  */
 export async function findHoldersBatch(
   client: Db,
-  a: { equipmentIds: string[]; start: Date; end: Date; excludeBookingId: string },
+  a: { equipmentIds: string[]; start: Date; end: Date; excludeBookingId: string; excludeHolderIds?: string[] },
 ): Promise<Map<string, AddonConflict>> {
   const result = new Map<string, AddonConflict>();
   const equipmentIds = Array.from(new Set(a.equipmentIds));

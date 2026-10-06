@@ -199,6 +199,8 @@ export function toggleStayUnit(
 ): Map<string, StayDraft> {
   const prev = stays.get(line.bookingItemId);
   const current = prev?.unitIds ?? [];
+  // Больше потолка строки не отметить.
+  if (!current.includes(unitId) && current.length >= line.quantity) return stays;
   const unitIds = current.includes(unitId) ? current.filter((id) => id !== unitId) : [...current, unitId];
   const next = new Map(stays);
   if (unitIds.length === 0) next.delete(line.bookingItemId);

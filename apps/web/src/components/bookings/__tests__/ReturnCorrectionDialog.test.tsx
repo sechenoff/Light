@@ -120,8 +120,7 @@ describe("окно «Часть не вернули»", () => {
   it("идёт инвентаризация — кнопка серая и объясняет почему", async () => {
     apiFetchMock.mockResolvedValue(plan({ blockedBy: "STOCK_COUNT_OPEN" }));
     open();
-    const line = await screen.findByTestId("return-line");
-    fireEvent.click(within(line).getByRole("button", { name: "Больше: Кабель силовой 25 м" }));
+    await screen.findByTestId("return-line");
     expect(screen.getByText("Исправить после завершения инвентаризации")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Создать продолжение" })).toBeDisabled();
   });
@@ -193,6 +192,98 @@ describe("окно «Часть не вернули»", () => {
     await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(expect.stringMatching(/нужна брони/)));
     await waitFor(() => expect(calls).toBe(2));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("сдали раньше срока, а позиция нужна другой брони внутри оплаченного — карточка и «под ответственность»", async () => {
+    const p = plan({ lines: [{ ...plan().lines[0], paidThrough: at(20), billingAnchor: at(20) }] });
+    const conflictPreview = {
+      continuations: [],
+      conflicts: [
+        {
+          bookingItemId: "i-cable",
+          equipmentId: "e1",
+          name: "Кабель силовой 25 м",
+          needed: 1,
+          available: 0,
+          from: at(0),
+          until: at(20),
+          neededFrom: at(5),
+          holder: { bookingId: "b-x", projectName: "Клип Север", clientName: null, from: at(5) },
+        },
+      ],
+    };
+    apiFetchMock.mockImplementation(async (url: string, opts?: { method?: string }) => {
+      if (url.endsWith("/return-correction") && opts?.method !== "POST") return p;
+      if (url.endsWith("/preview")) return conflictPreview;
+      return { continuationIds: ["c1"] };
+    });
+    open();
+    const line = await screen.findByTestId("return-line");
+    fireEvent.click(within(line).getByRole("button", { name: "Больше: Кабель силовой 25 м" }));
+    // Срок — «до конца оплаченного», доплаты нет, а держатель всё равно виден.
+    expect(within(line).getAllByRole("radio")[0]).toHaveAttribute("aria-checked", "true");
+    const holder = await within(line).findByRole("group", { name: "Нужен другой брони: Кабель силовой 25 м" });
+    expect(within(holder).queryByRole("button", { name: /Только до/ })).toBeNull();
+    const primary = screen.getByRole("button", { name: "Создать продолжение" });
+    expect(primary).toBeDisabled();
+    fireEvent.click(within(holder).getByRole("button", { name: "Оставить под ответственность" }));
+    expect(primary).toBeEnabled();
+    fireEvent.click(primary);
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith("/api/bookings/b1/return-correction", expect.objectContaining({ method: "POST" })),
+    );
+    const [, init] = apiFetchMock.mock.calls.find(
+      ([url, o]) => url === "/api/bookings/b1/return-correction" && (o as { method?: string } | undefined)?.method === "POST",
+    ) as [string, { body: string }];
+    expect(JSON.parse(init.body).stays[0]).toMatchObject({ bookingItemId: "i-cable", acknowledgedConflict: true });
+  });
+
+  it("штучная: больше потолка не отметить — остальные кнопки единиц закрыты", async () => {
+    const unitLine = {
+      ...plan().lines[0],
+      unitTracked: true,
+      quantity: 1,
+      booked: 2,
+      inProblems: 1,
+      units: [
+        { id: "u1", label: "C-1" },
+        { id: "u2", label: "C-2" },
+      ],
+    };
+    apiFetchMock.mockImplementation(async (url: string) =>
+      url.endsWith("/return-correction") ? plan({ lines: [unitLine] }) : { continuations: [], conflicts: [] },
+    );
+    open();
+    const group = await screen.findByRole("group", { name: "Какие единицы не вернули: Кабель силовой 25 м" });
+    fireEvent.click(within(group).getByRole("button", { name: "C-1" }));
+    expect(within(group).getByRole("button", { name: "C-1" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(group).getByRole("button", { name: "C-2" })).toBeDisabled();
+  });
+
+  it("только зарезервированные единицы — ни пустой группы, ни «отметьте единицы»", async () => {
+    const unitLine = {
+      ...plan().lines[0],
+      unitTracked: true,
+      quantity: 0,
+      booked: 1,
+      inProblems: 0,
+      units: [],
+      reservedUnits: [{ id: "u9", label: "C-9", reservedFor: "Сериал «Маяк»" }],
+    };
+    apiFetchMock.mockResolvedValue(plan({ lines: [unitLine] }));
+    open();
+    expect(await screen.findByText(/зарезервирована за «Сериал «Маяк»»/)).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /Какие единицы/ })).toBeNull();
+    expect(screen.queryByText(/Отметьте единицы/)).toBeNull();
+  });
+
+  it("исправить нельзя — строки только для чтения, превью не запрашивается", async () => {
+    apiFetchMock.mockResolvedValue(plan({ blockedBy: "STOCK_COUNT_OPEN" }));
+    open();
+    const line = await screen.findByTestId("return-line");
+    expect(within(line).getByRole("button", { name: "Больше: Кабель силовой 25 м" })).toBeDisabled();
+    await new Promise((r) => setTimeout(r, 450));
+    expect(apiFetchMock.mock.calls.filter(([url]) => String(url).endsWith("/preview"))).toHaveLength(0);
   });
 
   it("ничего не отмечено — создавать нечего", async () => {
