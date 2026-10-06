@@ -6,7 +6,12 @@ import { prisma } from "../prisma";
 import { projectReservations } from "../services/projectReservations";
 import { HttpError } from "../utils/errors";
 import { parseBookingRangeBound, diffDaysInclusive, assertBookingRangeOrder } from "../utils/dates";
-import { getUsableUnitBaseMap, getLostCountByEquipmentMap } from "../services/availability";
+import {
+  LONG_LINE_LOOKBACK_MS,
+  getLostCountByEquipmentMap,
+  getUsableUnitBaseMap,
+  linePlannedEnd,
+} from "../services/availability";
 import { toMoscowDateString, fromMoscowDateString, addDays } from "../utils/moscowDate";
 
 const router = express.Router();
@@ -95,7 +100,15 @@ router.get("/", async (req, res, next) => {
           // RR-2: архивные (soft-deleted) брони не показываем и не считаем занятость.
           deletedAt: null,
           startDate: { lte: end },
-          endDate: { gte: start },
+          OR: [
+            { endDate: { gte: start } },
+            // Бронь кончилась до периода, а её длинная позиция (свои смены
+            // сверх брони) ещё в нём. Позиции вне периода отсеиваются ниже.
+            {
+              endDate: { gte: new Date(start.getTime() - LONG_LINE_LOOKBACK_MS) },
+              items: { some: { shifts: { not: null } } },
+            },
+          ],
         },
         include: {
           client: true,
@@ -202,6 +215,10 @@ router.get("/", async (req, res, next) => {
           });
         }
 
+        // Позиция занята до своего срока: у длинной — позже конца брони.
+        const itemEnd = linePlannedEnd(booking, item.shifts);
+        if (itemEnd.getTime() < start.getTime()) continue;
+
         events.push({
           id: item.id,
           bookingId: booking.id,
@@ -209,7 +226,7 @@ router.get("/", async (req, res, next) => {
           title: booking.projectName,
           clientName: booking.client.name,
           start: booking.startDate.toISOString(),
-          end: booking.endDate.toISOString(),
+          end: itemEnd.toISOString(),
           quantity: item.quantity,
           status: booking.status,
         });

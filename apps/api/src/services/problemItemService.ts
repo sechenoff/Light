@@ -32,6 +32,7 @@
 
 import type { ProblemReason, ProblemSource } from "@prisma/client";
 import { prisma } from "../prisma";
+import { confirmedLineHeldAt } from "./availability";
 import { writeAuditEntry } from "./audit";
 import { HttpError } from "../utils/errors";
 import { computeExpectedOnShelf } from "./stockCount/expected";
@@ -195,23 +196,27 @@ async function assertNotCountedInOpenStockCount(
  * Держит ли бронь позицию вне склада в момент `at` — ровно слагаемые «issued» и
  * «calendar» формулы «на полке должно быть» (stockCount/expected.ts,
  * computeExpectedOnShelf): бронь не в архиве, позиция в составе, и бронь либо
- * ISSUED (независимо от дат), либо CONFIRMED с `at` внутри [startDate; endDate].
- * Правишь условие там — поправь и здесь, иначе сторож и полка разойдутся.
- *
- * Локальная копия, а не импорт: expected.ts отдаёт суммы по позициям, а здесь
- * нужен ответ про одну конкретную бронь.
+ * ISSUED (независимо от дат), либо CONFIRMED с `at` внутри [startDate; плановый
+ * конец позиции]. Условие для CONFIRMED — общее с expected.ts
+ * (`confirmedLineHeldAt`), поэтому сторож и полка не расходятся; здесь только
+ * ответ про одну конкретную бронь вместо сумм по позициям.
  */
 function bookingHoldsPosition(
-  booking: { status: string; startDate: Date; endDate: Date; deletedAt: Date | null; items: unknown[] },
+  booking: {
+    status: string;
+    startDate: Date;
+    endDate: Date;
+    skipPartialDay: boolean;
+    deletedAt: Date | null;
+    items: Array<{ shifts: number | null }>;
+  },
   at: Date,
 ): boolean {
   if (booking.deletedAt !== null || booking.items.length === 0) return false;
   if (booking.status === "ISSUED") return true;
-  return (
-    booking.status === "CONFIRMED" &&
-    booking.startDate.getTime() <= at.getTime() &&
-    booking.endDate.getTime() >= at.getTime()
-  );
+  // Та же формула «у клиента по календарю», что у инвентаризации: длинная
+  // позиция держится до своего срока, а не до конца брони.
+  return booking.items.some((it) => confirmedLineHeldAt(booking, it.shifts, at));
 }
 
 export interface ManualProblemInput {
@@ -268,8 +273,9 @@ export async function createManualProblemItem(input: ManualProblemInput, actor: 
           status: true,
           startDate: true,
           endDate: true,
+          skipPartialDay: true,
           deletedAt: true,
-          items: { where: { equipmentId: equipment.id }, select: { id: true }, take: 1 },
+          items: { where: { equipmentId: equipment.id }, select: { id: true, shifts: true }, take: 1 },
         },
       });
       if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");

@@ -25,7 +25,8 @@
  *             остаётся CONFIRMED — по нему UI отличает «срок вышел, возврат не
  *             отмечен» от «вернули кнопкой»);
  *  - OUT    — бронь была у клиента на `at` по формуле §3: ISSUED, CONFIRMED с
- *             `at` внутри [startDate; endDate], или RETURNED, чей фактический
+ *             `at` внутри [startDate; плановый конец позиции] (у длинной
+ *             позиции — её срок, confirmedLineHeldAt), или RETURNED, чей фактический
  *             возврат (сессия киоска / аудит) позже `at`.
  *
  * Кандидаты «с этой брони и ушло» — брони в окне, принятые НЕ через киоск; если
@@ -43,6 +44,7 @@
 import type { BookingStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "../../prisma";
+import { LONG_LINE_LOOKBACK_MS, confirmedLineHeldAt, linePlannedEnd } from "../availability";
 import { HttpError } from "../../utils/errors";
 import { READY_FOR_PICKUP_WINDOW_DAYS } from "../warehouseWorkstation";
 import { computeExpectedOnShelf, toBreakdown, EMPTY_BREAKDOWN } from "./expected";
@@ -127,11 +129,14 @@ export interface TrailTarget {
 
 export interface TrailItem {
   quantity: number;
+  /** Свои смены позиции (длинная позиция — дольше брони); null — как у брони. */
+  shifts?: number | null;
   booking: {
     id: string;
     projectName: string;
     startDate: Date;
     endDate: Date;
+    skipPartialDay?: boolean;
     status: BookingStatus;
     client: { name: string };
   };
@@ -275,33 +280,40 @@ export async function loadTrailCores(
   const items = await prisma.bookingItem.findMany({
     where: {
       equipmentId: { in: ids },
-      booking: {
-        deletedAt: null,
-        status: { in: TRAIL_STATUSES },
-        startDate: { lte: maxAt },
-        OR: [
-          { endDate: { gte: minFrom } },
-          { status: "ISSUED" },
-          { id: { in: Array.from(lateReturns.keys()) } },
-        ],
-      },
+      booking: { deletedAt: null, status: { in: TRAIL_STATUSES }, startDate: { lte: maxAt } },
+      OR: [
+        {
+          booking: {
+            OR: [
+              { endDate: { gte: minFrom } },
+              { status: "ISSUED" },
+              { id: { in: Array.from(lateReturns.keys()) } },
+            ],
+          },
+        },
+        // Бронь кончилась до окна, а её длинная позиция ещё могла в нём быть.
+        { shifts: { not: null }, booking: { endDate: { gte: new Date(minFrom.getTime() - LONG_LINE_LOOKBACK_MS) } } },
+      ],
     },
     select: {
       equipmentId: true,
       quantity: true,
+      shifts: true,
       booking: {
         select: {
           id: true,
           projectName: true,
           startDate: true,
           endDate: true,
+          skipPartialDay: true,
           status: true,
           client: { select: { name: true } },
         },
       },
     },
     orderBy: [{ booking: { startDate: "desc" } }, { bookingId: "desc" }],
-    // Одна позиция — фильтр выше и есть её окно, потолок можно отдать базе.
+    // Одна позиция — потолок можно отдать базе: фильтр выше шире окна только
+    // на брони, кончившиеся до него, а они при сортировке по началу — в хвосте.
     ...(targets.length === 1 ? { take: TRAIL_SCAN_CAP } : {}),
   });
 
@@ -314,12 +326,16 @@ export async function loadTrailCores(
     const b = item.booking;
     if (b.startDate.getTime() > target.at.getTime()) continue;
     const late = lateReturns.get(b.id);
+    // Плановый конец позиции — для броней, которые ещё не принимали: у
+    // длинной позиции это её срок. У принятой брони правду говорит факт
+    // возврата (late), а не план: длинную позицию могли сдать и раньше срока.
+    const plannedEnd = b.status === "RETURNED" ? b.endDate : linePlannedEnd(b, item.shifts);
     const inWindow =
-      b.endDate.getTime() >= target.windowFrom.getTime() ||
+      plannedEnd.getTime() >= target.windowFrom.getTime() ||
       b.status === "ISSUED" ||
       (late != null && late.getTime() >= target.windowFrom.getTime());
     if (!inWindow) continue;
-    core.items.push({ quantity: item.quantity, booking: b });
+    core.items.push({ quantity: item.quantity, shifts: item.shifts, booking: b });
   }
 
   const returnedIds = Array.from(
@@ -362,11 +378,12 @@ export function classifyTrailBookings(
     let returnedBy: string | null = null;
     let remarks: TrailBooking["remarks"] = null;
     // «Ещё у клиента» — ровно те брони, что формула §3 вычитала из полки на `at`:
-    // ISSUED независимо от дат, CONFIRMED, у которой `at` внутри [startDate; endDate]
-    // (startDate ≤ at уже в выборке), и RETURNED, которую приняли уже после `at`.
+    // ISSUED независимо от дат, CONFIRMED, у которой `at` внутри [startDate;
+    // плановый конец позиции] — та же confirmedLineHeldAt, что в expected.ts, —
+    // и RETURNED, которую приняли уже после `at`.
     const stillOut =
       b.status === "ISSUED" ||
-      (b.status === "CONFIRMED" && b.endDate.getTime() >= at.getTime()) ||
+      confirmedLineHeldAt({ ...b, skipPartialDay: b.skipPartialDay ?? false }, item.shifts, at) ||
       (returnedAt != null && returnedAt.getTime() > at.getTime());
     if (stillOut) {
       returnMode = "OUT";

@@ -8,7 +8,8 @@
  *               НЕЗАВИСИМО от дат: просроченная бронь, которую не приняли, всё
  *               равно держит оборудование вне склада;
  *  - calendar — Σ `BookingItem.quantity` броней CONFIRMED, у которых момент `at`
- *               попадает в [startDate; endDate]: по календарю они на съёмке, но
+ *               попадает в [startDate; плановый конец позиции] (у длинной
+ *               позиции — её срок, confirmedLineHeldAt): по календарю они на съёмке, но
  *               выдачу никто не отметил. Считать их «на полке» значило бы
  *               записать в недостачу то, что просто уехало без кнопки;
  *  - repair   — безъюнитные активные ремонты (`getRepairCountByEquipmentMap`);
@@ -21,7 +22,13 @@
  */
 
 import { prisma } from "../../prisma";
-import { getLostCountByEquipmentMap, getRepairCountByEquipmentMap } from "../availability";
+import {
+  LONG_LINE_LOOKBACK_MS,
+  confirmedLineHeldAt,
+  getLostCountByEquipmentMap,
+  getRepairCountByEquipmentMap,
+  linePlannedEnd,
+} from "../availability";
 import { READY_FOR_PICKUP_WINDOW_DAYS } from "../warehouseWorkstation";
 import type { Breakdown, CalendarBooking } from "./types";
 
@@ -68,23 +75,34 @@ export async function computeExpectedOnShelf(
   const items = await tx.bookingItem.findMany({
     where: {
       equipmentId: { in: ids },
-      booking: {
-        deletedAt: null,
-        OR: [
-          { status: "ISSUED" },
-          { status: "CONFIRMED", startDate: { lte: at }, endDate: { gte: at } },
-        ],
-      },
+      OR: [
+        { booking: { deletedAt: null, status: "ISSUED" } },
+        { booking: { deletedAt: null, status: "CONFIRMED", startDate: { lte: at }, endDate: { gte: at } } },
+        // Бронь кончилась, а её длинная позиция (свои смены сверх брони) ещё
+        // у клиента по плану. Точная проверка — confirmedLineHeldAt ниже.
+        {
+          shifts: { not: null },
+          booking: {
+            deletedAt: null,
+            status: "CONFIRMED",
+            startDate: { lte: at },
+            endDate: { gte: new Date(at.getTime() - LONG_LINE_LOOKBACK_MS) },
+          },
+        },
+      ],
     },
     select: {
       equipmentId: true,
       quantity: true,
+      shifts: true,
       booking: {
         select: {
           id: true,
           status: true,
           projectName: true,
+          startDate: true,
           endDate: true,
+          skipPartialDay: true,
           client: { select: { name: true } },
         },
       },
@@ -104,6 +122,7 @@ export async function computeExpectedOnShelf(
       issuedBy.set(equipmentId, (issuedBy.get(equipmentId) ?? 0) + item.quantity);
       continue;
     }
+    if (!confirmedLineHeldAt(item.booking, item.shifts, at)) continue;
     calendarBy.set(equipmentId, (calendarBy.get(equipmentId) ?? 0) + item.quantity);
     const list = calendarBookingsBy.get(equipmentId) ?? [];
     list.push({
@@ -111,7 +130,8 @@ export async function computeExpectedOnShelf(
       projectName: item.booking.projectName,
       clientName: item.booking.client.name,
       quantity: item.quantity,
-      endDate: item.booking.endDate.toISOString(),
+      // Когда позицию ждут обратно: у длинной — её срок, а не конец брони.
+      endDate: linePlannedEnd(item.booking, item.shifts).toISOString(),
     });
     calendarBookingsBy.set(equipmentId, list);
   }

@@ -225,6 +225,25 @@ export function linePlannedEnd(
 }
 
 /**
+ * Подтверждённая, но не выданная бронь держит позицию «по календарю» в момент
+ * `at`: начало брони прошло, а плановый конец позиции — нет. Статусы на проде
+ * отстают: бронь бывает на съёмке без отметки «выдана». Длинная позиция
+ * держится до своего срока. Границы закрытые — как в выборках инвентаризации
+ * и ручных потеряшек, которые этим пользуются.
+ */
+export function confirmedLineHeldAt(
+  b: { status: string; startDate: Date; endDate: Date; skipPartialDay: boolean },
+  lineShifts: number | null | undefined,
+  at: Date,
+): boolean {
+  return (
+    b.status === "CONFIRMED" &&
+    b.startDate.getTime() <= at.getTime() &&
+    linePlannedEnd(b, lineShifts).getTime() >= at.getTime()
+  );
+}
+
+/**
  * Интервал, в который ПОЗИЦИЯ брони занимает склад. Как у брони
  * (`bookingOccupancyInterval`), но конец — срок возврата позиции: позиция со
  * своим числом смен сверх брони (BookingItem.shifts) держит склад дольше —
