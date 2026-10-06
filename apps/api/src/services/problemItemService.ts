@@ -32,6 +32,7 @@
 
 import type { ProblemReason, ProblemSource } from "@prisma/client";
 import { prisma } from "../prisma";
+import { confirmedLineHeldAt } from "./availability";
 import { writeAuditEntry } from "./audit";
 import { HttpError } from "../utils/errors";
 import { computeExpectedOnShelf } from "./stockCount/expected";
@@ -202,16 +203,21 @@ async function assertNotCountedInOpenStockCount(
  * нужен ответ про одну конкретную бронь.
  */
 function bookingHoldsPosition(
-  booking: { status: string; startDate: Date; endDate: Date; deletedAt: Date | null; items: unknown[] },
+  booking: {
+    status: string;
+    startDate: Date;
+    endDate: Date;
+    skipPartialDay: boolean;
+    deletedAt: Date | null;
+    items: Array<{ shifts: number | null }>;
+  },
   at: Date,
 ): boolean {
   if (booking.deletedAt !== null || booking.items.length === 0) return false;
   if (booking.status === "ISSUED") return true;
-  return (
-    booking.status === "CONFIRMED" &&
-    booking.startDate.getTime() <= at.getTime() &&
-    booking.endDate.getTime() >= at.getTime()
-  );
+  // Та же формула «у клиента по календарю», что у инвентаризации: длинная
+  // позиция держится до своего срока, а не до конца брони.
+  return booking.items.some((it) => confirmedLineHeldAt(booking, it.shifts, at));
 }
 
 export interface ManualProblemInput {
@@ -268,8 +274,9 @@ export async function createManualProblemItem(input: ManualProblemInput, actor: 
           status: true,
           startDate: true,
           endDate: true,
+          skipPartialDay: true,
           deletedAt: true,
-          items: { where: { equipmentId: equipment.id }, select: { id: true }, take: 1 },
+          items: { where: { equipmentId: equipment.id }, select: { id: true, shifts: true }, take: 1 },
         },
       });
       if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");

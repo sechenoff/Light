@@ -43,6 +43,7 @@
 import type { BookingStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "../../prisma";
+import { LONG_LINE_LOOKBACK_MS, linePlannedEnd } from "../availability";
 import { HttpError } from "../../utils/errors";
 import { READY_FOR_PICKUP_WINDOW_DAYS } from "../warehouseWorkstation";
 import { computeExpectedOnShelf, toBreakdown, EMPTY_BREAKDOWN } from "./expected";
@@ -275,26 +276,32 @@ export async function loadTrailCores(
   const items = await prisma.bookingItem.findMany({
     where: {
       equipmentId: { in: ids },
-      booking: {
-        deletedAt: null,
-        status: { in: TRAIL_STATUSES },
-        startDate: { lte: maxAt },
-        OR: [
-          { endDate: { gte: minFrom } },
-          { status: "ISSUED" },
-          { id: { in: Array.from(lateReturns.keys()) } },
-        ],
-      },
+      booking: { deletedAt: null, status: { in: TRAIL_STATUSES }, startDate: { lte: maxAt } },
+      OR: [
+        {
+          booking: {
+            OR: [
+              { endDate: { gte: minFrom } },
+              { status: "ISSUED" },
+              { id: { in: Array.from(lateReturns.keys()) } },
+            ],
+          },
+        },
+        // Бронь кончилась до окна, а её длинная позиция ещё могла в нём быть.
+        { shifts: { not: null }, booking: { endDate: { gte: new Date(minFrom.getTime() - LONG_LINE_LOOKBACK_MS) } } },
+      ],
     },
     select: {
       equipmentId: true,
       quantity: true,
+      shifts: true,
       booking: {
         select: {
           id: true,
           projectName: true,
           startDate: true,
           endDate: true,
+          skipPartialDay: true,
           status: true,
           client: { select: { name: true } },
         },
@@ -315,7 +322,7 @@ export async function loadTrailCores(
     if (b.startDate.getTime() > target.at.getTime()) continue;
     const late = lateReturns.get(b.id);
     const inWindow =
-      b.endDate.getTime() >= target.windowFrom.getTime() ||
+      linePlannedEnd(b, item.shifts).getTime() >= target.windowFrom.getTime() ||
       b.status === "ISSUED" ||
       (late != null && late.getTime() >= target.windowFrom.getTime());
     if (!inWindow) continue;
