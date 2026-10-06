@@ -612,7 +612,9 @@ export default function BookingDetailPage() {
           onResubmit={resubmitForApproval}
           onEnterRetroEdit={enterRetroEdit}
           onOpenExtend={openExtend}
-          onOpenAddon={() => setAddonOpen(true)}
+          // Продолжению добор не делают (новое оборудование — новая бронь):
+          // сервер отвечает 409 CONTINUATION_ADDON_FORBIDDEN, кнопку не показываем.
+          onOpenAddon={booking?.family?.parent ? undefined : () => setAddonOpen(true)}
           onPartNotReturned={correctionOffered(correctionPlan) ? () => setCorrectionOpen(true) : undefined}
           onChangeExtendDate={setExtendEndDate}
           onSubmitExtend={submitExtend}
