@@ -293,6 +293,101 @@ describe("findAddonConflict", () => {
   });
 });
 
+/** Московская дата (YYYY-MM-DD) момента `ms` — формат дат партий проекта. */
+const moscowDay = (ms: number) => new Date(ms + 3 * HOUR).toISOString().slice(0, 10);
+/** Полночь по Москве — с неё партия проекта занимает позицию (projectMidnight). */
+const moscowMidnight = (ymd: string) => new Date(`${ymd}T00:00:00+03:00`);
+
+/** Длинный проект, выданный 10 дней назад, с одной партией на позицию. */
+async function mkProjectLot(
+  equipmentId: string,
+  fromDate: string,
+  throughDate: string,
+  lot: { status?: string; issuedAt?: Date } = {},
+) {
+  const project = await prisma.booking.create({
+    data: {
+      clientId, projectName: "Сериал «Долгий»", mode: "PROJECT", status: "ISSUED",
+      startDate: at(-10), endDate: at(60), issuedAt: at(-10),
+    },
+  });
+  await prisma.bookingProject.create({ data: { bookingId: project.id } });
+  await prisma.projectLot.create({
+    data: { bookingId: project.id, equipmentId, nameSnapshot: "Партия", quantity: 1, ratePerShift: 1000, fromDate, throughDate, ...lot },
+  });
+  return project;
+}
+
+describe("держатель — партия проекта", () => {
+  it("даты и статус — партии, а не проекта: проект выдан, партия ещё на складе", async () => {
+    const eq = await mkEq("Партия впереди", 1);
+    const first = moscowDay(NOW + 5 * DAY);
+    const project = await mkProjectLot(eq.id, first, moscowDay(NOW + 6 * DAY));
+    const target = await mkBooking("Ц-партия", "CONFIRMED", at(4), at(8), []);
+    const { findAddonConflict } = await import("../services/addonAvailability");
+    const c = await findAddonConflict(eq.id, target.startDate, target.endDate, target.id);
+    const end = moscowMidnight(moscowDay(NOW + 7 * DAY)).toISOString();
+    expect(c).toMatchObject({
+      bookingId: project.id,
+      from: moscowMidnight(first).toISOString(),
+      to: end,
+      freeFrom: end,
+      holderStatus: "CONFIRMED",
+      issuedAt: null,
+      overdue: false,
+    });
+  });
+
+  it("выданная партия: «у клиента с» — с выдачи партии; срок прошёл — «свободно с» неизвестно", async () => {
+    const eq = await mkEq("Партия у клиента", 1);
+    const issuedAt = new Date(NOW - 2 * DAY);
+    await mkProjectLot(eq.id, moscowDay(NOW - 2 * DAY), moscowDay(NOW - DAY), { status: "ISSUED", issuedAt });
+    const target = await mkBooking("Ц-партия-2", "CONFIRMED", at(0.5), at(1), []);
+    const { findHoldersBatch } = await import("../services/addonAvailability");
+    const map = await findHoldersBatch(prisma, {
+      equipmentIds: [eq.id],
+      start: target.startDate,
+      end: target.endDate,
+      excludeBookingId: target.id,
+    });
+    expect(map.get(eq.id)).toMatchObject({
+      from: issuedAt.toISOString(),
+      to: moscowMidnight(moscowDay(NOW)).toISOString(),
+      freeFrom: null,
+      holderStatus: "ISSUED",
+      issuedAt: issuedAt.toISOString(),
+      overdue: true,
+    });
+  });
+
+  it("партии проекта одна за другой — «освободится» после последней в окне", async () => {
+    const eq = await mkEq("Две партии подряд", 1);
+    const first = moscowDay(NOW + 302 * DAY);
+    const project = await mkProjectLot(eq.id, first, moscowDay(NOW + 303 * DAY));
+    await prisma.projectLot.create({
+      data: {
+        bookingId: project.id, equipmentId: eq.id, nameSnapshot: "Партия", quantity: 1, ratePerShift: 1000,
+        fromDate: moscowDay(NOW + 304 * DAY), throughDate: moscowDay(NOW + 305 * DAY),
+      },
+    });
+    const target = await mkBooking("Ц-партии", "CONFIRMED", at(301), at(307), []);
+    const { findAddonConflict } = await import("../services/addonAvailability");
+    const c = await findAddonConflict(eq.id, target.startDate, target.endDate, target.id);
+    const end = moscowMidnight(moscowDay(NOW + 306 * DAY)).toISOString();
+    expect(c).toMatchObject({ bookingId: project.id, from: moscowMidnight(first).toISOString(), to: end, freeFrom: end });
+  });
+
+  it("обычная бронь внутри окна важнее проекта, чья партия начинается позже", async () => {
+    const eq = await mkEq("Проект раньше, партия позже", 2);
+    await mkProjectLot(eq.id, moscowDay(NOW + 205 * DAY), moscowDay(NOW + 206 * DAY));
+    const inside = await mkBooking("Внутри окна", "CONFIRMED", at(201), at(203), [[eq.id, 1]]);
+    const target = await mkBooking("Ц-партия-3", "CONFIRMED", at(200), at(207), [[eq.id, 1]]);
+    const { findAddonConflict } = await import("../services/addonAvailability");
+    const c = await findAddonConflict(eq.id, target.startDate, target.endDate, target.id, { alreadyInBooking: 1 });
+    expect(c).toMatchObject({ bookingId: inside.id, projectName: "Внутри окна" });
+  });
+});
+
 describe("findHoldersBatch", () => {
   it("держатели по нескольким позициям одним вызовом; «уже в брони» берётся из брони", async () => {
     const held = await mkEq("Занятая", 2);

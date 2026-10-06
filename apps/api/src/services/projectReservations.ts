@@ -9,9 +9,9 @@ export type Reservation = {
   bookingId: string;
   lotId?: string;
   /**
-   * Плановый срок возврата позиции обычной брони (без хвоста «до сейчас» у
-   * просроченной выданной). Карточка держателя пишет по нему «освободится …».
-   * У лотов проекта не заполняется.
+   * Плановый срок возврата: позиции обычной брони или партии проекта (без
+   * хвоста «до сейчас» у просроченной выданной; у сданной части партии — момент
+   * сдачи). Карточка держателя пишет по нему «освободится …» и «просрочено».
    */
   dueAt?: number;
 };
@@ -54,8 +54,9 @@ export async function projectReservations(
       ...l.returns.map((r) => ({
         quantity: r.quantity,
         end: r.returnedAt.getTime(),
+        dueAt: r.returnedAt.getTime(),
       })),
-      { quantity: remaining, end },
+      { quantity: remaining, end, dueAt: plannedEnd },
     ]
       .filter(
         (p) =>
@@ -69,6 +70,7 @@ export async function projectReservations(
         lotId: l.id,
         start,
         end: p.end,
+        dueAt: p.dueAt,
         quantity: p.quantity,
       }));
   });
